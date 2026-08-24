@@ -4,7 +4,7 @@ Converts a DC *Who's Who* listed height into the millimetres needed to model and
 print a custom action figure that stands correctly alongside the Kenner Super
 Powers Collection.
 
-**[Open the tool](https://rmonson12.github.io/superpowers-scale/)**
+**[Open the tool](https://sixteenth-scale.github.io/)**
 
 ## The scale
 
@@ -54,6 +54,7 @@ The `confidence` column is deliberately honest:
 | `check` | Unverified. Treat as a starting point, not a measurement |
 | `builder` | Set at the bench from a figure in hand |
 | `disputed` | Sources contradict each other. **Do not print from these** |
+| `estimate` | No Who's Who entry exists (Super Powers originals), scaled to match the line |
 
 Corrections are welcome -- open an issue or a pull request against
 `characters.csv`. A height read off a real page beats anything else in here.
@@ -63,6 +64,6 @@ ceilings, stairs, rails, counters, seat heights, vehicle lengths, weapon lengths
 
 ## The page
 
-`index.html` is self-contained -- about 33 KB, no images, no build step, no
+`index.html` is self-contained -- about 46 KB, no images, no build step, no
 dependencies. It works offline and straight off disk. The only external request
 is Google Fonts, and the type falls back cleanly without it.
