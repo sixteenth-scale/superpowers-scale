@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Convert a DC Who's Who listed height into the millimetres needed to model a custom action figure at Kenner Super Powers scale. Super Powers is exactly 1:16, so every real-world inch is 1.5875 mm.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23131720'/%3E%3Cg stroke='%23D9752B' stroke-width='4' stroke-linecap='round'%3E%3Cline x1='16' y1='12' x2='16' y2='52'/%3E%3Cline x1='16' y1='18' x2='40' y2='18'/%3E%3Cline x1='16' y1='32' x2='48' y2='32'/%3E%3Cline x1='16' y1='46' x2='40' y2='46'/%3E%3C/g%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Super Powers Scale Bench">
+<meta property="og:description" content="Convert a DC Who's Who listed height into the millimetres needed to model a custom action figure at Kenner Super Powers scale. Super Powers is exactly 1:16, so every real-world inch is 1.5875 mm.">
+<meta name="twitter:card" content="summary">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+<title>Super Powers Scale Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ink:#131720; --paper:#F1F3F6; --surface:#FFFFFF; --sunken:#E7EAF0;
+  --line:#CBD2DE; --line-soft:#DFE4EC;
+  --text:#131720; --text-2:#4A5468; --text-3:#78839A;
+  --accent:#B85F1B; --accent-bright:#D9752B; --accent-wash:#FBEEE2;
+  --rule:#2E7E92; --rule-wash:#E2F0F4;
+  --good:#2F6B4F; --warn:#8A6212; --est:#6A5A87;
+  --shadow:0 1px 2px rgba(19,23,32,.06),0 8px 24px -12px rgba(19,23,32,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ink:#F1F3F6; --paper:#0E1218; --surface:#161C25; --sunken:#0A0E13;
+    --line:#2C3543; --line-soft:#222A36;
+    --text:#E9EDF4; --text-2:#A3AEC1; --text-3:#7A8598;
+    --accent:#E8913F; --accent-bright:#F0A155; --accent-wash:#2A1E12;
+    --rule:#5FBBD1; --rule-wash:#11262D;
+    --good:#6FC495; --warn:#D9AE4E; --est:#AE9BD4;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#F1F3F6; --paper:#0E1218; --surface:#161C25; --sunken:#0A0E13;
+  --line:#2C3543; --line-soft:#222A36;
+  --text:#E9EDF4; --text-2:#A3AEC1; --text-3:#7A8598;
+  --accent:#E8913F; --accent-bright:#F0A155; --accent-wash:#2A1E12;
+  --rule:#5FBBD1; --rule-wash:#11262D;
+  --good:#6FC495; --warn:#D9AE4E; --est:#AE9BD4;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--text);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+h1,h2,h3,.cond{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.lbl{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:11px;font-weight:600;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--text-3);
+}
+</style>
+
+<style>
+/* ---- masthead ---- */
+.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+.mast-in{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;padding:26px 0 22px}
+h1{margin:0;font-size:clamp(26px,3.4vw,38px);font-weight:700;letter-spacing:-.015em;line-height:1.05;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{margin:6px 0 0;color:var(--text-2);font-size:14px;max-width:62ch}
+.anchor{display:flex;gap:0;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--sunken)}
+.anchor div{padding:8px 14px;border-right:1px solid var(--line)}
+.anchor div:last-child{border-right:0;background:var(--accent-wash)}
+.anchor b{display:block;font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.anchor div:last-child b{color:var(--accent)}
+.anchor span{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+
+/* ---- layout ---- */
+.bench{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;padding:28px 0 40px;align-items:start}
+@media(max-width:900px){.bench{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow)}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft)}
+.card-b{padding:16px}
+
+/* ---- controls ---- */
+.ctrl{display:grid;gap:14px}
+.field{display:grid;gap:5px}
+select,input[type=text],input[type=number]{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;
+  background:var(--surface);color:var(--text);font-size:14px;
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+}
+select{font-family:"IBM Plex Sans",sans-serif}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type=range]{width:100%;accent-color:var(--accent-bright)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ---- readout ---- */
+.readout{padding:18px 16px;background:var(--sunken);border-bottom:1px solid var(--line-soft)}
+.big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.big b{font-family:"IBM Plex Mono",monospace;font-size:clamp(38px,6vw,56px);font-weight:600;
+  letter-spacing:-.03em;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.big i{font-style:normal;font-size:19px;color:var(--text-3);font-weight:500}
+.big-cap{margin-top:6px;color:var(--text-2);font-size:13px}
+.math{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--text-2);line-height:1.9}
+.math span{color:var(--text)} .math .neg{color:var(--accent)}
+
+/* ---- chips ---- */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:2px;
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;border:1px solid currentColor}
+.chip.canon{color:var(--good)} .chip.check{color:var(--warn)} .chip.estimate{color:var(--est)}
+.excl{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:10px 12px;
+  background:var(--accent-wash);border-left:2px solid var(--accent-bright);border-radius:2px;font-size:13px}
+.excl b{font-family:"IBM Plex Sans Condensed",sans-serif;letter-spacing:.02em}
+
+/* ---- landmark table ---- */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);padding:0 0 7px;border-bottom:1px solid var(--line)}
+th.r,td.r{text-align:right}
+td{padding:6px 0;border-bottom:1px solid var(--line-soft)}
+td.r{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:500}
+tr.pivot td{color:var(--rule)} tr.pivot td:first-child{font-weight:600}
+tr.crown td{color:var(--accent);font-weight:600}
+.tablewrap{overflow-x:auto}
+
+/* ---- ruler ---- */
+.rulercard{position:sticky;top:16px}
+@media(max-width:900px){.rulercard{position:static}}
+#ruler{display:block;width:100%;height:auto}
+
+/* ---- converter ---- */
+.conv{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 0 48px}
+@media(max-width:760px){.conv{grid-template-columns:1fr}}
+.refrow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+.refrow:last-child{border-bottom:0}
+.refrow b{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--rule);font-variant-numeric:tabular-nums}
+.refrow span{color:var(--text-2)}
+.catbtns{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.catbtn{padding:4px 10px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);
+  border-radius:2px;cursor:pointer;font-family:"IBM Plex Sans Condensed",sans-serif;font-size:11px;
+  font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.catbtn[aria-pressed=true]{background:var(--rule);border-color:var(--rule);color:var(--surface)}
+.reflist{max-height:270px;overflow-y:auto}
+
+/* ---- rules footer ---- */
+.rules{border-top:1px solid var(--line);background:var(--surface);padding:30px 0 44px}
+.rules-g{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+@media(max-width:760px){.rules-g{grid-template-columns:1fr}}
+.rule-n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:600}
+.rules h3{margin:4px 0 6px;font-size:17px;font-weight:600}
+.rules p{margin:0;color:var(--text-2);font-size:14px;max-width:60ch}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="mast"><div class="wrap mast-in">
+  <div>
+    <h1>Super Powers <em>Scale Bench</em></h1>
+    <p class="sub">Who's Who listed height in, millimeters out. Measured to the crown of the skull &mdash; cowl ears, crests and top hats sit above the line and never count toward height.</p>
+  </div>
+  <div class="anchor">
+    <div><span>Anchor</span><b>74 in</b></div>
+    <div><span>Figure</span><b>4&#8202;5&#8260;8 in</b></div>
+    <div><span>Scale</span><b>1:16</b></div>
+  </div>
+</div></header>
+
+<main class="wrap">
+<div class="bench">
+  <div>
+    <div class="card">
+      <div class="card-h"><span class="lbl">Build sheet</span><span id="conf"></span></div>
+      <div id="vers" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line-soft)"></div>
+      <div class="readout">
+        <div class="big"><b id="mm">117.48</b><i>mm to crown</i></div>
+        <div class="big-cap" id="cap"></div>
+        <div class="math" id="math"></div>
+        <div id="excl"></div>
+      </div>
+      <div class="card-b">
+        <div class="ctrl">
+          <div class="field">
+            <label class="lbl" for="pick">Character</label>
+            <select id="pick"></select>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label class="lbl" for="hin">Listed height (in)</label>
+              <input id="hin" type="number" step="0.5" min="1" max="400">
+            </div>
+            <div class="field">
+              <label class="lbl" for="heads">Head heights</label>
+              <input id="heads" type="number" step="0.25" min="4" max="10" value="7">
+            </div>
+          </div>
+          <div class="field">
+            <label class="lbl" for="hair">Hair above skull &mdash; <span class="mono" id="hairv">0.0</span> mm</label>
+            <input id="hair" type="range" min="0" max="3" step="0.1" value="0">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <div class="card-h"><span class="lbl">Cut lines &mdash; measured from the floor</span></div>
+      <div class="card-b tablewrap">
+        <table><thead><tr><th>Landmark</th><th class="r">Height</th><th class="r">&#37; of figure</th></tr></thead>
+        <tbody id="lm"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card rulercard">
+    <div class="card-h"><span class="lbl">Scale rule</span></div>
+    <div class="card-b"><svg id="ruler" viewBox="0 0 240 620" role="img" aria-label="Vertical measuring rule showing the figure height and joint cut lines"></svg></div>
+  </div>
+</div>
+
+<div class="conv">
+  <div class="card">
+    <div class="card-h"><span class="lbl">Anything else at 1:16</span></div>
+    <div class="card-b">
+      <div class="field">
+        <label class="lbl" for="rin">Real-world size (inches)</label>
+        <input id="rin" type="number" step="1" value="225">
+      </div>
+      <div class="big" style="margin-top:14px"><b id="rmm" style="font-size:34px">357.19</b><i>mm</i></div>
+      <div class="big-cap" id="rcap"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><span class="lbl">Reference dimensions</span></div>
+    <div class="card-b">
+      <div class="catbtns" id="cats"></div>
+      <div class="reflist" id="refs"></div>
+    </div>
+  </div>
+</div>
+</main>
+
+<footer class="rules"><div class="wrap"><div class="rules-g">
+  <div>
+    <div class="rule-n">RULE 01</div>
+    <h3>Nothing above the skull counts</h3>
+    <p>Batman's 6&#8242;2&#8243; is his height as a man. The cowl ears rise proud of that line. Model the body to the target, then add the topper above it &mdash; compressing the figure so the ears fit under the target is how a custom ends up visibly short next to a real Kenner figure.</p>
+  </div>
+  <div>
+    <div class="rule-n">RULE 02</div>
+    <h3>Back off a millimeter for big hair</h3>
+    <p>A listed height is effectively measured to the top of the skull. When a sculpt carries volume above that &mdash; Joker's pompadour, Barda's mane &mdash; subtract about a millimeter so the silhouette reads right instead of running tall. At 1:16, one millimeter is sixteen real inches, so keep the correction small.</p>
+  </div>
+</div></div></footer>
+
+<script>const DATA=
+{
+"chars": [
+{
+"k": "aquaman",
+"n": "Aquaman",
+"a": "Arthur Curry",
+"h": 73.0,
+"sv": "WW85",
+"is": "#1",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.5,
+"t": "Swept-back blond hair"
+},
+{
+"k": "batgirl",
+"n": "Batgirl",
+"a": "Barbara Gordon",
+"h": 69.0,
+"sv": "WW85",
+"is": "#2",
+"p": true,
+"c": "check",
+"x": "cowl",
+"o": 1.0,
+"t": "Hair flows from cowl back"
+},
+{
+"k": "batman",
+"n": "Batman",
+"a": "Bruce Wayne",
+"h": 74.0,
+"sv": "WW85",
+"is": "#2",
+"p": true,
+"c": "canon",
+"x": "cowl ears",
+"o": 0.0,
+"t": "Cowl is skin-tight; measure to crown of cowl NOT ear tips"
+},
+{
+"k": "big-barda",
+"n": "Big Barda",
+"a": "Barda Free",
+"h": 74.0,
+"sv": "WW85",
+"is": "#2",
+"p": true,
+"c": "check",
+"x": "helmet",
+"o": 1.0,
+"t": "Helmet excluded; long hair -1mm"
+},
+{
+"k": "bizarro",
+"n": "Bizarro",
+"a": "Bizarro No. 1",
+"h": 75.0,
+"sv": "WW85",
+"is": "#3",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.5,
+"t": "Mirrors Superman height"
+},
+{
+"k": "black-manta",
+"n": "Black Manta",
+"a": "Unknown",
+"h": 74.0,
+"sv": "WW85",
+"is": "#2",
+"p": true,
+"c": "check",
+"x": "helmet dome",
+"o": 0.0,
+"t": "Large helmet - measure skull not dome"
+},
+{
+"k": "brainiac",
+"n": "Brainiac",
+"a": "Vril Dox",
+"h": 78.0,
+"sv": "WW85",
+"is": "#3",
+"p": true,
+"c": "disputed",
+"x": "none",
+"o": 0.0,
+"t": "DISPUTED. Three searches gave 6ft0, 6ft4 and 7ft4 (Pre-Crisis, 479lbs). My 6ft6 unconfirmed. Many bodies across continuity - needs the page"
+},
+{
+"k": "catwoman",
+"n": "Catwoman",
+"a": "Selina Kyle",
+"h": 67.0,
+"sv": "WW85",
+"is": "",
+"p": true,
+"c": "web",
+"x": "cowl cat ears",
+"o": 0.0,
+"t": "5ft7 holds across Golden Age Silver Age and post-Crisis; only weight shifts. Cowl is skin-tight like Batman's - measure to crown, ears sit proud. Issue number not recorded rather than guessed"
+},
+{
+"k": "cheetah",
+"n": "Cheetah",
+"a": "Barbara Minerva",
+"h": 68.0,
+"sv": "WWU87",
+"is": "",
+"p": true,
+"c": "check",
+"x": "ears",
+"o": 1.0,
+"t": "Cat ears excluded"
+},
+{
+"k": "clark-kent",
+"n": "Clark Kent",
+"a": "Superman",
+"h": 75.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.5,
+"t": "Same body as Superman; suit sculpt only"
+},
+{
+"k": "cyborg",
+"n": "Cyborg",
+"a": "Victor Stone",
+"h": 78.0,
+"sv": "WW85",
+"is": "#5",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.0,
+"t": "Half-metal skull; flat crown"
+},
+{
+"k": "cyclotron",
+"n": "Cyclotron",
+"a": "Cyclotron",
+"h": 74.0,
+"sv": "SPC",
+"is": "",
+"p": true,
+"c": "estimate",
+"x": "none",
+"o": 0.0,
+"t": "No Who's Who entry - scaled to match line"
+},
+{
+"k": "darkseid",
+"n": "Darkseid",
+"a": "Uxas",
+"h": 105.0,
+"sv": "WW85",
+"is": "#6",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.0,
+"t": "8'9 - dwarfs the standard figure by design"
+},
+{
+"k": "desaad",
+"n": "DeSaad",
+"a": "DeSaad",
+"h": 69.0,
+"sv": "WW85",
+"is": "#6",
+"p": true,
+"c": "check",
+"x": "hood",
+"o": 0.5,
+"t": "Hood excluded"
+},
+{
+"k": "deathstroke",
+"n": "Deathstroke",
+"a": "Slade Wilson",
+"h": 76.0,
+"sv": "WW85",
+"is": "#6",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.0,
+"t": "Full mask"
+},
+{
+"k": "doctor-fate",
+"n": "Doctor Fate",
+"a": "Kent Nelson",
+"h": 74.0,
+"sv": "WW85",
+"is": "#7",
+"p": true,
+"c": "web",
+"x": "full helm",
+"o": 0.0,
+"t": "6ft2 corroborated (197 lbs)"
+},
+{
+"k": "firestorm",
+"n": "Firestorm",
+"a": "Ronnie Raymond",
+"h": 74.0,
+"sv": "WW85",
+"is": "#8",
+"p": true,
+"c": "check",
+"x": "flame head",
+"o": 0.0,
+"t": "Flame hair is an effect NOT height - exclude entirely"
+},
+{
+"k": "golden-pharaoh",
+"n": "Golden Pharaoh",
+"a": "Golden Pharaoh",
+"h": 74.0,
+"sv": "SPC",
+"is": "",
+"p": true,
+"c": "estimate",
+"x": "nemes headdress",
+"o": 0.0,
+"t": "No Who's Who entry - headdress excluded"
+},
+{
+"k": "green-arrow",
+"n": "Green Arrow",
+"a": "Oliver Queen",
+"h": 71.0,
+"sv": "WW85",
+"is": "#9",
+"p": true,
+"c": "web",
+"x": "none",
+"o": 0.5,
+"t": "5ft11 across sources; my 6ft1 was wrong"
+},
+{
+"k": "green-lantern",
+"n": "Green Lantern",
+"a": "Hal Jordan",
+"h": 74.0,
+"sv": "WW85",
+"is": "#9",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.5,
+"t": ""
+},
+{
+"k": "hawkman",
+"n": "Hawkman",
+"a": "Katar Hol",
+"h": 78.0,
+"sv": "WW85",
+"is": "#10",
+"p": true,
+"c": "web",
+"x": "hawk helmet beak",
+"o": 0.0,
+"t": "Original WW #10 entry lists 6ft6. Rob's pick - first SP Hawkman scales to this even excluding mask wings"
+},
+{
+"k": "hawkman",
+"n": "Hawkman",
+"a": "Katar Hol",
+"h": 71.0,
+"sv": "WWU87",
+"is": "#5",
+"p": false,
+"c": "web",
+"x": "hawk helmet beak",
+"o": 0.0,
+"t": "Errata in Update '87 #5 reportedly corrected the height to 5ft11 - verify against the page"
+},
+{
+"k": "joker",
+"n": "Joker",
+"a": "Unknown",
+"h": 77.0,
+"sv": "WW85",
+"is": "#12",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 1.5,
+"t": "Tall and lanky; large green pompadour sits well above skull"
+},
+{
+"k": "kalibak",
+"n": "Kalibak",
+"a": "Kalibak",
+"h": 80.0,
+"sv": "WW85",
+"is": "#12",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 1.5,
+"t": "Heavy mane -1.5mm"
+},
+{
+"k": "lex-luthor",
+"n": "Lex Luthor",
+"a": "Alexander Luthor",
+"h": 74.0,
+"sv": "WW85",
+"is": "#13",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.0,
+"t": "Bald - no hair offset"
+},
+{
+"k": "mantis",
+"n": "Mantis",
+"a": "Mantis",
+"h": 78.0,
+"sv": "WW85",
+"is": "#14",
+"p": true,
+"c": "check",
+"x": "helmet horns",
+"o": 0.0,
+"t": "Horns excluded"
+},
+{
+"k": "martian-manhunter",
+"n": "Martian Manhunter",
+"a": "J'onn J'onzz",
+"h": 79.0,
+"sv": "WW85",
+"is": "#14",
+"p": true,
+"c": "canon",
+"x": "head crest",
+"o": 0.0,
+"t": "Brow crest sits above crown; exclude it"
+},
+{
+"k": "mister-miracle",
+"n": "Mister Miracle",
+"a": "Scott Free",
+"h": 72.0,
+"sv": "WW85",
+"is": "#15",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.0,
+"t": "Measure to crown of mask"
+},
+{
+"k": "mr-freeze",
+"n": "Mr. Freeze",
+"a": "Victor Fries",
+"h": 72.0,
+"sv": "WW85",
+"is": "#15",
+"p": true,
+"c": "check",
+"x": "dome helmet",
+"o": 0.0,
+"t": "Glass dome excluded; measure skull crown"
+},
+{
+"k": "nightwing",
+"n": "Nightwing",
+"a": "Dick Grayson",
+"h": 70.0,
+"sv": "WW85",
+"is": "#16",
+"p": true,
+"c": "web",
+"x": "none",
+"o": 1.0,
+"t": "5ft10 - confirmed by Rob"
+},
+{
+"k": "orion",
+"n": "Orion",
+"a": "Orion of New Genesis",
+"h": 74.0,
+"sv": "WW85",
+"is": "#17",
+"p": true,
+"c": "check",
+"x": "astro-harness",
+"o": 0.0,
+"t": "Harness rig excluded"
+},
+{
+"k": "parademon",
+"n": "Parademon",
+"a": "Parademon",
+"h": 72.0,
+"sv": "WW85",
+"is": "#17",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.0,
+"t": "Generic trooper; helmet flush"
+},
+{
+"k": "penguin",
+"n": "Penguin",
+"a": "Oswald Cobblepot",
+"h": 62.0,
+"sv": "WW85",
+"is": "#18",
+"p": true,
+"c": "canon",
+"x": "top hat",
+"o": 0.0,
+"t": "Top hat strictly excluded; measure bald crown"
+},
+{
+"k": "plastic-man",
+"n": "Plastic Man",
+"a": "Patrick O'Brian",
+"h": 74.0,
+"sv": "WW85",
+"is": "#18",
+"p": true,
+"c": "check",
+"x": "goggles",
+"o": 0.5,
+"t": "Malleable - use baseline human height"
+},
+{
+"k": "red-tornado",
+"n": "Red Tornado",
+"a": "John Smith",
+"h": 73.0,
+"sv": "WW85",
+"is": "#19",
+"p": true,
+"c": "web",
+"x": "none",
+"o": 0.0,
+"t": "6ft1 325 lbs per DCU Guide; my 6ft0 was wrong"
+},
+{
+"k": "robin",
+"n": "Robin",
+"a": "Dick Grayson",
+"h": 68.0,
+"sv": "WW85",
+"is": "#20",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.5,
+"t": "Teen build; verify against your Robin entry"
+},
+{
+"k": "samurai",
+"n": "Samurai",
+"a": "Toshio Eto",
+"h": 74.0,
+"sv": "SPC",
+"is": "",
+"p": true,
+"c": "estimate",
+"x": "helmet crest",
+"o": 0.0,
+"t": "No Who's Who entry - crest excluded"
+},
+{
+"k": "shazam",
+"n": "Shazam",
+"a": "Billy Batson",
+"h": 74.0,
+"sv": "WW85",
+"is": "#4",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.5,
+"t": "Listed as Captain Marvel in original printing"
+},
+{
+"k": "sinestro",
+"n": "Sinestro",
+"a": "Thaal Sinestro",
+"h": 73.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.5,
+"t": ""
+},
+{
+"k": "solomon-grundy",
+"n": "Solomon Grundy",
+"a": "Cyrus Gold",
+"h": 105.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "disputed",
+"x": "none",
+"o": 1.0,
+"t": "DISPUTED. DCU Guide 7ft5/517lbs; other sources 6ft7. My 8ft9 appears in no source. Grundy resurrects in new bodies so versions genuinely differ - needs the page"
+},
+{
+"k": "steel",
+"n": "Steel",
+"a": "John Henry Irons",
+"h": 78.0,
+"sv": "WWU87",
+"is": "",
+"p": true,
+"c": "check",
+"x": "none",
+"o": 0.0,
+"t": ""
+},
+{
+"k": "steppenwolf",
+"n": "Steppenwolf",
+"a": "Steppenwolf",
+"h": 84.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "disputed",
+"x": "none",
+"o": 0.5,
+"t": "DISPUTED. Search returned 6ft0/250lbs but that looks like the film or Earth-2 version, not the New Gods one. My 7ft0 unconfirmed - needs the page"
+},
+{
+"k": "supergirl",
+"n": "Supergirl",
+"a": "Kara Zor-El",
+"h": 66.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "disputed",
+"x": "none",
+"o": 1.0,
+"t": "DISPUTED. Post-Crisis 5ft5, Pre-Crisis 5ft7. My 5ft6 matches neither - needs the page"
+},
+{
+"k": "superman",
+"n": "Superman",
+"a": "Clark Kent",
+"h": 75.0,
+"sv": "WW85",
+"is": "#22",
+"p": true,
+"c": "canon",
+"x": "none",
+"o": 0.5,
+"t": "Short hair with spit curl; curl may sit ~0.5mm proud"
+},
+{
+"k": "atom",
+"n": "The Atom",
+"a": "Ray Palmer",
+"h": 72.0,
+"sv": "WW85",
+"is": "#1",
+"p": true,
+"c": "web",
+"x": "none",
+"o": 0.0,
+"t": "6ft0 180lbs at normal size. Full cowl - no hair above crown. Shrunken Atom is a separate build: 6in tall = 9.53mm at 1:16"
+},
+{
+"k": "the-flash",
+"n": "The Flash",
+"a": "Barry Allen",
+"h": 72.0,
+"sv": "WW85",
+"is": "#8",
+"p": true,
+"c": "canon",
+"x": "ear fins",
+"o": 0.0,
+"t": "Cowl fins do not count toward height"
+},
+{
+"k": "the-riddler",
+"n": "The Riddler",
+"a": "Edward Nigma",
+"h": 73.0,
+"sv": "WW85",
+"is": "#20",
+"p": true,
+"c": "check",
+"x": "bowler hat",
+"o": 0.5,
+"t": ""
+},
+{
+"k": "two-face",
+"n": "Two-Face",
+"a": "Harvey Dent",
+"h": 72.0,
+"sv": "WW85",
+"is": "#24",
+"p": true,
+"c": "web",
+"x": "none",
+"o": 0.5,
+"t": "6ft0 corroborated (182 lbs)"
+},
+{
+"k": "tyr",
+"n": "Tyr",
+"a": "Tyr",
+"h": 76.0,
+"sv": "SPC",
+"is": "",
+"p": true,
+"c": "estimate",
+"x": "none",
+"o": 0.0,
+"t": "No Who's Who entry"
+},
+{
+"k": "wonder-woman",
+"n": "Wonder Woman",
+"a": "Diana Prince",
+"h": 71.0,
+"sv": "WW85",
+"is": "#26",
+"p": true,
+"c": "check",
+"x": "tiara",
+"o": 1.0,
+"t": "Tiara is flush; full mane -1mm. Verify 5'11 vs 6'0 in your printing"
+},
+{
+"k": "zatanna",
+"n": "Zatanna",
+"a": "Zatanna Zatara",
+"h": 67.0,
+"sv": "WW85",
+"is": "#26",
+"p": true,
+"c": "web",
+"x": "top hat",
+"o": 1.0,
+"t": "5ft7 corroborated across sources. Top hat is a prop - exclude from height"
+}
+],
+"ref": [
+{
+"c": "architecture",
+"i": "Interior door height",
+"v": 80.0
+},
+{
+"c": "architecture",
+"i": "Interior door width",
+"v": 32.0
+},
+{
+"c": "architecture",
+"i": "Ceiling height (residential)",
+"v": 96.0
+},
+{
+"c": "architecture",
+"i": "Ceiling height (lobby/hall)",
+"v": 144.0
+},
+{
+"c": "architecture",
+"i": "Stair riser",
+"v": 7.0
+},
+{
+"c": "architecture",
+"i": "Stair tread depth",
+"v": 11.0
+},
+{
+"c": "architecture",
+"i": "Handrail height",
+"v": 36.0
+},
+{
+"c": "architecture",
+"i": "Countertop height",
+"v": 36.0
+},
+{
+"c": "architecture",
+"i": "Table height",
+"v": 30.0
+},
+{
+"c": "architecture",
+"i": "Chair seat height",
+"v": 18.0
+},
+{
+"c": "architecture",
+"i": "Desk height",
+"v": 29.0
+},
+{
+"c": "architecture",
+"i": "Standard step-through hatch",
+"v": 72.0
+},
+{
+"c": "furniture",
+"i": "Throne (Darkseid scale)",
+"v": 120.0
+},
+{
+"c": "furniture",
+"i": "Computer console",
+"v": 60.0
+},
+{
+"c": "furniture",
+"i": "Cell door",
+"v": 84.0
+},
+{
+"c": "vehicle",
+"i": "Full-size sedan length",
+"v": 195.0
+},
+{
+"c": "vehicle",
+"i": "Full-size sedan width",
+"v": 73.0
+},
+{
+"c": "vehicle",
+"i": "Full-size sedan height",
+"v": 57.0
+},
+{
+"c": "vehicle",
+"i": "1966 Lincoln Futura (Batmobile)",
+"v": 225.0
+},
+{
+"c": "vehicle",
+"i": "Sports car length",
+"v": 175.0
+},
+{
+"c": "vehicle",
+"i": "Pickup truck length",
+"v": 230.0
+},
+{
+"c": "vehicle",
+"i": "Van length",
+"v": 224.0
+},
+{
+"c": "vehicle",
+"i": "Bell 206 helicopter length",
+"v": 383.0
+},
+{
+"c": "vehicle",
+"i": "Bell 206 rotor diameter",
+"v": 402.0
+},
+{
+"c": "vehicle",
+"i": "Motorcycle length",
+"v": 86.0
+},
+{
+"c": "vehicle",
+"i": "Motorcycle wheelbase",
+"v": 58.0
+},
+{
+"c": "vehicle",
+"i": "Jet fighter length (F-16)",
+"v": 595.0
+},
+{
+"c": "vehicle",
+"i": "Car wheel diameter",
+"v": 27.0
+},
+{
+"c": "accessory",
+"i": "Rifle length",
+"v": 40.0
+},
+{
+"c": "accessory",
+"i": "Pistol length",
+"v": 8.0
+},
+{
+"c": "accessory",
+"i": "Sword (longsword)",
+"v": 44.0
+},
+{
+"c": "accessory",
+"i": "Staff / quarterstaff",
+"v": 72.0
+},
+{
+"c": "accessory",
+"i": "Shield diameter",
+"v": 24.0
+},
+{
+"c": "accessory",
+"i": "Briefcase width",
+"v": 18.0
+},
+{
+"c": "accessory",
+"i": "Coffee mug height",
+"v": 4.0
+},
+{
+"c": "accessory",
+"i": "Grappling hook",
+"v": 10.0
+}
+],
+"ser": {
+"WW85": "Definitive Directory 1985-87",
+"WWU87": "Update '87",
+"WWU88": "Update '88",
+"WW90": "Loose-leaf 1990-92",
+"SPC": "Super Powers original",
+"OVR": "Bench override",
+"OTHER": "Other"
+}
+}
+;
+const SCALE=16, MMIN=25.4, K=MMIN/SCALE;
+const LM=[["Crown of head",1.000,"crown"],["Eye line",0.935,""],["Chin",0.870,""],
+["Shoulder pivot",0.818,"pivot"],["Nipple line",0.720,""],["Elbow pivot",0.620,"pivot"],
+["Navel",0.600,""],["Hip pivot",0.485,"pivot"],["Wrist pivot",0.465,""],
+["Fingertip",0.375,""],["Knee pivot",0.285,"pivot"],["Calf (widest)",0.200,""],
+["Ankle pivot",0.060,"pivot"]];
+const $=id=>document.getElementById(id);
+/* half-up at 2dp: 117.475 is binary-just-below its decimal value and would
+   otherwise render 117.47 instead of the correct 117.48 */
+const f2=v=>(Math.round((v+Number.EPSILON*Math.abs(v))*100)/100).toFixed(2);
+const ftin=i=>`${Math.floor(Math.round(i)/12)}'${Math.round(i)%12}"`;
+const store=(k,v)=>{try{v===undefined?0:localStorage.setItem(k,v)}catch(e){}};
+const load=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+
+const GROUPS={};
+DATA.chars.forEach(c=>{(GROUPS[c.k]=GROUPS[c.k]||[]).push(c)});
+Object.values(GROUPS).forEach(g=>g.sort((a,b)=>(b.p?1:0)-(a.p?1:0)));
+let curKey="batman", cur=GROUPS[curKey][0];
+
+/* populate selector */
+const pick=$("pick");
+Object.keys(GROUPS).map(k=>GROUPS[k][0]).sort((a,b)=>a.n.localeCompare(b.n)).forEach(c=>{
+  const o=document.createElement("option");o.value=c.k;
+  const n=GROUPS[c.k].length;
+  o.textContent=c.n+(c.a&&c.a!==c.n?"  —  "+c.a:"")+(n>1?`   (${n} printings)`:"");
+  pick.appendChild(o);});
+
+function draw(target,heads){
+  const svg=$("ruler"),W=272,H=620,pad=26;
+  const top=target*1.16, px=(H-pad*2)/top, y=mm=>H-pad-mm*px;
+  const c=s=>getComputedStyle(document.documentElement).getPropertyValue(s).trim();
+  const line=c("--line"),tx3=c("--text-3"),acc=c("--accent-bright"),rl=c("--rule"),tx=c("--text");
+  let s=`<defs><pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+  <line x1="0" y1="0" x2="0" y2="6" stroke="${acc}" stroke-width="1.1" opacity=".35"/></pattern></defs>`;
+  const X=64;
+  /* excluded zone above crown */
+  s+=`<rect x="${X}" y="${pad-4}" width="150" height="${y(target)-pad+4}" fill="url(#hatch)"/>`;
+  s+=`<text x="${X+8}" y="${pad+12}" font-size="9.5" font-family="IBM Plex Sans Condensed,sans-serif"
+      letter-spacing="1.3" fill="${acc}" font-weight="600">EXCLUDED</text>`;
+  /* spine */
+  s+=`<line x1="${X}" y1="${pad-4}" x2="${X}" y2="${H-pad}" stroke="${line}" stroke-width="1"/>`;
+  /* ticks */
+  for(let mm=0;mm<=top;mm++){
+    const maj=mm%10===0,mid=mm%5===0;
+    if(!maj&&!mid&&px<3)continue;
+    s+=`<line x1="${X-(maj?11:mid?7:4)}" y1="${y(mm)}" x2="${X}" y2="${y(mm)}"
+        stroke="${maj?tx3:line}" stroke-width="${maj?1:.8}"/>`;
+    if(maj)s+=`<text x="${X-14}" y="${y(mm)+3.2}" font-size="9" text-anchor="end"
+        font-family="IBM Plex Mono,monospace" fill="${tx3}">${mm}</text>`;
+  }
+  /* landmarks */
+  LM.forEach(([lab,f,kind])=>{
+    const mm=target*f, isC=kind==="crown", isP=kind==="pivot";
+    if(!isC&&!isP)return;
+    const col=isC?acc:rl;
+    s+=`<line x1="${X}" y1="${y(mm)}" x2="${X+(isC?150:104)}" y2="${y(mm)}" stroke="${col}"
+        stroke-width="${isC?1.6:1}" ${isP?'stroke-dasharray="4 3"':''}/>`;
+    s+=`<circle cx="${X}" cy="${y(mm)}" r="${isC?3:2.2}" fill="${col}"/>`;
+    s+=`<text x="${X+(isC?154:108)}" y="${y(mm)+3.2}" font-size="9.5" fill="${col}"
+        font-family="IBM Plex Mono,monospace" font-weight="${isC?600:400}">${mm.toFixed(1)}</text>`;
+    s+=`<text x="${X+6}" y="${y(mm)-4}" font-size="8.5" fill="${col}" opacity=".9"
+        font-family="IBM Plex Sans Condensed,sans-serif" letter-spacing="1"
+        font-weight="600">${lab.toUpperCase()}</text>`;
+  });
+  s+=`<line x1="${X-14}" y1="${y(0)}" x2="${X+150}" y2="${y(0)}" stroke="${tx}" stroke-width="1.6"/>`;
+  s+=`<text x="${X+154}" y="${y(0)+3.2}" font-size="9.5" fill="${tx}"
+      font-family="IBM Plex Mono,monospace">0.0</text>`;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);svg.innerHTML=s;
+}
+
+function render(){
+  const h=parseFloat($("hin").value)||0, hair=parseFloat($("hair").value)||0,
+        heads=parseFloat($("heads").value)||7;
+  const raw=h*K, target=Math.max(raw-hair,1);
+  $("hairv").textContent=hair.toFixed(1);
+  $("mm").textContent=f2(target);
+  $("cap").textContent=`${cur?cur.n:"Custom"} · ${ftin(h)} listed · ${(target/MMIN).toFixed(3)} in · head unit ${f2(target/heads)} mm`;
+  $("math").innerHTML=`${h} in &times; <span>${K}</span> = ${f2(raw)} mm`+
+    (hair?`<br>&minus; <span class="neg">${hair.toFixed(1)} mm</span> hair above skull = <span>${f2(target)} mm</span>`:"");
+  $("conf").innerHTML=cur?`<span class="chip ${cur.c}">${cur.c==="check"?"verify vs page":cur.c}</span>`:"";
+  const grp=cur?GROUPS[cur.k]:[];
+  $("vers").innerHTML = grp.length>1
+    ? `<span class="lbl" style="margin-right:8px">Printing</span>`+grp.map(v=>{
+        const t=f2(v.h*K-v.o), d=v.h-cur.h;
+        return `<button class="catbtn" data-v="${v.sv}" aria-pressed="${v===cur}"
+          title="${DATA.ser[v.sv]||v.sv} · ${t} mm">${v.sv}${v.is?" "+v.is:""}${
+          d&&v!==cur?` <span style="opacity:.75">${d>0?"+":""}${d}in</span>`:""}</button>`}).join("")
+    : (cur?`<span class="lbl">${cur.sv}${cur.is?" "+cur.is:""} · ${DATA.ser[cur.sv]||""}</span>`:"");
+  $("vers").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+    cur=GROUPS[cur.k].find(v=>v.sv===b.dataset.v);
+    $("hin").value=cur.h;$("hair").value=cur.o;render();}));
+  $("excl").innerHTML=(cur&&cur.x&&cur.x!=="none")
+    ? `<div class="excl"><b>Above the line:</b><span>${cur.x} &mdash; model it proud of ${f2(target)} mm, never tucked under.${cur.t?" "+cur.t+".":""}</span></div>`
+    : (cur&&cur.t?`<div class="excl" style="background:transparent;border-left-color:var(--line)"><span>${cur.t}.</span></div>`:"");
+  $("lm").innerHTML=LM.map(([l,f,k])=>
+    `<tr class="${k}"><td>${l}</td><td class="r">${f2(target*f)} mm</td><td class="r">${(f*100).toFixed(1)}</td></tr>`).join("");
+  draw(target,heads);
+}
+
+function select(key){
+  const g=GROUPS[key]; if(!g)return;
+  curKey=key; cur=g[0];
+  $("hin").value=cur.h;$("hair").value=cur.o;pick.value=key;store("sp_char",key);
+  render();
+}
+pick.addEventListener("change",e=>select(e.target.value));
+["hin","hair","heads"].forEach(id=>$(id).addEventListener("input",()=>{
+  if(id!=="heads"&&cur){const c=cur;
+    if(parseFloat($("hin").value)!==c.h||parseFloat($("hair").value)!==c.o){/* keep name, values overridden */}}
+  render();}));
+
+/* converter */
+function conv(){
+  const v=parseFloat($("rin").value)||0,mm=v*K;
+  $("rmm").textContent=f2(mm);
+  $("rcap").textContent=`${v} in (${ftin(v)}) real · ${(mm/MMIN).toFixed(3)} in at scale · ${f2(mm/10)} cm`;
+}
+$("rin").addEventListener("input",conv);
+
+/* reference table */
+const cats=[...new Set(DATA.ref.map(r=>r.c))];
+let active=cats[0];
+function refs(){
+  $("cats").innerHTML=cats.map(c=>
+    `<button class="catbtn" data-c="${c}" aria-pressed="${c===active}">${c}</button>`).join("");
+  $("refs").innerHTML=DATA.ref.filter(r=>r.c===active).map(r=>
+    `<div class="refrow"><span>${r.i}</span><b>${f2(r.v*K)} mm</b></div>`).join("");
+  $("cats").querySelectorAll(".catbtn").forEach(b=>
+    b.addEventListener("click",()=>{active=b.dataset.c;refs();}));
+}
+
+const saved=load("sp_char");
+select(GROUPS[saved]?saved:"batman");
+conv();refs();
+matchMedia("(prefers-color-scheme:dark)").addEventListener("change",render);
+
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+category,item,real_in,dimension,notes
+architecture,Interior door height,80,height,Standard 6'8 door - the single most important playset dimension
+architecture,Interior door width,32,width,
+architecture,Ceiling height (residential),96,height,
+architecture,Ceiling height (lobby/hall),144,height,Use for Hall of Justice style interiors
+architecture,Stair riser,7,height,
+architecture,Stair tread depth,11,depth,
+architecture,Handrail height,36,height,
+architecture,Countertop height,36,height,
+architecture,Table height,30,height,
+architecture,Chair seat height,18,height,
+architecture,Desk height,29,height,
+architecture,Standard step-through hatch,72,height,
+furniture,Throne (Darkseid scale),120,height,Scaled for a 105in figure
+furniture,Computer console,60,height,
+furniture,Cell door,84,height,
+vehicle,Full-size sedan length,195,length,
+vehicle,Full-size sedan width,73,width,
+vehicle,Full-size sedan height,57,height,
+vehicle,1966 Lincoln Futura (Batmobile),225,length,The classic TV Batmobile donor car
+vehicle,Sports car length,175,length,
+vehicle,Pickup truck length,230,length,
+vehicle,Van length,224,length,
+vehicle,Bell 206 helicopter length,383,length,Good Batcopter reference
+vehicle,Bell 206 rotor diameter,402,diameter,
+vehicle,Motorcycle length,86,length,
+vehicle,Motorcycle wheelbase,58,wheelbase,
+vehicle,Jet fighter length (F-16),595,length,
+vehicle,Car wheel diameter,27,diameter,
+accessory,Rifle length,40,length,
+accessory,Pistol length,8,length,
+accessory,Sword (longsword),44,length,
+accessory,Staff / quarterstaff,72,length,
+accessory,Shield diameter,24,diameter,
+accessory,Briefcase width,18,width,
+accessory,Coffee mug height,4,height,
+accessory,Grappling hook,10,length,

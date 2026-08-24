@@ -1,0 +1,52 @@
+key,name,alias,series,issue,height_in,primary,confidence,above_crown,hair_offset_mm,notes
+aquaman,Aquaman,Arthur Curry,WW85,#1,73,1,canon,none,0.5,Swept-back blond hair
+batgirl,Batgirl,Barbara Gordon,WW85,#2,69,1,check,cowl,1.0,Hair flows from cowl back
+batman,Batman,Bruce Wayne,WW85,#2,74,1,canon,cowl ears,0.0,Cowl is skin-tight; measure to crown of cowl NOT ear tips
+big-barda,Big Barda,Barda Free,WW85,#2,74,1,check,helmet,1.0,Helmet excluded; long hair -1mm
+bizarro,Bizarro,Bizarro No. 1,WW85,#3,75,1,check,none,0.5,Mirrors Superman height
+black-manta,Black Manta,Unknown,WW85,#2,74,1,check,helmet dome,0.0,Large helmet - measure skull not dome
+brainiac,Brainiac,Vril Dox,WW85,#3,78,1,disputed,none,0.0,"DISPUTED. Three searches gave 6ft0, 6ft4 and 7ft4 (Pre-Crisis, 479lbs). My 6ft6 unconfirmed. Many bodies across continuity - needs the page"
+catwoman,Catwoman,Selina Kyle,WW85,,67,1,web,cowl cat ears,0.0,"5ft7 holds across Golden Age Silver Age and post-Crisis; only weight shifts. Cowl is skin-tight like Batman's - measure to crown, ears sit proud. Issue number not recorded rather than guessed"
+cheetah,Cheetah,Barbara Minerva,WWU87,,68,1,check,ears,1.0,Cat ears excluded
+clark-kent,Clark Kent,Superman,WW85,#22,75,1,canon,none,0.5,Same body as Superman; suit sculpt only
+cyborg,Cyborg,Victor Stone,WW85,#5,78,1,canon,none,0.0,Half-metal skull; flat crown
+cyclotron,Cyclotron,Cyclotron,SPC,,74,1,estimate,none,0.0,No Who's Who entry - scaled to match line
+darkseid,Darkseid,Uxas,WW85,#6,105,1,canon,none,0.0,8'9 - dwarfs the standard figure by design
+desaad,DeSaad,DeSaad,WW85,#6,69,1,check,hood,0.5,Hood excluded
+deathstroke,Deathstroke,Slade Wilson,WW85,#6,76,1,check,none,0.0,Full mask
+doctor-fate,Doctor Fate,Kent Nelson,WW85,#7,74,1,web,full helm,0.0,6ft2 corroborated (197 lbs)
+firestorm,Firestorm,Ronnie Raymond,WW85,#8,74,1,check,flame head,0.0,Flame hair is an effect NOT height - exclude entirely
+golden-pharaoh,Golden Pharaoh,Golden Pharaoh,SPC,,74,1,estimate,nemes headdress,0.0,No Who's Who entry - headdress excluded
+green-arrow,Green Arrow,Oliver Queen,WW85,#9,71,1,web,none,0.5,5ft11 across sources; my 6ft1 was wrong
+green-lantern,Green Lantern,Hal Jordan,WW85,#9,74,1,canon,none,0.5,
+hawkman,Hawkman,Katar Hol,WW85,#10,78,1,web,hawk helmet beak,0.0,Original WW #10 entry lists 6ft6. Rob's pick - first SP Hawkman scales to this even excluding mask wings
+hawkman,Hawkman,Katar Hol,WWU87,#5,71,0,web,hawk helmet beak,0.0,Errata in Update '87 #5 reportedly corrected the height to 5ft11 - verify against the page
+joker,Joker,Unknown,WW85,#12,77,1,canon,none,1.5,Tall and lanky; large green pompadour sits well above skull
+kalibak,Kalibak,Kalibak,WW85,#12,80,1,check,none,1.5,Heavy mane -1.5mm
+lex-luthor,Lex Luthor,Alexander Luthor,WW85,#13,74,1,canon,none,0.0,Bald - no hair offset
+mantis,Mantis,Mantis,WW85,#14,78,1,check,helmet horns,0.0,Horns excluded
+martian-manhunter,Martian Manhunter,J'onn J'onzz,WW85,#14,79,1,canon,head crest,0.0,Brow crest sits above crown; exclude it
+mister-miracle,Mister Miracle,Scott Free,WW85,#15,72,1,canon,none,0.0,Measure to crown of mask
+mr-freeze,Mr. Freeze,Victor Fries,WW85,#15,72,1,check,dome helmet,0.0,Glass dome excluded; measure skull crown
+nightwing,Nightwing,Dick Grayson,WW85,#16,70,1,web,none,1.0,5ft10 - confirmed by Rob
+orion,Orion,Orion of New Genesis,WW85,#17,74,1,check,astro-harness,0.0,Harness rig excluded
+parademon,Parademon,Parademon,WW85,#17,72,1,check,none,0.0,Generic trooper; helmet flush
+penguin,Penguin,Oswald Cobblepot,WW85,#18,62,1,canon,top hat,0.0,Top hat strictly excluded; measure bald crown
+plastic-man,Plastic Man,Patrick O'Brian,WW85,#18,74,1,check,goggles,0.5,Malleable - use baseline human height
+red-tornado,Red Tornado,John Smith,WW85,#19,73,1,web,none,0.0,6ft1 325 lbs per DCU Guide; my 6ft0 was wrong
+robin,Robin,Dick Grayson,WW85,#20,68,1,check,none,0.5,Teen build; verify against your Robin entry
+samurai,Samurai,Toshio Eto,SPC,,74,1,estimate,helmet crest,0.0,No Who's Who entry - crest excluded
+shazam,Shazam,Billy Batson,WW85,#4,74,1,check,none,0.5,Listed as Captain Marvel in original printing
+sinestro,Sinestro,Thaal Sinestro,WW85,#22,73,1,check,none,0.5,
+solomon-grundy,Solomon Grundy,Cyrus Gold,WW85,#22,105,1,disputed,none,1.0,DISPUTED. DCU Guide 7ft5/517lbs; other sources 6ft7. My 8ft9 appears in no source. Grundy resurrects in new bodies so versions genuinely differ - needs the page
+steel,Steel,John Henry Irons,WWU87,,78,1,check,none,0.0,
+steppenwolf,Steppenwolf,Steppenwolf,WW85,#22,84,1,disputed,none,0.5,"DISPUTED. Search returned 6ft0/250lbs but that looks like the film or Earth-2 version, not the New Gods one. My 7ft0 unconfirmed - needs the page"
+supergirl,Supergirl,Kara Zor-El,WW85,#22,66,1,disputed,none,1.0,"DISPUTED. Post-Crisis 5ft5, Pre-Crisis 5ft7. My 5ft6 matches neither - needs the page"
+superman,Superman,Clark Kent,WW85,#22,75,1,canon,none,0.5,Short hair with spit curl; curl may sit ~0.5mm proud
+atom,The Atom,Ray Palmer,WW85,#1,72,1,web,none,0.0,6ft0 180lbs at normal size. Full cowl - no hair above crown. Shrunken Atom is a separate build: 6in tall = 9.53mm at 1:16
+the-flash,The Flash,Barry Allen,WW85,#8,72,1,canon,ear fins,0.0,Cowl fins do not count toward height
+the-riddler,The Riddler,Edward Nigma,WW85,#20,73,1,check,bowler hat,0.5,
+two-face,Two-Face,Harvey Dent,WW85,#24,72,1,web,none,0.5,6ft0 corroborated (182 lbs)
+tyr,Tyr,Tyr,SPC,,76,1,estimate,none,0.0,No Who's Who entry
+wonder-woman,Wonder Woman,Diana Prince,WW85,#26,71,1,check,tiara,1.0,Tiara is flush; full mane -1mm. Verify 5'11 vs 6'0 in your printing
+zatanna,Zatanna,Zatanna Zatara,WW85,#26,67,1,web,top hat,1.0,5ft7 corroborated across sources. Top hat is a prop - exclude from height
