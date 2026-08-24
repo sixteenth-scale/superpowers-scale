@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Convert a DC Who's Who listed height into the millimetres needed to model a custom action figure at Kenner Super Powers scale. Super Powers is exactly 1:16, so every real-world inch is 1.5875 mm.">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23131720'/%3E%3Cg stroke='%23D9752B' stroke-width='4' stroke-linecap='round'%3E%3Cline x1='16' y1='12' x2='16' y2='52'/%3E%3Cline x1='16' y1='18' x2='40' y2='18'/%3E%3Cline x1='16' y1='32' x2='48' y2='32'/%3E%3Cline x1='16' y1='46' x2='40' y2='46'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230B3E86'/%3E%3Cg stroke='%23F5B914' stroke-width='4' stroke-linecap='round'%3E%3Cline x1='16' y1='12' x2='16' y2='52'/%3E%3Cline x1='16' y1='18' x2='40' y2='18'/%3E%3Cline x1='16' y1='46' x2='40' y2='46'/%3E%3C/g%3E%3Cline x1='16' y1='32' x2='48' y2='32' stroke='%23E22B31' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Super Powers Scale Bench">
 <meta property="og:description" content="Convert a DC Who's Who listed height into the millimetres needed to model a custom action figure at Kenner Super Powers scale. Super Powers is exactly 1:16, so every real-world inch is 1.5875 mm.">
@@ -16,34 +16,46 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
+/* Palette follows the Kenner Super Powers Collection cardback: deep blue
+   starfield, red logo block, gold starburst. Red carries the figure numbers,
+   blue carries the measuring rule, gold flags what to leave out. */
 :root{
-  --ink:#131720; --paper:#F1F3F6; --surface:#FFFFFF; --sunken:#E7EAF0;
-  --line:#CBD2DE; --line-soft:#DFE4EC;
-  --text:#131720; --text-2:#4A5468; --text-3:#78839A;
-  --accent:#B85F1B; --accent-bright:#D9752B; --accent-wash:#FBEEE2;
-  --rule:#2E7E92; --rule-wash:#E2F0F4;
-  --good:#2F6B4F; --warn:#8A6212; --est:#6A5A87;
-  --shadow:0 1px 2px rgba(19,23,32,.06),0 8px 24px -12px rgba(19,23,32,.18);
+  --sp-red:#C8161D; --sp-gold:#F5B914; --sp-blue:#0A4E9B; --stripe-blue:#1E7BD6;
+  --ink:#101A2B; --paper:#EDF1F8; --surface:#FFFFFF; --sunken:#E3E9F4;
+  --line:#C2CCDF; --line-soft:#DCE3EF;
+  --text:#101A2B; --text-2:#455575; --text-3:#73819F;
+  --accent:#C8161D; --accent-bright:#E22B31; --accent-wash:#FCEAEA;
+  --rule:#0A4E9B; --rule-wash:#E2ECFA;
+  --gold:#8A6512; --gold-wash:#FDF3D6; --gold-line:#E8B92E;
+  --good:#0A4E9B; --warn:#8A6512; --est:#5F6D8C; --neutral:#5F6D8C;
+  --mast:#0B3E86; --mast-2:#0A356F; --mast-text:#FFFFFF; --mast-text-2:#B9CDEC;
+  --shadow:0 1px 2px rgba(16,26,43,.07),0 8px 24px -12px rgba(16,26,43,.22);
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --ink:#F1F3F6; --paper:#0E1218; --surface:#161C25; --sunken:#0A0E13;
-    --line:#2C3543; --line-soft:#222A36;
-    --text:#E9EDF4; --text-2:#A3AEC1; --text-3:#7A8598;
-    --accent:#E8913F; --accent-bright:#F0A155; --accent-wash:#2A1E12;
-    --rule:#5FBBD1; --rule-wash:#11262D;
-    --good:#6FC495; --warn:#D9AE4E; --est:#AE9BD4;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --sp-red:#FF6B63; --sp-gold:#F7C948; --sp-blue:#5AA6F0; --stripe-blue:#5AA6F0;
+    --ink:#EDF1F8; --paper:#080D18; --surface:#131B2B; --sunken:#0A1220;
+    --line:#2B3648; --line-soft:#1F2938;
+    --text:#E8EDF6; --text-2:#A2AFC8; --text-3:#7A879F;
+    --accent:#FF6B63; --accent-bright:#FF867E; --accent-wash:#2C1417;
+    --rule:#5AA6F0; --rule-wash:#0E1F35;
+    --gold:#F7C948; --gold-wash:#2A2211; --gold-line:#D2A438;
+    --good:#5AA6F0; --warn:#F7C948; --est:#93A2BE; --neutral:#93A2BE;
+    --mast:#0A2C5E; --mast-2:#08244D; --mast-text:#FFFFFF; --mast-text-2:#A9C2E6;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 24px -12px rgba(0,0,0,.75);
   }
 }
 :root[data-theme="dark"]{
-  --ink:#F1F3F6; --paper:#0E1218; --surface:#161C25; --sunken:#0A0E13;
-  --line:#2C3543; --line-soft:#222A36;
-  --text:#E9EDF4; --text-2:#A3AEC1; --text-3:#7A8598;
-  --accent:#E8913F; --accent-bright:#F0A155; --accent-wash:#2A1E12;
-  --rule:#5FBBD1; --rule-wash:#11262D;
-  --good:#6FC495; --warn:#D9AE4E; --est:#AE9BD4;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  --sp-red:#FF6B63; --sp-gold:#F7C948; --sp-blue:#5AA6F0; --stripe-blue:#5AA6F0;
+  --ink:#EDF1F8; --paper:#080D18; --surface:#131B2B; --sunken:#0A1220;
+  --line:#2B3648; --line-soft:#1F2938;
+  --text:#E8EDF6; --text-2:#A2AFC8; --text-3:#7A879F;
+  --accent:#FF6B63; --accent-bright:#FF867E; --accent-wash:#2C1417;
+  --rule:#5AA6F0; --rule-wash:#0E1F35;
+  --gold:#F7C948; --gold-wash:#2A2211; --gold-line:#D2A438;
+  --good:#5AA6F0; --warn:#F7C948; --est:#93A2BE; --neutral:#93A2BE;
+  --mast:#0A2C5E; --mast-2:#08244D; --mast-text:#FFFFFF; --mast-text-2:#A9C2E6;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 24px -12px rgba(0,0,0,.75);
 }
 *{box-sizing:border-box}
 body{
@@ -61,24 +73,31 @@ h1,h2,h3,.cond{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif}
 </style>
 
 <style>
-/* ---- masthead ---- */
-.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+/* ---- masthead: the cardback band ---- */
+.mast{background:linear-gradient(180deg,var(--mast) 0%,var(--mast-2) 100%);
+  border-bottom:4px solid transparent;
+  border-image:linear-gradient(90deg,var(--sp-red) 0 33.34%,var(--sp-gold) 33.34% 66.67%,var(--stripe-blue) 66.67% 100%) 1}
 .mast-in{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;padding:26px 0 22px}
-h1{margin:0;font-size:clamp(26px,3.4vw,38px);font-weight:700;letter-spacing:-.015em;line-height:1.05;text-wrap:balance}
-h1 em{font-style:normal;color:var(--accent)}
-.sub{margin:6px 0 0;color:var(--text-2);font-size:14px;max-width:62ch}
-.anchor{display:flex;gap:0;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--sunken)}
-.anchor div{padding:8px 14px;border-right:1px solid var(--line)}
-.anchor div:last-child{border-right:0;background:var(--accent-wash)}
-.anchor b{display:block;font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
-.anchor div:last-child b{color:var(--accent)}
-.anchor span{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+h1{margin:0;font-size:clamp(26px,3.4vw,38px);font-weight:700;letter-spacing:-.015em;line-height:1.05;
+  text-wrap:balance;color:var(--mast-text);text-transform:uppercase}
+h1 em{font-style:normal;color:var(--sp-gold)}
+.sub{margin:8px 0 0;color:var(--mast-text-2);font-size:14px;max-width:62ch}
+.anchor{display:flex;gap:0;border:1px solid rgba(255,255,255,.22);border-radius:3px;overflow:hidden;
+  background:rgba(255,255,255,.07)}
+.anchor div{padding:8px 14px;border-right:1px solid rgba(255,255,255,.18)}
+.anchor div:last-child{border-right:0;background:var(--sp-gold)}
+.anchor b{display:block;font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;
+  font-variant-numeric:tabular-nums;color:var(--mast-text)}
+.anchor div:last-child b{color:#1A1204}
+.anchor span{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--mast-text-2);font-weight:600}
+.anchor div:last-child span{color:#5A4409}
 
 /* ---- layout ---- */
 .bench{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;padding:28px 0 40px;align-items:start}
 @media(max-width:900px){.bench{grid-template-columns:minmax(0,1fr)}}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow)}
-.card-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft)}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;
+  border-bottom:1px solid var(--line-soft)}
 .card-b{padding:16px}
 
 /* ---- controls ---- */
@@ -90,7 +109,7 @@ select,input[type=text],input[type=number]{
   font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
 }
 select{font-family:"IBM Plex Sans",sans-serif}
-select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--rule);outline-offset:1px}
 input[type=range]{width:100%;accent-color:var(--accent-bright)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
@@ -105,14 +124,20 @@ input[type=range]{width:100%;accent-color:var(--accent-bright)}
   font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--text-2);line-height:1.9}
 .math span{color:var(--text)} .math .neg{color:var(--accent)}
 
-/* ---- chips ---- */
+/* ---- chips: blue verified, red asserted, gold caution, slate aggregated ---- */
 .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:2px;
   font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10.5px;font-weight:600;
   letter-spacing:.1em;text-transform:uppercase;border:1px solid currentColor}
-.chip.canon{color:var(--good)} .chip.check{color:var(--warn)} .chip.estimate{color:var(--est)}
+.chip.canon{color:var(--rule);background:var(--rule-wash)}
+.chip.builder{color:var(--accent);background:var(--accent-wash)}
+.chip.check{color:var(--gold);background:var(--gold-wash)}
+.chip.web,.chip.estimate{color:var(--neutral)}
+.chip.disputed{color:#FFFFFF;background:var(--accent-bright);border-color:var(--accent-bright)}
+
+/* gold caution stripe -- what to leave out of the measurement */
 .excl{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:10px 12px;
-  background:var(--accent-wash);border-left:2px solid var(--accent-bright);border-radius:2px;font-size:13px}
-.excl b{font-family:"IBM Plex Sans Condensed",sans-serif;letter-spacing:.02em}
+  background:var(--gold-wash);border-left:3px solid var(--gold-line);border-radius:2px;font-size:13px}
+.excl b{font-family:"IBM Plex Sans Condensed",sans-serif;letter-spacing:.02em;color:var(--gold)}
 
 /* ---- landmark table ---- */
 table{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -133,7 +158,8 @@ tr.crown td{color:var(--accent);font-weight:600}
 /* ---- converter ---- */
 .conv{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 0 48px}
 @media(max-width:760px){.conv{grid-template-columns:1fr}}
-.refrow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+.refrow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;
+  border-bottom:1px solid var(--line-soft);font-size:13.5px}
 .refrow:last-child{border-bottom:0}
 .refrow b{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--rule);font-variant-numeric:tabular-nums}
 .refrow span{color:var(--text-2)}
@@ -141,15 +167,19 @@ tr.crown td{color:var(--accent);font-weight:600}
 .catbtn{padding:4px 10px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);
   border-radius:2px;cursor:pointer;font-family:"IBM Plex Sans Condensed",sans-serif;font-size:11px;
   font-weight:600;letter-spacing:.1em;text-transform:uppercase}
-.catbtn[aria-pressed=true]{background:var(--rule);border-color:var(--rule);color:var(--surface)}
+.catbtn[aria-pressed=true]{background:var(--rule);border-color:var(--rule);color:#FFFFFF}
+
 .reflist{max-height:270px;overflow-y:auto}
 
 /* ---- rules footer ---- */
-.rules{border-top:1px solid var(--line);background:var(--surface);padding:30px 0 44px}
+.rules{border-top:4px solid transparent;
+  border-image:linear-gradient(90deg,var(--stripe-blue) 0 33.34%,var(--sp-gold) 33.34% 66.67%,var(--sp-red) 66.67% 100%) 1;
+  background:var(--surface);padding:30px 0 44px}
+.rule-n{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+  letter-spacing:.12em;color:#FFFFFF;background:var(--accent);padding:2px 8px;border-radius:2px}
 .rules-g{display:grid;grid-template-columns:1fr 1fr;gap:28px}
 @media(max-width:760px){.rules-g{grid-template-columns:1fr}}
-.rule-n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:600}
-.rules h3{margin:4px 0 6px;font-size:17px;font-weight:600}
+.rules h3{margin:8px 0 6px;font-size:17px;font-weight:600}
 .rules p{margin:0;color:var(--text-2);font-size:14px;max-width:60ch}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -1638,14 +1668,15 @@ function draw(target,heads){
   const svg=$("ruler"),W=272,H=620,pad=26;
   const top=target*1.16, px=(H-pad*2)/top, y=mm=>H-pad-mm*px;
   const c=s=>getComputedStyle(document.documentElement).getPropertyValue(s).trim();
-  const line=c("--line"),tx3=c("--text-3"),acc=c("--accent-bright"),rl=c("--rule"),tx=c("--text");
+  const line=c("--line"),tx3=c("--text-3"),acc=c("--accent-bright"),rl=c("--rule"),tx=c("--text"),
+        gld=c("--gold-line");
   let s=`<defs><pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-  <line x1="0" y1="0" x2="0" y2="6" stroke="${acc}" stroke-width="1.1" opacity=".35"/></pattern></defs>`;
+  <line x1="0" y1="0" x2="0" y2="6" stroke="${gld}" stroke-width="1.1" opacity=".55"/></pattern></defs>`;
   const X=64;
-  /* excluded zone above crown */
+  /* excluded zone above crown -- gold, matching the caution stripe */
   s+=`<rect x="${X}" y="${pad-4}" width="150" height="${y(target)-pad+4}" fill="url(#hatch)"/>`;
   s+=`<text x="${X+8}" y="${pad+12}" font-size="9.5" font-family="IBM Plex Sans Condensed,sans-serif"
-      letter-spacing="1.3" fill="${acc}" font-weight="600">EXCLUDED</text>`;
+      letter-spacing="1.3" fill="${gld}" font-weight="600">EXCLUDED</text>`;
   /* spine */
   s+=`<line x1="${X}" y1="${pad-4}" x2="${X}" y2="${H-pad}" stroke="${line}" stroke-width="1"/>`;
   /* ticks */
