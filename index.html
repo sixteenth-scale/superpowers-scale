@@ -116,15 +116,26 @@ input[type=range]{width:100%;accent-color:var(--accent-bright)}
 /* ---- readout ---- */
 .readout{padding:18px 16px;background:var(--sunken);border-bottom:1px solid var(--line-soft)}
 .big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.big b{font-family:"IBM Plex Mono",monospace;font-size:clamp(38px,6vw,56px);font-weight:600;
+.big b{font-family:"IBM Plex Mono",monospace;font-size:clamp(34px,5vw,50px);font-weight:600;
   letter-spacing:-.03em;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
-.big i{font-style:normal;font-size:19px;color:var(--text-3);font-weight:500}
+.big i{font-style:normal;font-size:17px;color:var(--text-3);font-weight:500}
 .big-cap{margin-top:6px;color:var(--text-2);font-size:13px}
 .math{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
   font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--text-2);line-height:1.9}
 .math span{color:var(--text)} .math .neg{color:var(--accent)} .math .pos{color:var(--rule)}
 
-/* the height stack -- body, heel, topper, overall */
+/* two large figures: what you build to, and what it measures overall */
+.heroes{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-start}
+.hero{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hero.total{padding-left:18px;border-left:3px solid var(--gold-line)}
+@media(max-width:560px){.hero.total{padding-left:0;padding-top:12px;
+  border-left:0;border-top:3px solid var(--gold-line);width:100%}}
+.hero.total .big b{color:var(--gold)}
+.herolbl{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:11px;font-weight:600;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
+.hero.total .herolbl{color:var(--gold)}
+
+/* the height stack -- body, heel, topper */
 .stack{margin-top:12px;display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
 .srow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
   padding:7px 11px;background:var(--surface);font-size:13px}
@@ -254,7 +265,16 @@ tr.crown td{color:var(--accent);font-weight:600}
       <div class="card-h"><span class="lbl">Build sheet</span><span id="conf"></span></div>
       <div id="vers" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line-soft)"></div>
       <div class="readout">
-        <div class="big"><b id="mm">117.48</b><i>mm floor to crown</i></div>
+        <div class="heroes">
+          <div class="hero">
+            <div class="big"><b id="mm">117.48</b><i>mm</i></div>
+            <span class="herolbl">Floor to crown &mdash; build the body to this</span>
+          </div>
+          <div class="hero total" id="totalbox" hidden>
+            <div class="big"><b id="mmtotal">117.48</b><i>mm</i></div>
+            <span class="herolbl" id="totallbl">Total height &mdash; floor to tip</span>
+          </div>
+        </div>
         <div class="big-cap" id="cap"></div>
         <div class="stack" id="stack"></div>
         <div class="math" id="math"></div>
@@ -7913,14 +7933,24 @@ function render(){
   $("topperv").textContent=topper.toFixed(1);
   $("heelv").textContent=heel.toFixed(1);
   $("mm").textContent=f2(stand);
+  /* The total is the number you check on a shelf, so it gets its own large
+     figure whenever something rises above the crown -- not a small row. With
+     a bare head the two are identical and one number is less confusing. */
+  $("totalbox").hidden=!topper;
+  if(topper){
+    $("mmtotal").textContent=f2(silo);
+    const what=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"topper";
+    $("totallbl").innerHTML=`Total height &mdash; floor to tip of ${what}`;
+  }
   $("cap").textContent=`${cur?cur.n:"Custom"} · ${ftin(h)} listed · ${(stand/MMIN).toFixed(3)} in · head unit ${f2(body/heads)} mm`;
-  $("stack").innerHTML=[
+  /* breakdown only -- the totals are the two large figures above. With a bare
+     head and flat feet there is nothing to break down, so show nothing. */
+  $("stack").innerHTML=(heel||topper)?[
     ["Sculpt body","heel to crown",body,"body"],
     heel?["Heel / sole","lifts the figure",heel,"heel"]:null,
-    topper?["Above the crown",(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"helmet / ears",topper,"top"]:null,
-    topper?["Overall silhouette","floor to tip — build volume",silo,"silo"]:null,
+    topper?["Above the crown",(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"helmet / hat / ears",topper,"top"]:null,
   ].filter(Boolean).map(([l,s,v,k])=>
-    `<div class="srow ${k}"><span>${l}<i>${s}</i></span><b>${f2(v)} mm</b></div>`).join("");
+    `<div class="srow ${k}"><span>${l}<i>${s}</i></span><b>${f2(v)} mm</b></div>`).join(""):"";
   /* Each line is a complete equation with both operands. A leading operator and
      no left-hand number reads as a negative quantity -- "- 0.5 mm hair above
      skull" looks like the character has minus half a millimetre of hair. */
