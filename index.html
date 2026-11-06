@@ -7921,10 +7921,13 @@ function render(){
     topper?["Overall silhouette","floor to tip — build volume",silo,"silo"]:null,
   ].filter(Boolean).map(([l,s,v,k])=>
     `<div class="srow ${k}"><span>${l}<i>${s}</i></span><b>${f2(v)} mm</b></div>`).join("");
-  $("math").innerHTML=`${h} in &times; <span>${K}</span> = ${f2(raw)} mm`+
-    (hair?`<br>&minus; <span class="neg">${hair.toFixed(1)} mm</span> hair above skull = <span>${f2(body)} mm</span> body`:"")+
-    (heel?`<br>+ <span class="pos">${heel.toFixed(1)} mm</span> heel = <span>${f2(stand)} mm</span> floor to crown`:"")+
-    (topper?`<br>+ <span class="pos">${topper.toFixed(1)} mm</span> above crown = <span>${f2(silo)} mm</span> overall`:"");
+  /* Each line is a complete equation with both operands. A leading operator and
+     no left-hand number reads as a negative quantity -- "- 0.5 mm hair above
+     skull" looks like the character has minus half a millimetre of hair. */
+  $("math").innerHTML=`${h} in &times; <span>${K}</span> = ${f2(raw)} mm raw`+
+    (hair?`<br>${f2(raw)} &minus; <span class="neg">${hair.toFixed(1)}</span> hair above skull = <span>${f2(body)} mm</span> body`:"")+
+    (heel?`<br>${f2(body)} + <span class="pos">${heel.toFixed(1)}</span> heel = <span>${f2(stand)} mm</span> floor to crown`:"")+
+    (topper?`<br>${f2(stand)} + <span class="pos">${topper.toFixed(1)}</span> above crown = <span>${f2(silo)} mm</span> overall`:"");
   $("conf").innerHTML=cur?`<span class="chip ${cur.c}">${cur.c==="check"?"verify vs page":cur.c}</span>`:"";
   const grp=cur?GROUPS[cur.k]:[];
   $("vers").innerHTML = grp.length>1
@@ -7938,7 +7941,10 @@ function render(){
     cur=GROUPS[cur.k].find(v=>v.sv===b.dataset.v);
     $("hin").value=cur.h;$("hair").value=cur.o;
     $("topper").value=cur.tp||0;$("heel").value=cur.hl||0;render();}));
-  $("excl").innerHTML=(cur&&cur.x&&cur.x!=="none")
+  /* "unassessed" is the bulk-harvest placeholder, not a thing on the head --
+     it must not render as "unassessed - model it proud of 109.04 mm". Those
+     rows fall through to the neutral note, which already explains itself. */
+  $("excl").innerHTML=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")
     ? `<div class="excl"><b>Above the line:</b><span>${cur.x} &mdash; model it proud of ${f2(stand)} mm, never tucked under.${cur.t?" "+cur.t+".":""}</span></div>`
     : (cur&&cur.t?`<div class="excl" style="background:transparent;border-left-color:var(--line)"><span>${cur.t}.</span></div>`:"");
   /* landmarks are fractions of the BODY, then lifted by the heel: a heel raises
