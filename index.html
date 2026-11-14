@@ -297,11 +297,11 @@ tr.crown td{color:var(--accent);font-weight:600}
             </div>
           </div>
           <div class="field">
-            <label class="lbl" for="hair">Hair above skull &mdash; <span class="mono" id="hairv">0.0</span> mm <span class="hint">subtracts</span></label>
+            <label class="lbl" for="hair">Hair above skull &mdash; <span class="mono" id="hairv">0.0</span> mm <span class="hint">adds above the crown</span></label>
             <input id="hair" type="range" min="0" max="3" step="0.1" value="0">
           </div>
           <div class="field">
-            <label class="lbl" for="topper">Helmet / cowl ears above crown &mdash; <span class="mono" id="topperv">0.0</span> mm <span class="hint">sits on top</span></label>
+            <label class="lbl" for="topper">Helmet / hat / cowl ears &mdash; <span class="mono" id="topperv">0.0</span> mm <span class="hint">adds, and covers the hair</span></label>
             <input id="topper" type="range" min="0" max="25" step="0.1" value="0">
           </div>
           <div class="field">
@@ -7852,37 +7852,40 @@ function render(){
   const h=parseFloat($("hin").value)||0, hair=parseFloat($("hair").value)||0,
         topper=parseFloat($("topper").value)||0, heel=parseFloat($("heel").value)||0,
         heads=parseFloat($("heads").value)||7;
-  const raw=h*K, body=Math.max(raw-hair,1), stand=body+heel, silo=stand+topper;
+  const raw=h*K, body=raw, stand=body+heel;
+  /* Hair and a hat are both things ABOVE the skull, so both add -- a listed
+     height is measured to the crown, and anything on top makes the figure
+     taller, exactly as it does on a person. They do not stack: a hat sits over
+     the hair, and topper_mm is measured crown-to-tip, so it already contains
+     whatever hair is underneath. The taller of the two wins. */
+  const above=Math.max(hair,topper), silo=stand+above;
   const target=stand;
   $("hairv").textContent=hair.toFixed(1);
   $("topperv").textContent=topper.toFixed(1);
   $("heelv").textContent=heel.toFixed(1);
   $("mm").textContent=f2(stand);
-  /* The total is the number you check on a shelf, so it gets its own large
-     figure whenever something rises above the crown -- not a small row. With
-     a bare head the two are identical and one number is less confusing. */
-  $("totalbox").hidden=!topper;
-  if(topper){
+  const gear=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"helmet / hat / ears";
+  const tallest=topper>=hair?(topper?gear:"hair"):"hair";
+  $("totalbox").hidden=!above;
+  if(above){
     $("mmtotal").textContent=f2(silo);
-    const what=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"topper";
-    $("totallbl").innerHTML=`Total height &mdash; floor to tip of ${what}`;
+    $("totallbl").innerHTML=`Total height &mdash; floor to tip of ${tallest}`;
   }
   $("cap").textContent=`${cur?cur.n:"Custom"} · ${ftin(h)} listed · ${(stand/MMIN).toFixed(3)} in · head unit ${f2(body/heads)} mm`;
   /* breakdown only -- the totals are the two large figures above. With a bare
      head and flat feet there is nothing to break down, so show nothing. */
-  $("stack").innerHTML=(heel||topper)?[
-    ["Sculpt body","heel to crown",body,"body"],
+  $("stack").innerHTML=(heel||above)?[
+    ["Sculpt body","floor to crown of the skull",body,"body"],
     heel?["Heel / sole","lifts the figure",heel,"heel"]:null,
-    topper?["Above the crown",(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:"helmet / hat / ears",topper,"top"]:null,
+    above?["Above the crown",
+      (topper&&hair)?`${gear} — covers the ${hair.toFixed(1)} mm of hair`
+                    :(topper?gear:"hair"),above,"top"]:null,
   ].filter(Boolean).map(([l,s,v,k])=>
     `<div class="srow ${k}"><span>${l}<i>${s}</i></span><b>${f2(v)} mm</b></div>`).join(""):"";
-  /* Each line is a complete equation with both operands. A leading operator and
-     no left-hand number reads as a negative quantity -- "- 0.5 mm hair above
-     skull" looks like the character has minus half a millimetre of hair. */
-  $("math").innerHTML=`${h} in &times; <span>${K}</span> = ${f2(raw)} mm raw`+
-    (hair?`<br>${f2(raw)} &minus; <span class="neg">${hair.toFixed(1)}</span> hair above skull = <span>${f2(body)} mm</span> body`:"")+
+  /* Each line is a complete equation with both operands. */
+  $("math").innerHTML=`${h} in &times; <span>${K}</span> = <span>${f2(raw)} mm</span> crown`+
     (heel?`<br>${f2(body)} + <span class="pos">${heel.toFixed(1)}</span> heel = <span>${f2(stand)} mm</span> floor to crown`:"")+
-    (topper?`<br>${f2(stand)} + <span class="pos">${topper.toFixed(1)}</span> above crown = <span>${f2(silo)} mm</span> overall`:"");
+    (above?`<br>${f2(stand)} + <span class="pos">${above.toFixed(1)}</span> ${tallest} above the crown = <span>${f2(silo)} mm</span> total`:"");
   $("conf").innerHTML=cur?`<span class="chip ${cur.c}">${cur.c==="check"?"verify vs page":cur.c}</span>`:"";
   const grp=cur?GROUPS[cur.k]:[];
   $("vers").innerHTML = grp.length>1
@@ -7908,7 +7911,7 @@ function render(){
     const mm=heel+body*f;
     return `<tr class="${k}"><td>${l}</td><td class="r">${f2(mm)} mm</td><td class="r">${(mm/stand*100).toFixed(1)}</td></tr>`;
   }).join("")+(heel?`<tr class="heelrow"><td>Heel top &mdash; sole lift</td><td class="r">${f2(heel)} mm</td><td class="r">${(heel/stand*100).toFixed(1)}</td></tr>`:"");
-  draw(body,heel,topper,heads);
+  draw(body,heel,above,heads);
 }
 
 function select(key){
