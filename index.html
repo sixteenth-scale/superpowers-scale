@@ -2527,7 +2527,7 @@ tr.crown td{color:var(--accent);font-weight:600}
 "o": 0.0,
 "tp": 5.0,
 "hl": 0.0,
-"t": "5'9\" per dc.fandom.com infobox (New Earth). Helmet horns measured off Rob's sculpt: the central dome ends at 95.6% of the mesh and the horns run on above it, giving 5.0 mm above the crown at 1:16. Helmet covers the head, so hair offset is 0."
+"t": "5'9\" per dc.fandom.com infobox (New Earth). Helmet covers the head, so hair offset is 0. topper 5.0 is TYPICAL, not definitive: it was measured off one sculpt, where the central dome ends at 95.6% of the mesh and the horns run on above it. Another Blue Jay model will differ - measure yours."
 },
 {
 "k": "bolt",
@@ -7903,7 +7903,9 @@ function render(){
      it must not render as "unassessed - model it proud of 109.04 mm". Those
      rows fall through to the neutral note, which already explains itself. */
   $("excl").innerHTML=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")
-    ? `<div class="excl"><b>Above the line:</b><span>${cur.x} &mdash; model it proud of ${f2(stand)} mm, never tucked under.${cur.t?" "+cur.t+".":""}</span></div>`
+    ? `<div class="excl"><b>Above the line:</b><span>${cur.x} &mdash; model it proud of ${f2(stand)} mm, never tucked under.
+       <b style="display:block;margin-top:5px">How far it rises is a property of your sculpt, not of the character.</b>
+       The ${f2(above)} mm here is a typical figure; a different ${cur.x.replace(/s$/,"")} will differ. Measure your own below.${cur.t?" "+cur.t+".":""}</span></div>`
     : (cur&&cur.t?`<div class="excl" style="background:transparent;border-left-color:var(--line)"><span>${cur.t}.</span></div>`:"");
   /* landmarks are fractions of the BODY, then lifted by the heel: a heel raises
      the ankle pivot off the floor, it does not stretch the leg */
