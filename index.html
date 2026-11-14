@@ -216,6 +216,12 @@ tr.crown td{color:var(--accent);font-weight:600}
 .mbtns .catbtn:disabled{opacity:.45;cursor:not-allowed}
 #mapply:not(:disabled){background:var(--rule);border-color:var(--rule);color:#fff}
 
+
+.fout{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);
+  border-radius:3px;overflow:hidden;margin-top:14px}
+.fout:empty{display:none}
+#fdl:not(:disabled){background:var(--accent);border-color:var(--accent);color:#fff}
+
 /* ---- converter ---- */
 .conv{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 0 48px}
 @media(max-width:760px){.conv{grid-template-columns:1fr}}
@@ -324,6 +330,44 @@ tr.crown td{color:var(--accent);font-weight:600}
   <div class="card rulercard">
     <div class="card-h"><span class="lbl">Scale rule</span></div>
     <div class="card-b"><svg id="ruler" viewBox="0 0 240 620" role="img" aria-label="Vertical measuring rule showing the figure height and joint cut lines"></svg></div>
+  </div>
+</div>
+
+<div class="card measure">
+  <div class="card-h">
+    <span class="lbl">Fit a model file</span>
+    <span class="lbl" id="fstate">no file</span>
+  </div>
+  <div class="card-b">
+    <div class="mgrid">
+      <div>
+        <div id="fdrop" class="drop" tabindex="0" role="button"
+             aria-label="Add an STL: click to choose a file, or drop one here">
+          <b>Drop an STL, or click to choose</b>
+          <span>Meshy and most generators export at a default size with no
+          relation to 1:16. This reads the mesh, finds the crown of the head
+          inside it, and scales that to the selected character. The file stays
+          in your browser.</span>
+          <input id="ffile" type="file" accept=".stl,model/stl" hidden>
+        </div>
+        <div id="fout" class="fout"></div>
+      </div>
+      <div class="mside">
+        <p class="mhelp">A bounding box is the <b>total</b> height &mdash; floor
+        to the tip of a hat, horn or crest. The listed height is to the
+        <b>crown of the skull</b>. Scale the bounding box and you squash the
+        body to make room for the topper, which is how a custom ends up short.</p>
+        <div class="field">
+          <label class="lbl" for="fcrown">Crown at <span class="mono" id="fcrownv">100</span>% of the model</label>
+          <input id="fcrown" type="range" min="70" max="100" step="0.5" value="100" disabled>
+        </div>
+        <p class="mhelp" id="fwhy"></p>
+        <div class="mbtns">
+          <button class="catbtn" id="fdl" disabled>Download scaled STL</button>
+          <button class="catbtn" id="fclear" disabled>Clear</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -8101,6 +8145,157 @@ cv.addEventListener("pointermove",e=>{
 });
 ["pointerup","pointercancel"].forEach(t=>cv.addEventListener(t,()=>{drag=null;}));
 window.addEventListener("resize",()=>{if(mimg)paintCv();});
+
+/* ---------- fit a model file ---------------------------------------------
+   The same job fit.py does, in the browser. A generator's export has no
+   relation to 1:16, and its bounding box is the TOTAL height -- floor to the
+   tip of a hat or horn -- while the listed height is to the crown of the
+   skull. Scaling the bounding box squashes the body to make room for the
+   topper. So: find the crown inside the mesh, scale that.
+
+   Binary and ASCII STL, parsed and rewritten here. Nothing is uploaded. --- */
+let FT=null;                                    /* {tri:Float32Array, n, ...} */
+
+function parseSTL(buf){
+  const dv=new DataView(buf);
+  if(buf.byteLength>=84){
+    const n=dv.getUint32(80,true);
+    if(buf.byteLength===84+50*n&&n>0){
+      const tri=new Float32Array(n*9);
+      for(let i=0;i<n;i++){
+        const o=84+i*50;
+        for(let v=0;v<9;v++) tri[i*9+v]=dv.getFloat32(o+12+v*4,true);
+      }
+      return {tri,n};
+    }
+  }
+  const txt=new TextDecoder().decode(buf);
+  const m=txt.match(/vertex\s+(-?[\d.eE+]+)\s+(-?[\d.eE+]+)\s+(-?[\d.eE+]+)/g);
+  if(!m||m.length<3) return null;
+  const n=Math.floor(m.length/3), tri=new Float32Array(n*9);
+  for(let i=0;i<n*3;i++){
+    const p=m[i].trim().split(/\s+/);
+    tri[i*3]=+p[1]; tri[i*3+1]=+p[2]; tri[i*3+2]=+p[3];
+  }
+  return {tri,n};
+}
+
+/* same two rules as fit.py: a cone hat narrows the full span, horns and wings
+   keep it wide and only the CENTRE empties out above the dome. Take the lower. */
+function crownOf(tri,expectTopper){
+  const BINS=200;
+  let zmin=Infinity,zmax=-Infinity,xmin=Infinity,xmax=-Infinity;
+  for(let i=0;i<tri.length;i+=3){
+    const x=tri[i],z=tri[i+2];
+    if(z<zmin)zmin=z; if(z>zmax)zmax=z; if(x<xmin)xmin=x; if(x>xmax)xmax=x;
+  }
+  const H=zmax-zmin, step=H/BINS, cx=(xmax+xmin)/2;
+  if(!expectTopper) return {z:zmax,frac:1,why:"nothing above the crown on file for this character, so the top of the model is the crown"};
+  const lo=new Float64Array(BINS+1).fill(Infinity), hi=new Float64Array(BINS+1).fill(-Infinity);
+  for(let i=0;i<tri.length;i+=3){
+    const b=Math.min((tri[i+2]-zmin)/step|0,BINS), x=tri[i];
+    if(x<lo[b])lo[b]=x; if(x>hi[b])hi[b]=x;
+  }
+  const full=[]; for(let b=0;b<=BINS;b++) full[b]=hi[b]>=lo[b]?hi[b]-lo[b]:0;
+  let neck=-1,nv=Infinity;
+  for(let b=Math.floor(BINS*.55);b<Math.floor(BINS*.90);b++)
+    if(full[b]>0&&full[b]<nv){nv=full[b];neck=b;}
+  if(neck<0) return {z:zmax,frac:1,why:"could not find a neck; using the model top"};
+  const above=[]; for(let b=neck;b<=BINS;b++) if(full[b]>0) above.push(b);
+  if(above.length<4) return {z:zmax,frac:1,why:"no head mass above the neck; using the model top"};
+  const apex=above[above.length-1], headW=Math.max(...above.map(b=>full[b]));
+  const byFull=Math.max(...above.filter(b=>full[b]>=headW*0.90));
+  const half=0.22*headW;                 /* sized from the HEAD, not the mesh */
+  const clo=new Float64Array(BINS+1).fill(Infinity), chi=new Float64Array(BINS+1).fill(-Infinity);
+  for(let i=0;i<tri.length;i+=3){
+    const x=tri[i]; if(Math.abs(x-cx)>half) continue;
+    const b=Math.min((tri[i+2]-zmin)/step|0,BINS);
+    if(x<clo[b])clo[b]=x; if(x>chi[b])chi[b]=x;
+  }
+  const cent=[]; for(let b=0;b<=BINS;b++) cent[b]=chi[b]>=clo[b]?chi[b]-clo[b]:0;
+  const cmax=Math.max(...above.map(b=>cent[b]),0)||1;
+  const ctop=above.filter(b=>cent[b]>=cmax*0.50);
+  const byCent=ctop.length?Math.max(...ctop):apex;
+  const ci=Math.min(byFull,byCent);
+  if(ci>=apex) return {z:zmax,frac:1,why:"head is widest at the very top; nothing above it"};
+  return {z:zmin+ci*step,frac:(zmin+ci*step-zmin)/H,
+    why:`neck at ${Math.round(neck/BINS*100)}%, crown at ${Math.round(ci/BINS*100)}% by `+
+        `${byFull<=byCent?"full width":"centre line"} (full-width rule ${Math.round(byFull/BINS*100)}%, `+
+        `centre-line rule ${Math.round(byCent/BINS*100)}%)`};
+}
+
+function fitRender(){
+  if(!FT){$("fout").innerHTML="";return;}
+  const listed=parseFloat($("hin").value)||0, crownTarget=listed*K;
+  const frac=parseFloat($("fcrown").value)/100;
+  const meshCrown=FT.H*frac;
+  const factor=meshCrown>0?crownTarget/meshCrown:0;
+  const newTotal=FT.H*factor, aboveMM=newTotal-crownTarget;
+  FT.factor=factor;
+  const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
+  const differs=onFile&&Math.abs(aboveMM-onFile)>1;
+  $("fout").innerHTML=
+    `<div class="srow body"><span>Model as supplied<i>${FT.name} · ${FT.n.toLocaleString()} triangles</i></span><b>${f2(FT.H)} mm</b></div>`+
+    `<div class="srow"><span>Crown found at<i>${f2(meshCrown)} mm into the model</i></span><b>${(frac*100).toFixed(1)}%</b></div>`+
+    `<div class="srow silo"><span>Scale factor<i>type this into your slicer, or download below</i></span><b>${(factor*100).toFixed(1)}%</b></div>`+
+    `<div class="srow heel"><span>New crown height<i>floor to crown of the skull</i></span><b>${f2(crownTarget)} mm</b></div>`+
+    (aboveMM>0.05?`<div class="srow top"><span>Above the crown<i>what THIS model measures${differs?` — ${f2(onFile)} mm is on file`:""}</i></span><b>${f2(aboveMM)} mm</b></div>`:"")+
+    `<div class="srow"><span>New total height<i>floor to tip</i></span><b>${f2(newTotal)} mm</b></div>`;
+  $("fdl").disabled=false;
+}
+
+function fitLoad(file){
+  if(!file)return;
+  $("fstate").textContent="reading…";
+  const fr=new FileReader();
+  fr.onload=e=>{
+    const got=parseSTL(e.target.result);
+    if(!got){$("fstate").textContent="not an STL";
+      $("fout").innerHTML=`<div class="mwarn">Could not read that as an STL. 3MF is not supported in the browser — export STL, or use fit.py.</div>`;return;}
+    let zmin=Infinity,zmax=-Infinity;
+    for(let i=2;i<got.tri.length;i+=3){const z=got.tri[i];if(z<zmin)zmin=z;if(z>zmax)zmax=z;}
+    FT={...got,H:zmax-zmin,zmin,name:file.name};
+    const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
+    const c=crownOf(got.tri,onFile>1.0);
+    $("fcrown").disabled=false; $("fcrown").value=(c.frac*100).toFixed(1);
+    $("fcrownv").textContent=(c.frac*100).toFixed(1);
+    $("fwhy").textContent=c.why;
+    $("fstate").textContent=`${f2(FT.H)} mm · ${got.n.toLocaleString()} tris`;
+    $("fdrop").hidden=true; $("fclear").disabled=false;
+    fitRender();
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+$("fdrop").addEventListener("click",()=>$("ffile").click());
+$("fdrop").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("ffile").click();}});
+$("ffile").addEventListener("change",e=>fitLoad(e.target.files[0]));
+["dragenter","dragover"].forEach(t=>$("fdrop").addEventListener(t,e=>{e.preventDefault();$("fdrop").classList.add("over");}));
+["dragleave","drop"].forEach(t=>$("fdrop").addEventListener(t,e=>{e.preventDefault();$("fdrop").classList.remove("over");}));
+$("fdrop").addEventListener("drop",e=>fitLoad(e.dataTransfer.files[0]));
+$("fcrown").addEventListener("input",()=>{$("fcrownv").textContent=(+$("fcrown").value).toFixed(1);fitRender();});
+$("fclear").addEventListener("click",()=>{
+  FT=null;$("fdrop").hidden=false;$("ffile").value="";$("fout").innerHTML="";
+  $("fcrown").disabled=true;$("fdl").disabled=true;$("fclear").disabled=true;
+  $("fstate").textContent="no file";$("fwhy").textContent="";});
+$("fdl").addEventListener("click",()=>{
+  if(!FT||!FT.factor)return;
+  const n=FT.n, out=new ArrayBuffer(84+50*n), dv=new DataView(out);
+  dv.setUint32(80,n,true);
+  let lift=Infinity;
+  for(let i=2;i<FT.tri.length;i+=3) if(FT.tri[i]*FT.factor<lift) lift=FT.tri[i]*FT.factor;
+  for(let i=0;i<n;i++){
+    const o=84+i*50;
+    for(let v=0;v<9;v++){
+      const raw=FT.tri[i*9+v]*FT.factor;
+      dv.setFloat32(o+12+v*4,(v%3===2)?raw-lift:raw,true);
+    }
+  }
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([out],{type:"model/stl"}));
+  a.download=FT.name.replace(/\.stl$/i,"")+"_1-16.stl";
+  a.click(); URL.revokeObjectURL(a.href);
+});
 
 </script>
 </body>
