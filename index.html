@@ -7810,6 +7810,9 @@ const GROUPS={};
 DATA.chars.forEach(c=>{(GROUPS[c.k]=GROUPS[c.k]||[]).push(c)});
 Object.values(GROUPS).forEach(g=>g.sort((a,b)=>(b.p?1:0)-(a.p?1:0)));
 let curKey="batman", cur=GROUPS[curKey][0];
+let FT=null;   /* the dropped model file: {tri:Float32Array, n, H, ...}. Declared
+                  here, not beside the fitting code, because render() runs long
+                  before that point and a `let` below it is unreachable. */
 
 /* populate selector */
 const pick=$("pick");
@@ -7958,6 +7961,7 @@ function render(){
     return `<tr class="${k}"><td>${l}</td><td class="r">${f2(mm)} mm</td><td class="r">${(mm/stand*100).toFixed(1)}</td></tr>`;
   }).join("")+(heel?`<tr class="heelrow"><td>Heel top &mdash; sole lift</td><td class="r">${f2(heel)} mm</td><td class="r">${(heel/stand*100).toFixed(1)}</td></tr>`:"");
   draw(body,heel,above,heads);
+  if(FT){fitDetect();fitRender();}
 }
 
 function select(key){
@@ -8154,7 +8158,6 @@ window.addEventListener("resize",()=>{if(mimg)paintCv();});
    topper. So: find the crown inside the mesh, scale that.
 
    Binary and ASCII STL, parsed and rewritten here. Nothing is uploaded. --- */
-let FT=null;                                    /* {tri:Float32Array, n, ...} */
 
 function parseSTL(buf){
   const dv=new DataView(buf);
@@ -8224,9 +8227,24 @@ function crownOf(tri,expectTopper){
         `centre-line rule ${Math.round(byCent/BINS*100)}%)`};
 }
 
+function fitDetect(){
+  /* re-find the crown when the character changes, because whether to expect a
+     topper comes from the character, not the mesh. Skipped while only the
+     sliders move -- the mesh has not changed and this walks every triangle. */
+  if(!FT||FT.detectedFor===curKey)return;
+  FT.detectedFor=curKey;
+  const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
+  const c=crownOf(FT.tri,onFile>1.0);
+  $("fcrown").value=(c.frac*100).toFixed(1);
+  $("fcrownv").textContent=(c.frac*100).toFixed(1);
+  $("fwhy").textContent=c.why;
+}
+
 function fitRender(){
   if(!FT){$("fout").innerHTML="";return;}
-  const listed=parseFloat($("hin").value)||0, crownTarget=listed*K;
+  /* floor to crown, so the heel counts: the model stands on its heels too */
+  const listed=parseFloat($("hin").value)||0, heel=parseFloat($("heel").value)||0;
+  const crownTarget=listed*K+heel;
   const frac=parseFloat($("fcrown").value)/100;
   const meshCrown=FT.H*frac;
   const factor=meshCrown>0?crownTarget/meshCrown:0;
@@ -8256,6 +8274,7 @@ function fitLoad(file){
     for(let i=2;i<got.tri.length;i+=3){const z=got.tri[i];if(z<zmin)zmin=z;if(z>zmax)zmax=z;}
     FT={...got,H:zmax-zmin,zmin,name:file.name};
     const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
+    FT.detectedFor=curKey;
     const c=crownOf(got.tri,onFile>1.0);
     $("fcrown").disabled=false; $("fcrown").value=(c.frac*100).toFixed(1);
     $("fcrownv").textContent=(c.frac*100).toFixed(1);
