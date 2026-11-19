@@ -58,3 +58,18 @@ export async function setupLoose(){ /* three loose STLs in box 1 */
   await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
   return $("spcFiles").innerText;
 }
+
+export async function setupInFile(){ /* one project: pieces + the whole figure + a painted accessory */
+  hooks();
+  const toMesh=g=>({v:new Float32Array(g.v),f:new Uint32Array(g.f)}), legs=cyl(8,55,0),torso=cyl(13,40,56),head=sph(9,106);
+  const whole={v:new Float32Array([...legs.v,...torso.v,...head.v]),f:new Uint32Array([...legs.f,...torso.f.map(x=>x+legs.v.length/3),...head.f.map(x=>x+(legs.v.length+torso.v.length)/3)])};
+  const parts=[{name:"Legs",m:toMesh(legs),M:[0,1,0,0,-1,0,0,0,0,0,1,0,-60,0,0,1]},{name:"Torso",m:toMesh(torso),M:[1,0,0,0,0,0,1,0,0,-1,0,0,20,-50,13,1]},
+    {name:"Head",m:toMesh(head),M:[-1,0,0,0,0,-1,0,0,0,0,1,0,70,40,-97,1]},{name:"SynthKit",m:whole,M:[1,0,0,0,0,1,0,0,0,0,1,0,150,150,0,1]},
+    {name:"Mace",m:toMesh(cyl(3,20,0,24,4)),M:[1,0,0,0,0,1,0,0,0,0,1,0,200,40,0,1]}];
+  const st=parts.map((p,i)=>new Uint8Array(p.m.f.length/3).fill(i===4?2:0));
+  const blob=await SPC.save3MF({project:null,parts},[{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"},{hex:"#00AE42",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}],st);
+  await drop("spcDropT",new File([blob],"SynthKit.3mf"));
+  const figParts=[legs,torso,head].map(g=>({m:toMesh(g),M:SPC.I4()}));
+  await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
+  return $("spcPieces").innerText;
+}

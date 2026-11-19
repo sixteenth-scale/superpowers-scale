@@ -250,6 +250,13 @@ async function read3MF(buf,name){
     const seen=new Map();
     parts.forEach(p=>{if(!names.has(p.objectid))return; const n=per.get(p.objectid), i=(seen.get(p.objectid)||0)+1; seen.set(p.objectid,i);
       p.name=n>1?`${names.get(p.objectid)} ${i}`:names.get(p.objectid);});}
+  /* which plate each object is on (Bambu lists them per plate) */
+  const plates=new Map();
+  if(ms){const t=dec.decode(ms),pre=/<plate>([\s\S]*?)<\/plate>/g;let pm;
+    while((pm=pre.exec(t))){const id=(/plater_id" value="(\d+)"/.exec(pm[1])||[])[1],nm=(/plater_name" value="([^"]*)"/.exec(pm[1])||[])[1]||"";
+      const ore2=/<model_instance>\s*<metadata key="object_id" value="(\d+)"/g;let om;
+      while((om=ore2.exec(pm[1])))plates.set(om[1],{id:+id,name:nm});}}
+  parts.forEach(p=>{const pl=plates.get(p.objectid);p.plate=pl?pl.id:0;p.plateName=pl?pl.name:"";});
   let ps=null; const psb=files.get("Metadata/project_settings.config");
   if(psb){try{ps=JSON.parse(dec.decode(psb));}catch(e){}}
   return {files,texts,parts,ps,bambu:/BambuStudio/.test(main)};
