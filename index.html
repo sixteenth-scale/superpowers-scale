@@ -9465,6 +9465,8 @@ async function run(){
   const ids=[...new Set(lab)].filter(x=>x>=0);const remap=new Map(ids.map((x,i)=>[x,i]));remap.set(-1,-1);
   S.label=Int32Array.from(lab,x=>remap.get(x));
   fillHidden(hid);
+  log("Snapping colors to the sculpted sections…");await tick();
+  sculptTidy(active);
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
   sumAreas();S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
   /* region colors from final labels */
@@ -9496,6 +9498,32 @@ function fillHidden(hid){
       let best=-1,bs=-1;for(const [L,cnt] of votes){const sc=cnt*Math.sqrt((share.get(L)||0)/tot);if(sc>bs){bs=sc;best=L;}}
       patch.forEach(t=>S.label[o+t]=best);}
   });
+}
+/* split each piece into sections at its sculpted creases (eye sockets, helmet rim, cuffs, the
+   underside); inside a section, small stray bits of another color join the section's main color.
+   Larger areas are kept, so a painted logo on a smooth surface survives. */
+function sculptTidy(active){
+  const cosCrease=Math.cos(25*Math.PI/180);
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],fn=C.faceNormals(p.m),A=S.area;
+    const sec=new Int32Array(n).fill(-1);let ns=0;const secArea=[];
+    for(let s=0;s<n;s++){if(sec[s]>=0)continue;const st=[s];sec[s]=ns;let a=0;
+      while(st.length){const t=st.pop();a+=A[o+t];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
+        const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];if(cs>=cosCrease){sec[u2]=ns;st.push(u2);}}}
+      secArea.push(a);ns++;}
+    for(let round=0;round<3;round++){
+      /* main color per section */
+      const main=new Map();
+      for(let t=0;t<n;t++){const L=S.label[o+t];if(L<0)continue;const k=sec[t]*4096+L;main.set(k,(main.get(k)||0)+A[o+t]);}
+      const dom=new Int32Array(ns).fill(-1),domA=new Float32Array(ns);
+      for(const [k,a] of main){const s=Math.floor(k/4096),L=k%4096;if(a>domA[s]){domA[s]=a;dom[s]=L;}}
+      /* same-color bits inside a section */
+      const comp=new Int32Array(n).fill(-1);let changed=0;
+      for(let s=0;s<n;s++){if(comp[s]>=0||S.label[o+s]<0)continue;const L=S.label[o+s],sc=sec[s],cl=[s];comp[s]=s;let a=0;
+        for(let q2=0;q2<cl.length;q2++){const t=cl[q2];a+=A[o+t];for(let e=0;e<3;e++){const u2=nb[t*3+e];
+          if(u2>=0&&comp[u2]<0&&sec[u2]===sc&&S.label[o+u2]===L){comp[u2]=s;cl.push(u2);}}}
+        if(L!==dom[sc]&&dom[sc]>=0&&a<Math.max(0.6,0.06*secArea[sc])){cl.forEach(t=>S.label[o+t]=dom[sc]);changed++;}}
+      if(!changed)break;}
+  }
 }
 function matchFilaments(slots){
   const PL=palLab(), owned=C.PAL.map((f,i)=>f.owned!==false?i:-1).filter(i=>i>=0);
