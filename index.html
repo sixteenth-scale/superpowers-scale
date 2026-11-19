@@ -9474,7 +9474,7 @@ async function run(){
   {const acc=S.regions.map(()=>[0,0,0,0]);for(let i=0;i<S.nFaces;i++){if(S.label[i]<0||hid[i])continue;const s=acc[S.label[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
   if(S.images.length){log("Painting fine detail from your front photo…");await tick();
-    try{const n=await photoDetail(S.images[0],fig,active,regM,hid);if(n)log(`Repainted ${n} triangles of fine detail from your photo.`);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
+    try{const n=await photoDetail(S.images[0],fig,active,regM,hid);if(n){sculptTidy(active);sumAreas();log(`Repainted ${n} triangles of fine detail from your photo.`);}}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;
   showViewer(true);renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
