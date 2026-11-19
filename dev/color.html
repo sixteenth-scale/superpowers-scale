@@ -1,0 +1,80 @@
+<div class="card measure" id="spc">
+  <div class="card-h">
+    <span class="lbl">Color for Bambu Studio</span>
+    <span class="lbl" id="spcState">no model</span>
+  </div>
+  <div class="card-b">
+    <div class="mgrid">
+      <div>
+        <div class="spc-drops">
+          <div id="spcDropT" class="drop" tabindex="0" role="button" aria-label="Add the model to color">
+            <b>1 · Model to color</b>
+            <span>A Bambu 3MF project (parted-out pieces are fine) or an STL. A 3MF you painted here before reopens ready to edit.</span>
+            <input id="spcFileT" type="file" accept=".3mf,.stl" hidden>
+          </div>
+          <div id="spcDropF" class="drop" tabindex="0" role="button" aria-label="Add the whole figure">
+            <b>2 · Whole figure <i class="spc-opt">only if 1 is parted out</i></b>
+            <span>The one-piece figure the parts were cut from. Meshy paints this; the parts are found on it.</span>
+            <input id="spcFileF" type="file" accept=".3mf,.stl" hidden>
+          </div>
+          <div id="spcDropI" class="drop" tabindex="0" role="button" aria-label="Add reference images or a colored model">
+            <b>3 · Reference art</b>
+            <span>1 to 4 images (front, back, sides). Or skip Meshy and drop a model that is already colored — a GLB from Meshy, or a painted 3MF.</span>
+            <input id="spcFileI" type="file" accept="image/*,.glb,.3mf" multiple hidden>
+          </div>
+        </div>
+        <div id="spcFiles" class="spc-files"></div>
+        <div class="spc-view" id="spcViewWrap" hidden>
+          <canvas id="spcCv"></canvas>
+          <div class="spc-tools">
+            <button class="catbtn" id="spcShowFil" aria-pressed="true">Filaments</button>
+            <button class="catbtn" id="spcShowRaw" aria-pressed="false">Meshy colors</button>
+            <span class="spc-sep"></span>
+            <button class="catbtn" id="spcModeSel" aria-pressed="true" title="Click the model to pick its color region">Pick region</button>
+            <button class="catbtn" id="spcModePaint" aria-pressed="false" title="Click a patch to repaint just that patch">Paint patch</button>
+            <select id="spcBrush" title="Filament for Paint patch"></select>
+            <button class="catbtn" id="spcUndo" disabled>Undo</button>
+            <span class="spc-hint">drag to turn · right-drag to move · wheel to zoom</span>
+          </div>
+        </div>
+        <div id="spcLog" class="spc-log"></div>
+      </div>
+      <div class="mside">
+        <p class="mhelp">Meshy paints the figure from your art, the colors are moved onto
+        <b>your</b> geometry, and every color is snapped to a filament on your shelf.
+        Anything without a close match is flagged. Fix any region before you save.</p>
+        <div class="field">
+          <label class="lbl" for="spcKey">Meshy API key <span class="hint">kept in this browser only</span></label>
+          <input id="spcKey" type="password" autocomplete="off" placeholder="msy_…">
+        </div>
+        <div class="spc-row">
+          <div class="field"><label class="lbl" for="spcSlots">Max filaments</label>
+            <input id="spcSlots" type="number" min="1" max="16" step="1" value="8"></div>
+          <div class="field"><label class="lbl" for="spcDetail">Paint detail, mm</label>
+            <input id="spcDetail" type="number" min="0.1" max="3" step="0.1" value="0.5"></div>
+        </div>
+        <div class="mbtns spc-btns">
+          <button class="catbtn" id="spcGo" disabled>Color it</button>
+          <button class="catbtn" id="spcSave" disabled>Save for Bambu Studio</button>
+          <button class="catbtn" id="spcClear">Clear</button>
+        </div>
+        <div id="spcRegions" class="spc-regions"></div>
+        <details class="spc-pal">
+          <summary class="lbl">My filaments <span id="spcPalN" class="mono"></span></summary>
+          <div id="spcPal" class="spc-pallist"></div>
+          <div class="spc-add">
+            <input id="spcCatQ" list="spcCatL" placeholder="Add a Bambu color — type a name or code">
+            <datalist id="spcCatL"></datalist>
+            <button class="catbtn" id="spcCatAdd">Add</button>
+          </div>
+          <div class="spc-add">
+            <input id="spcOwnName" placeholder="Other brand — e.g. Elegoo PLA Matte Red">
+            <input id="spcOwnHex" type="color" value="#808080" title="Spool color">
+            <button class="catbtn" id="spcOwnAdd">Add</button>
+          </div>
+          <button class="catbtn" id="spcPalReset" style="margin-top:6px">Reset to my Bambu order list</button>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>

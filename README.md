@@ -62,8 +62,34 @@ Corrections are welcome -- open an issue or a pull request against
 `reference.csv` holds real-world dimensions for playset and vehicle work: doors,
 ceilings, stairs, rails, counters, seat heights, vehicle lengths, weapon lengths.
 
+## Color for Bambu Studio
+
+Paints a figure -- or the parted-out pieces of one -- from reference art, on
+the filaments you actually own, and saves a 3MF that opens in Bambu Studio
+already painted.
+
+1. **Model to color** -- a Bambu project (parted-out pieces are fine) or an STL.
+2. **Whole figure** -- only when the model is parted out. Meshy paints this, and
+   each piece is found on it wherever it sits on the plate.
+3. **Reference art** -- 1 to 4 images, or a model that is already colored
+   (a Meshy GLB, or a painted 3MF).
+
+Colors are grouped into regions and each is snapped to the closest filament on
+your shelf (CIEDE2000). A region with no close match is flagged, with the
+nearest Bambu color offered. Click a region to change its filament, or paint
+one patch. A Bambu project keeps its plate, settings and layout; only the paint
+and the filament list change. Reopen a painted file to keep editing.
+
+The filament list starts from Bambu's own color codes and hex values
+(`filaments_color_codes.json` in BambuStudio). Add other brands by name and
+color. Your Meshy key and filament list stay in your browser.
+
 ## The page
 
-`index.html` is self-contained -- about 46 KB, no images, no build step, no
-dependencies. It works offline and straight off disk. The only external request
-is Google Fonts, and the type falls back cleanly without it.
+`index.html` is self-contained -- no images, no build step, no dependencies.
+It works offline and straight off disk. External requests: Google Fonts (the
+type falls back without it), and -- only when you color a model -- Meshy, with
+your own key, and Bambu's color list on GitHub.
+
+The color tool's source is in `dev/`; `python dev/build.py` inlines it into
+`index.html`.
