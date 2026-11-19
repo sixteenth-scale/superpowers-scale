@@ -29,9 +29,12 @@ async function glbOf(figParts){
   return glb;
 }
 async function drop(id,file){const dt=new DataTransfer();dt.items.add(file);$(id).dispatchEvent(new DragEvent("drop",{dataTransfer:dt,bubbles:true,cancelable:true}));await wait(1200);}
+function hooks(){
+  window._errs=window._errs||[];window.addEventListener("error",e=>_errs.push(e.message));window.addEventListener("unhandledrejection",e=>_errs.push(String(e.reason&&e.reason.message||e.reason)));
+  if(!window._saved){window._saved=[];const oc=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download){_saved.push({name:this.download,href:this.href});return;}return oc.call(this);};}
+}
 export async function setup(){
-  window._errs=[];window.addEventListener("error",e=>_errs.push(e.message));window.addEventListener("unhandledrejection",e=>_errs.push(String(e.reason&&e.reason.message||e.reason)));
-  window._saved=[];const oc=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download){_saved.push({name:this.download,href:this.href});return;}return oc.call(this);};
+  hooks();
   const toMesh=g=>({v:new Float32Array(g.v),f:new Uint32Array(g.f)}), legs=cyl(8,55,0),torso=cyl(13,40,56),head=sph(9,106);
   const pieces=[["Legs",legs,[0,1,0,0,-1,0,0,0,0,0,1,0,-60,0,0,1]],["Torso",torso,[1,0,0,0,0,0,1,0,0,-1,0,0,20,-50,13,1]],["Head",head,[-1,0,0,0,0,-1,0,0,0,0,1,0,70,40,-97,1]]];
   const figParts=pieces.map(p=>({m:toMesh(p[1]),M:SPC.I4()})), parts=pieces.map(p=>({name:p[0],m:toMesh(p[1]),M:p[2]}));
@@ -42,3 +45,16 @@ export async function setup(){
   return $("spcFiles").innerText;
 }
 export function status(){return {log:$("spcLog").innerText,regions:[...document.querySelectorAll(".spc-reg")].map(r=>r.querySelector("select").selectedOptions[0].text.split(" · ")[0]+" | "+r.querySelector("small").innerText),errs:window._errs};}
+
+export async function setupLoose(){ /* three loose STLs in box 1 */
+  hooks();
+  const toMesh=g=>({v:new Float32Array(g.v),f:new Uint32Array(g.f)}), legs=cyl(8,55,0),torso=cyl(13,40,56),head=sph(9,106);
+  const figParts=[legs,torso,head].map(g=>({m:toMesh(g),M:SPC.I4()}));
+  const dt=new DataTransfer();
+  [["Synth_legs",legs,[0,1,0,0,-1,0,0,0,0,0,1,0,-60,0,0,1]],["Synth_torso",torso,[1,0,0,0,0,0,1,0,0,-1,0,0,20,-50,13,1]],["Synth_head",head,SPC.I4()]]
+    .forEach(([n,g,M])=>dt.items.add(new File([SPC.stlBytes([{m:toMesh(g),M}])],n+".stl")));
+  $("spcDropT").dispatchEvent(new DragEvent("drop",{dataTransfer:dt,bubbles:true,cancelable:true}));await wait(2500);
+  await drop("spcDropF",new File([SPC.stlBytes(figParts)],"SynthFigure.stl"));
+  await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
+  return $("spcFiles").innerText;
+}
