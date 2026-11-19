@@ -9600,7 +9600,8 @@ async function photoDetail(file,fig,active,regM,hid){
       const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
       const q=toPhoto(X,Z),pc=px(q[0],q[1]),i=o+t;err+=C.dE(C.lab(...pc),C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2]));cnt++;}}
     const score=cnt?err/cnt:Infinity;
-    if(!best||score<best.score)best={score,d,dep,sx,sy,toPhoto,s};
+    /* models face -Y by convention; the back view must win clearly to be chosen */
+    if(!best||score<best.score*0.9)best={score,d,dep,sx,sy,toPhoto,s};
   }
   dbg.score=best&&best.score;dbg.dir=best&&best.d;
   if(!best||!isFinite(best.score))return 0;
