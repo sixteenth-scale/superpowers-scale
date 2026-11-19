@@ -232,6 +232,7 @@ async function run(){
   const cents=C.kmeans(L,W,16,C.RNG(5));
   const lab=new Int32Array(S.nFaces);
   for(let i=0;i<S.nFaces;i++){if(!act[i]){lab[i]=-1;continue;}let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(L[i*3]-cents[c][0])**2+(L[i*3+1]-cents[c][1])**2+(L[i*3+2]-cents[c][2])**2;if(d<bd){bd=d;b=c;}}lab[i]=b;}
+  if(window._spcSnap)window._spcSnap('kmeans',lab,x=>C.lab2rgb?null:null,hid,cents);
   /* merge regions that are the same color in practice */
   const k=cents.length, rgbSum=cents.map(()=>[0,0,0,0]);
   for(let i=0;i<S.nFaces;i++){if(lab[i]<0)continue;const s=rgbSum[lab[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
@@ -241,6 +242,7 @@ async function run(){
     if(!best)break;const [,A,B]=best,ia=regs.indexOf(A),ib=regs.indexOf(B),t=A.area+B.area;
     A.rgb=A.rgb.map((x,j)=>(x*A.area+B.rgb[j]*B.area)/t);A.area=t;B.area=0;regs.forEach(r=>{if(r.alias===ib)r.alias=ia;});}
   for(let i=0;i<S.nFaces;i++)if(lab[i]>=0)lab[i]=regs[lab[i]].alias;
+  if(window._spcSnap)window._spcSnap('merged',lab,x=>regs[x].rgb,hid);
   /* edges follow the sculpt: a color boundary costs a lot across smooth surface and almost nothing
      along a crease, so boundaries settle into the helmet rim, cuffs, belt edges; blotches dissolve */
   log("Tidying color edges along the sculpt…");await tick();
@@ -257,6 +259,7 @@ async function run(){
            if(en<be){be=en;best=Lb;}}
          if(best!==lab[i]){lab[i]=best;changed++;}}
        if(!changed)break;await tick();}}}
+  if(window._spcSnap)window._spcSnap('icm',lab,x=>regs[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=lab.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,Math.max(0.5,detail*detail*4));});
   /* specks of color under 0.1% of the model go to the nearest-colored region */
@@ -265,12 +268,15 @@ async function run(){
     for(const [x,a] of ar)if(a<tot*0.001&&big.length){const l=C.lab(...regs[x].rgb);let b=big[0],bd=Infinity;
       for(const y of big){const d=C.dE(l,C.lab(...regs[y].rgb));if(d<bd){bd=d;b=y;}}to.set(x,b);}
     if(to.size)for(let i=0;i<S.nFaces;i++)if(to.has(lab[i]))lab[i]=to.get(lab[i]);}
+  if(window._spcSnap)window._spcSnap('specks',lab,x=>regs[x].rgb,hid);
   const ids=[...new Set(lab)].filter(x=>x>=0);const remap=new Map(ids.map((x,i)=>[x,i]));remap.set(-1,-1);
   S.label=Int32Array.from(lab,x=>remap.get(x));
   fillHidden(hid);
+  if(window._spcSnap)window._spcSnap('fillHidden',S.label,x=>regs[ids[x]].rgb,hid);
   log("Snapping colors to the sculpted sections…");await tick();
   sculptTidy(active);
   pinColors(active,hid);
+  if(window._spcSnap)window._spcSnap('tidy+pins',S.label,x=>regs[ids[x]].rgb,hid);
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
   sumAreas();S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
   /* region colors from final labels */
@@ -317,6 +323,7 @@ function fillHidden(hid){
 function sculptTidy(active){
   const cosCrease=Math.cos(25*Math.PI/180);
   for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],fn=C.faceNormals(p.m),A=S.area;
+    const before=S.label.slice(o,o+n);
     const sec=new Int32Array(n).fill(-1);let ns=0;const secArea=[];
     for(let s=0;s<n;s++){if(sec[s]>=0)continue;const st=[s];sec[s]=ns;let a=0;
       while(st.length){const t=st.pop();a+=A[o+t];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
@@ -336,9 +343,12 @@ function sculptTidy(active){
           if(sec[u2]!==sc){if(dom[sec[u2]]===L)bleed=true;continue;}
           if(comp[u2]<0&&S.label[o+u2]===L){comp[u2]=s;cl.push(u2);}}}
         /* absorb specks, and color that bled in from the next section; keep real details like logos */
-        const tiny=a<Math.max(0.6,0.015*secArea[sc]), bled=bleed&&a<0.35*secArea[sc];
+        const tiny=a<Math.min(2,Math.max(0.6,0.015*secArea[sc])), bled=bleed&&a<Math.min(4,0.1*secArea[sc]);
         if(L!==dom[sc]&&dom[sc]>=0&&(tiny||bled)){cl.forEach(t=>S.label[o+t]=dom[sc]);changed++;}}
       if(!changed)break;}
+    /* a tidy-up never repaints a real part of the piece: if more than 4% moved, undo it */
+    let tot=0,mv=0;for(let t=0;t<n;t++){tot+=A[o+t];if(S.label[o+t]!==before[t])mv+=A[o+t];}
+    if(mv>0.04*tot)S.label.set(before,o);
   }
 }
 /* pins sit inside a joint where nothing can see them, and a plain cylinder can't be placed on the
