@@ -306,18 +306,25 @@ async function readGLB(buf){
 }
 
 /* ---------- spatial grid (nearest point) ---------- */
-function grid(pts,cell){
-  let lo=[Infinity,Infinity,Infinity];for(let i=0;i<pts.length;i+=3)for(let k=0;k<3;k++)if(pts[i+k]<lo[k])lo[k]=pts[i+k];
-  const map=new Map(), key=(x,y,z)=>(x*73856093)^(y*19349663)^(z*83492791);
-  for(let i=0;i<pts.length/3;i++){const k=key(Math.floor((pts[i*3]-lo[0])/cell),Math.floor((pts[i*3+1]-lo[1])/cell),Math.floor((pts[i*3+2]-lo[2])/cell));
-    let a=map.get(k);if(!a){a=[];map.set(k,a);}a.push(i);}
-  function near(x,y,z,maxR=6){const cx=Math.floor((x-lo[0])/cell),cy=Math.floor((y-lo[1])/cell),cz=Math.floor((z-lo[2])/cell);
+function grid(pts,cell){ /* dense CSR grid: cell lookups are array reads */
+  const n=pts.length/3, lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+  for(let i=0;i<pts.length;i+=3)for(let k=0;k<3;k++){const v=pts[i+k];if(v<lo[k])lo[k]=v;if(v>hi[k])hi[k]=v;}
+  let dim=[0,1,2].map(k=>Math.max(1,Math.ceil((hi[k]-lo[k])/cell)+1));
+  while(dim[0]*dim[1]*dim[2]>6e6){cell*=1.25;dim=[0,1,2].map(k=>Math.max(1,Math.ceil((hi[k]-lo[k])/cell)+1));}
+  const [nx,ny,nz]=dim, nc=nx*ny*nz, cnt=new Int32Array(nc+1), cid=new Int32Array(n);
+  for(let i=0;i<n;i++){const x=Math.floor((pts[i*3]-lo[0])/cell),y=Math.floor((pts[i*3+1]-lo[1])/cell),z=Math.floor((pts[i*3+2]-lo[2])/cell);
+    const c=(z*ny+y)*nx+x;cid[i]=c;cnt[c+1]++;}
+  for(let c=0;c<nc;c++)cnt[c+1]+=cnt[c];
+  const fill=cnt.slice(0,nc), idx=new Int32Array(n);for(let i=0;i<n;i++)idx[fill[cid[i]]++]=i;
+  function near(x,y,z,maxR=6){
+    const cx=Math.floor((x-lo[0])/cell),cy=Math.floor((y-lo[1])/cell),cz=Math.floor((z-lo[2])/cell);
     let best=-1,bd=Infinity;
     for(let r=0;r<=maxR;r++){
-      for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){
-        if(Math.max(Math.abs(i),Math.abs(j),Math.abs(k))!==r)continue;
-        const a=map.get(key(cx+i,cy+j,cz+k)); if(!a)continue;
-        for(const p of a){const dx=pts[p*3]-x,dy=pts[p*3+1]-y,dz=pts[p*3+2]-z,d=dx*dx+dy*dy+dz*dz;if(d<bd){bd=d;best=p;}}}
+      const x0=cx-r,x1=cx+r,y0=cy-r,y1=cy+r,z0=cz-r,z1=cz+r;
+      for(let k=Math.max(0,z0);k<=Math.min(nz-1,z1);k++)for(let j=Math.max(0,y0);j<=Math.min(ny-1,y1);j++){
+        const edge=(k===z0||k===z1||j===y0||j===y1), step=edge?1:(x1-x0);
+        for(let i=x0;i<=x1;i+=step||1){if(i<0||i>=nx)continue;const c=(k*ny+j)*nx+i;
+          for(let q=cnt[c];q<cnt[c+1];q++){const p=idx[q],dx=pts[p*3]-x,dy=pts[p*3+1]-y,dz=pts[p*3+2]-z,d=dx*dx+dy*dy+dz*dz;if(d<bd){bd=d;best=p;}}}}
       if(best>=0&&Math.sqrt(bd)<=r*cell)break;}
     return [best,Math.sqrt(bd)];}
   return {near};
@@ -399,7 +406,8 @@ async function alignSource(srcV,tgt,tick){ /* Meshy may rescale and re-axis. ret
   const r=icp(P,G,tgt.p,best.M,30,true);
   return {M:r.err<best.err?r.M:best.M,err:Math.min(r.err,best.err),diag};
 }
-async function registerPart(part,fig,G,tick,cell){ /* find where a cut piece sits on the figure */
+async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece sits on the figure */
+  let last=Date.now(); const tick=async()=>{if(Date.now()-last>40){await tick0();last=Date.now();}};
   const rng=RNG(7), smp=samplePts(part.m,part.M,400,rng), P=[];
   for(let i=0;i<400;i++)P.push([smp.p[i*3],smp.p[i*3+1],smp.p[i*3+2]]);
   const pc=[0,1,2].map(k=>P.reduce((s,p)=>s+p[k],0)/P.length), P60=P.filter((_,i)=>i%5===0);
@@ -408,7 +416,7 @@ async function registerPart(part,fig,G,tick,cell){ /* find where a cut piece sit
   for(const R of rot24()){
     for(const st of starts){const c=ap(R,...pc),M=R.slice();M[12]=st[0]-c[0];M[13]=st[1]-c[1];M[14]=st[2]-c[2];
       const r=icp(P60,G,fig.p,M,8,false,4,cap); if(isFinite(r.err))cand.push(r);
-      if(starts.indexOf(st)%8===7)await tick();}
+      await tick();}
   }
   cand.sort((a,b)=>a.err-b.err);
   let best={err:Infinity};
@@ -440,10 +448,12 @@ function colorCloud(sources,M,spacing){
   pts.forEach((p,i)=>{P.set(p,o);C.set(cols[i],o);o+=p.length;});
   return {P,C,G:grid(P,spacing*2)};
 }
-function transferColors(part,cloud,Mextra){ /* -> Float32Array rgb per face */
+async function transferColors(part,cloud,Mextra,tick0){
+  let last=Date.now(); /* -> Float32Array rgb per face */
   const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3);
   const B=[[1/3,1/3]]; /* one sample: averaging across a boundary invents blend colors */
-  for(let t=0;t<n;t++){const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3;let r=0,g=0,bl=0,k=0;
+  for(let t=0;t<n;t++){if(tick0&&(t&4095)===0&&Date.now()-last>40){await tick0();last=Date.now();}
+    const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3;let r=0,g=0,bl=0,k=0;
     for(const [u,w] of B){const z=1-u-w,x=z*v[a]+u*v[b]+w*v[c],y=z*v[a+1]+u*v[b+1]+w*v[c+1],zz=z*v[a+2]+u*v[b+2]+w*v[c+2];
       const [j]=cloud.G.near(x,y,zz,4); if(j<0)continue; r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;}
     if(k){out[t*3]=r/k;out[t*3+1]=g/k;out[t*3+2]=bl/k;}else{out[t*3]=out[t*3+1]=out[t*3+2]=0.5;}}

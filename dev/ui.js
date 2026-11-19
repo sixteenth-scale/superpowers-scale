@@ -167,7 +167,7 @@ async function run(){
     if(parted){log(`Finding piece ${pi+1} of ${S.parts.length} on the figure: ${p.name}…`);await tick();
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80); Mx=r.M; if(r.err>0.6)flags.push(`${p.name} (${r.err.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
-    raws.push(C.transferColors(p,cloud,Mx));}
+    raws.push(await C.transferColors(p,cloud,Mx,tick));}
   rebuildIndex();
   S.raw=new Float32Array(S.nFaces*3);raws.forEach((r,pi)=>S.raw.set(r,S.offs[pi]*3));
   /* 4. regions */
