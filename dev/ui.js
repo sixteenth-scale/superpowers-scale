@@ -277,7 +277,7 @@ async function run(){
   {const acc=S.regions.map(()=>[0,0,0,0]);for(let i=0;i<S.nFaces;i++){if(S.label[i]<0||hid[i])continue;const s=acc[S.label[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
   if(S.images.length){log("Painting fine detail from your front photo…");await tick();
-    try{const n=await photoDetail(S.images[0],fig,active,regM,hid);if(n)log(`Repainted ${n} triangles of fine detail from your photo.`);}catch(e){console.warn(e);}}
+    try{const n=await photoDetail(S.images[0],fig,active,regM,hid);if(n)log(`Repainted ${n} triangles of fine detail from your photo.`);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;
   showViewer(true);renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
@@ -375,7 +375,8 @@ async function photoDetail(file,fig,active,regM,hid){
   const bg=[0,1,2].map(k=>bord.map(c=>c[k]).sort((a,b)=>a-b)[bord.length>>1]);
   let px0=W,px1=0,py0=H,py1=0;
   for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2){const c=px(x,y);if(Math.abs(c[0]-bg[0])+Math.abs(c[1]-bg[1])+Math.abs(c[2]-bg[2])>0.18){if(x<px0)px0=x;if(x>px1)px1=x;if(y<py0)py0=y;if(y>py1)py1=y;}}
-  if(px1<=px0||py1<=py0)return 0;
+  const dbg=window._spcDbg={photo:[W,H],box:null,secs:0,tried:0,matched:0};
+  if(px1<=px0||py1<=py0)return 0;dbg.box=[px0,py0,px1,py1];
   /* the figure from the front: a depth map */
   const fv=fig.map(p=>({v:C.xf(p.M,p.m.v),f:p.m.f}));
   let X0=Infinity,X1=-Infinity,Z0=Infinity,Z1=-Infinity;fv.forEach(({v})=>{for(let i=0;i<v.length;i+=3){X0=Math.min(X0,v[i]);X1=Math.max(X1,v[i]);Z0=Math.min(Z0,v[i+2]);Z1=Math.max(Z1,v[i+2]);}});
@@ -404,6 +405,7 @@ async function photoDetail(file,fig,active,regM,hid){
     const score=cnt?err/cnt:Infinity;
     if(!best||score<best.score)best={score,d,dep,sx,sy,toPhoto,s};
   }
+  dbg.score=best&&best.score;dbg.dir=best&&best.d;
   if(!best||!isFinite(best.score))return 0;
   const {d,dep,sx,sy,toPhoto}=best, regLab=S.regions.map(r=>C.lab(...r.rgb)), R=Math.round(0.035*H), cosCrease=Math.cos(25*Math.PI/180);
   let painted=0,added=0;const newRegs=[];
@@ -415,19 +417,21 @@ async function photoDetail(file,fig,active,regM,hid){
       while(st.length){const t=st.pop();for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
         const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];if(cs>=cosCrease){sec[u2]=secs.length;st.push(u2);mem.push(u2);}}}
       secs.push(mem);}
-    for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);if(a>0.04*pieceA||mem.length<8)continue;
+    for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.04*pieceA||mem.length<8)continue;dbg.tried++;
       const vis=[];
       for(const t of mem){if(fn[t*3+1]*d>-0.3||hid[o+t])continue;
         const ia=f[t*3]*3,ib=f[t*3+1]*3,ic=f[t*3+2]*3,X=(v[ia]+v[ib]+v[ic])/3,Y=(v[ia+1]+v[ib+1]+v[ic+1])/3,Z=(v[ia+2]+v[ib+2]+v[ic+2])/3;
         const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||Y*d>dep[ry*RW+rx]+0.8)continue;
         vis.push([t,toPhoto(X,Z)]);}
-      if(vis.length<0.6*mem.length||vis.length<8)continue;
+      if(vis.length<0.6*mem.length||vis.length<8){(dbg.novis=dbg.novis||[]).push([mem.length,vis.length]);continue;}
       /* nudge until the photo lines up with this feature */
       let bo=[0,0],be=Infinity;const smp=vis.filter((_,i)=>i%Math.max(1,Math.floor(vis.length/120))===0);
       for(let dy=-R;dy<=R;dy+=2)for(let dx=-R;dx<=R;dx+=2){let e=0;
         for(const [t,q] of smp){const L=S.label[o+t];if(L<0)continue;e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[L]);}
         if(e<be){be=e;bo=[dx,dy];}}
+      (dbg.fits=dbg.fits||[]).push([vis.length,+(be/smp.length).toFixed(1),bo]);
       if(be/smp.length>25)continue; /* no convincing match: leave it */
+      dbg.matched++;
       for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
         regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
         /* a color the photo has and Meshy missed (an emblem's green): add it as a new region */
