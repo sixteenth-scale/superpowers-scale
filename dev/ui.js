@@ -173,7 +173,9 @@ function renderPieces(){
 }
 
 /* ---------- color it ---------- */
-q("spcGo").onclick=()=>run().catch(e=>{log(e.message||String(e),true);console.error(e);q("spcGo").disabled=false;});
+q("spcGo").onclick=()=>run().catch(e=>{q("spcGo").disabled=false;console.error(e);
+  if(e.url){q("spcLog").innerHTML=`<span class="err">${esc(e.message)}</span>\n1. <a href="${esc(e.url)}" target="_blank" rel="noopener">Download the painted figure</a> (a .glb file — no extra Meshy credits)\n2. Drop it into box 3\n3. Click Color it again`;return;}
+  log(e.message||String(e),true);});
 async function run(){
   q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();
   const detail=Math.max(0.1,+q("spcDetail").value||0.5), slots=Math.max(1,Math.min(16,+q("spcSlots").value||8));

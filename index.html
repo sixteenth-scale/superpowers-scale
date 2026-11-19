@@ -9045,7 +9045,7 @@ async function meshyWait(key,id,log){
     log(`Meshy: ${String(s.status||"").toLowerCase()} ${s.progress||0}%`);
     if(s.status==="SUCCEEDED"){
       try{return await (await fetch(s.model_urls.glb)).arrayBuffer();}
-      catch(e){throw new Error(`Meshy finished, but the browser could not download the result. Download the GLB from Meshy and drop it in the colored-model box. ${s.model_urls.glb}`);}}
+      catch(e){const err=new Error("Meshy finished painting. Your browser won't fetch the file from Meshy directly, so:");err.url=s.model_urls.glb;throw err;}}
     if(["FAILED","CANCELED","EXPIRED"].includes(s.status))throw new Error("Meshy task "+s.status+": "+((s.task_error&&s.task_error.message)||""));
     await new Promise(r=>setTimeout(r,6000));}
 }
@@ -9318,7 +9318,9 @@ function renderPieces(){
 }
 
 /* ---------- color it ---------- */
-q("spcGo").onclick=()=>run().catch(e=>{log(e.message||String(e),true);console.error(e);q("spcGo").disabled=false;});
+q("spcGo").onclick=()=>run().catch(e=>{q("spcGo").disabled=false;console.error(e);
+  if(e.url){q("spcLog").innerHTML=`<span class="err">${esc(e.message)}</span>\n1. <a href="${esc(e.url)}" target="_blank" rel="noopener">Download the painted figure</a> (a .glb file — no extra Meshy credits)\n2. Drop it into box 3\n3. Click Color it again`;return;}
+  log(e.message||String(e),true);});
 async function run(){
   q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();
   const detail=Math.max(0.1,+q("spcDetail").value||0.5), slots=Math.max(1,Math.min(16,+q("spcSlots").value||8));

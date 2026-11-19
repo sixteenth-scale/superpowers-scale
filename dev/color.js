@@ -591,7 +591,7 @@ async function meshyWait(key,id,log){
     log(`Meshy: ${String(s.status||"").toLowerCase()} ${s.progress||0}%`);
     if(s.status==="SUCCEEDED"){
       try{return await (await fetch(s.model_urls.glb)).arrayBuffer();}
-      catch(e){throw new Error(`Meshy finished, but the browser could not download the result. Download the GLB from Meshy and drop it in the colored-model box. ${s.model_urls.glb}`);}}
+      catch(e){const err=new Error("Meshy finished painting. Your browser won't fetch the file from Meshy directly, so:");err.url=s.model_urls.glb;throw err;}}
     if(["FAILED","CANCELED","EXPIRED"].includes(s.status))throw new Error("Meshy task "+s.status+": "+((s.task_error&&s.task_error.message)||""));
     await new Promise(r=>setTimeout(r,6000));}
 }
