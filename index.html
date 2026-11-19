@@ -9467,6 +9467,7 @@ async function run(){
   fillHidden(hid);
   log("Snapping colors to the sculpted sections…");await tick();
   sculptTidy(active);
+  pinColors(active,hid);
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
   sumAreas();S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
   /* region colors from final labels */
@@ -9534,6 +9535,27 @@ function sculptTidy(active){
         if(L!==dom[sc]&&dom[sc]>=0&&(tiny||bled)){cl.forEach(t=>S.label[o+t]=dom[sc]);changed++;}}
       if(!changed)break;}
   }
+}
+/* pins sit inside a joint where nothing can see them, and a plain cylinder can't be placed on the
+   figure. A pin (or any piece that is entirely hidden) takes the main color of the hidden joint faces
+   of the pieces it joins: a left knee pin follows the left thigh and calf, an elbow pin the arm. */
+function pinColors(active,hid){
+  const nameOf=pi=>S.parts[pi].name.toLowerCase();
+  const isPin=pi=>{if(/pin|peg/.test(nameOf(pi)))return true;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;
+    for(let i=0;i<n;i++)if(!hid[o+i])return false;return true;};
+  const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi));
+  for(const pi of pins){const nm=nameOf(pi),side=/left/.test(nm)?"left":/right/.test(nm)?"right":"";
+    const joint=/knee/.test(nm)?/calf|thigh|leg|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
+    let cand=others.filter(q=>(!joint||joint.test(nameOf(q)))&&(!side||nameOf(q).includes(side)));
+    if(!cand.length)cand=others.filter(q=>!joint||joint.test(nameOf(q)));
+    if(!cand.length)cand=others;
+    const tally=new Map();
+    for(const q of cand){const o=S.offs[q],n=S.parts[q].m.f.length/3;
+      for(let i=0;i<n;i++){const L=S.label[o+i];if(L<0||!hid[o+i])continue;tally.set(L,(tally.get(L)||0)+S.area[o+i]);}}
+    if(!tally.size)for(const q of cand){const o=S.offs[q],n=S.parts[q].m.f.length/3;
+      for(let i=0;i<n;i++){const L=S.label[o+i];if(L>=0)tally.set(L,(tally.get(L)||0)+S.area[o+i]);}}
+    let best=-1,ba=-1;for(const [L,a] of tally)if(a>ba){ba=a;best=L;}
+    if(best<0)continue;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let i=0;i<n;i++)S.label[o+i]=best;}
 }
 function matchFilaments(slots){
   const PL=palLab(), owned=C.PAL.map((f,i)=>f.owned!==false?i:-1).filter(i=>i>=0);
