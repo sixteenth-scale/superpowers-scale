@@ -9567,6 +9567,8 @@ async function photoDetail(file,fig,active,regM,hid){
   const cv=new OffscreenCanvas(W,H),cx=cv.getContext("2d");cx.drawImage(bmp,0,0,W,H);const im=cx.getImageData(0,0,W,H).data;
   const px=(x,y)=>{x=Math.max(1,Math.min(W-2,Math.round(x)));y=Math.max(1,Math.min(H-2,Math.round(y)));let r=0,g=0,b=0;
     for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const o=((y+j)*W+x+i)*4;r+=im[o];g+=im[o+1];b+=im[o+2];}return [r/2295,g/2295,b/2295];};
+  const flat=(x,y)=>{x=Math.max(1,Math.min(W-2,Math.round(x)));y=Math.max(1,Math.min(H-2,Math.round(y)));const m=px(x,y);let dv=0;
+    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const o=((y+j)*W+x+i)*4;dv+=Math.abs(im[o]/255-m[0])+Math.abs(im[o+1]/255-m[1])+Math.abs(im[o+2]/255-m[2]);}return dv/9<0.05;};
   /* the figure in the photo: everything that isn't the background */
   const bord=[];for(let x=0;x<W;x+=4){bord.push(px(x,1),px(x,H-2));}for(let y=0;y<H;y+=4){bord.push(px(1,y),px(W-2,y));}
   const bg=[0,1,2].map(k=>bord.map(c=>c[k]).sort((a,b)=>a-b)[bord.length>>1]);
@@ -9605,7 +9607,7 @@ async function photoDetail(file,fig,active,regM,hid){
   }
   dbg.score=best&&best.score;dbg.dir=best&&best.d;
   if(!best||!isFinite(best.score))return 0;
-  const {d,dep,sx,sy,toPhoto}=best, regLab=S.regions.map(r=>C.lab(...r.rgb)), R=Math.round(0.035*H), cosCrease=Math.cos(25*Math.PI/180);
+  const {d,dep,sx,sy,toPhoto}=best, regLab=S.regions.map(r=>C.lab(...r.rgb)), R=Math.round(0.015*H), cosCrease=Math.cos(25*Math.PI/180);
   let painted=0,added=0;const newRegs=[];
   for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi],n=f.length/3,nb=S.nb[pi],A=S.area;
     let pieceA=0;for(let t=0;t<n;t++)pieceA+=A[o+t];
@@ -9633,7 +9635,7 @@ async function photoDetail(file,fig,active,regM,hid){
       for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
         regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
         /* a color the photo has and Meshy missed (an emblem's green): add it as a new region */
-        if(bd>18&&added<6){let nn=-1,nd=Infinity;newRegs.forEach(ri=>{const dd=C.dE(l,regLab[ri]);if(dd<nd){nd=dd;nn=ri;}});
+        if(bd>18&&added<6&&flat(q[0]+bo[0],q[1]+bo[1])){let nn=-1,nd=Infinity;newRegs.forEach(ri=>{const dd=C.dE(l,regLab[ri]);if(dd<nd){nd=dd;nn=ri;}});
           if(nn>=0&&nd<14)bL=nn;else{S.regions.push({id:S.regions.length,rgb,fil:-1,area:0,dE:0,patch:false,photo:true});
             regLab.push(l);bL=S.regions.length-1;newRegs.push(bL);added++;}}
         if(bL>=0&&S.label[o+t]!==bL){S.label[o+t]=bL;painted++;}}
@@ -9643,6 +9645,11 @@ async function photoDetail(file,fig,active,regM,hid){
     }
     await tick();
   }
+  /* a new color that only caught a few triangles was an edge blend in the photo: drop it */
+  if(newRegs.length){const cnt=new Map();for(let i=0;i<S.nFaces;i++)if(newRegs.includes(S.label[i]))cnt.set(S.label[i],(cnt.get(S.label[i])||0)+1);
+    const keep=S.regions.map((_,ri)=>!newRegs.includes(ri)||(cnt.get(ri)||0)>=20);
+    for(let i=0;i<S.nFaces;i++){const L=S.label[i];if(L<0||keep[L])continue;let bL=-1,bd=Infinity;
+      regLab.forEach((rl,ri)=>{if(!keep[ri])return;const dd=C.dE(regLab[L],rl);if(dd<bd){bd=dd;bL=ri;}});S.label[i]=bL;}}
   if(painted)sumAreas();
   return painted;
 }
