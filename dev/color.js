@@ -256,7 +256,14 @@ async function read3MF(buf,name){
     while((pm=pre.exec(t))){const id=(/plater_id" value="(\d+)"/.exec(pm[1])||[])[1],nm=(/plater_name" value="([^"]*)"/.exec(pm[1])||[])[1]||"";
       const ore2=/<model_instance>\s*<metadata key="object_id" value="(\d+)"/g;let om;
       while((om=ore2.exec(pm[1])))plates.set(om[1],{id:+id,name:nm});}}
-  parts.forEach(p=>{const pl=plates.get(p.objectid);p.plate=pl?pl.id:0;p.plateName=pl?pl.name:"";});
+  /* Bambu lays plates out in a grid, one bed plus a 20% gap apart; a piece's plate is where it sits */
+  let bed=256; try{const pa=JSON.parse(dec.decode(files.get("Metadata/project_settings.config"))).printable_area;
+    if(pa)bed=Math.max(...pa.map(s=>+s.split("x")[0]))||256;}catch(e){}
+  const nPlates=Math.max(1,(ms?(dec.decode(ms).match(/<plate>/g)||[]).length:1)),cols=Math.ceil(Math.sqrt(nPlates)),stride=bed*1.2;
+  parts.forEach(p=>{const v=xf(p.M,p.m.v),b=bboxOf(v),x=(b.lo[0]+b.hi[0])/2,y=(b.lo[1]+b.hi[1])/2;
+    const col=Math.floor(x/stride),row=Math.floor((bed-y)/stride),inBed=x-col*stride<=bed+1&&x-col*stride>=-1;
+    const id=col>=0&&col<cols&&row>=0&&inBed?row*cols+col+1:0;
+    p.plate=id>=1&&id<=nPlates?id:0;});
   let ps=null; const psb=files.get("Metadata/project_settings.config");
   if(psb){try{ps=JSON.parse(dec.decode(psb));}catch(e){}}
   return {files,texts,parts,ps,bambu:/BambuStudio/.test(main)};
@@ -604,7 +611,7 @@ function setFilaments(ps,fils){
       m.push(i===j?"0":(i<N0&&j<N0&&old[i*N0+j]!=null?old[i*N0+j]:"300"));ps[k]=m;continue;}
     const out=[];for(let i=0;i<N;i++){const src=Math.min(i,N0-1);for(let j=0;j<b;j++)out.push(v[src*b+j]);}ps[k]=out;}
   const suffix=((ps.filament_settings_id||[""])[0].match(/ @.*$/)||[" @BBL P1S 0.4 nozzle"])[0];
-  fils.forEach((f,i)=>{
+  fils.forEach((f,i)=>{ if(f.keep)return;
     ps.filament_colour[i]=f.hex; if(ps.filament_multi_colour)ps.filament_multi_colour[i]=f.hex;
     const bambu=f.vendor==="Bambu Lab"&&PRESET[f.fid];
     if(ps.filament_settings_id)ps.filament_settings_id[i]=(bambu?PRESET[f.fid]:"Generic "+(/PETG/.test(f.type||"")?"PETG":/TPU/.test(f.type||"")?"TPU":"PLA"))+suffix;
@@ -649,6 +656,11 @@ async function save3MF(S,fils,faceState){
       for(const {p,pi} of list){const sp=spans.get(p.src.id);
         xml=xml.slice(0,sp.from)+meshXML(p.m,faceState[pi],!p.subdivided,xml,sp)+xml.slice(sp.to);}
       files.set(path,xml);}
+    const msb=pr.files.get("Metadata/model_settings.config");
+    if(msb){let t=new TextDecoder().decode(msb);
+      t=t.replace(/(key="filament_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"1");return a+s.slice(0,fils.length).join(" ")+'"';});
+      t=t.replace(/(key="filament_volume_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"0");return a+s.slice(0,fils.length).join(" ")+'"';});
+      files.set("Metadata/model_settings.config",t);}
     const ps=setFilaments(JSON.parse(JSON.stringify(pr.ps||minimalSettings([{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}]))),fils);
     files.set("Metadata/project_settings.config",JSON.stringify(ps,null,4));
     return zip(files);

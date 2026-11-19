@@ -109,7 +109,8 @@ function ready(){
 function setupTarget(){
   const t=S.target; S.parts=t.parts; S.project=t.pr&&t.pr.bambu?t.pr:(t.pr||null);
   S.raw=null;S.undo=[];S.selected=-1;q("spcUndo").disabled=true;
-  S.on=new Set(t.parts.map((_,i)=>i));S.figPart=-1;
+  const nPl=new Set(t.parts.map(p=>p.plate||0)).size;
+  S.on=nPl>1?new Set():new Set(t.parts.map((_,i)=>i));S.figPart=-1;
   /* a piece named like the project is the whole figure, already in the file */
   const stem=t.name.replace(/\.\w+$/,"").toLowerCase();
   if(t.parts.length>1){const fi=t.parts.findIndex(p=>p.name.replace(/\.\w+$/,"").toLowerCase()===stem);if(fi>=0&&!S.figure){S.figPart=fi;S.on.delete(fi);}}
@@ -118,8 +119,8 @@ function setupTarget(){
   if(painted){ /* reopen: one region per filament already used */
     const fc=(t.pr.ps&&t.pr.ps.filament_colour)||[];
     const state=new Int32Array(S.nFaces);
-    t.parts.forEach((p,pi)=>{for(let i=0;i<p.m.f.length/3;i++)state[S.offs[pi]+i]=p.paint?C.unpaint(p.paint[i])||1:1;});
-    const used=[...new Set(state)].sort((a,b)=>a-b), map=new Map();
+    t.parts.forEach((p,pi)=>{for(let i=0;i<p.m.f.length/3;i++)state[S.offs[pi]+i]=p.paint?C.unpaint(p.paint[i])||1:0;});
+    const used=[...new Set(state)].filter(s=>s>0).sort((a,b)=>a-b), map=new Map([[0,-1]]);
     S.regions=used.map((s,ri)=>{map.set(s,ri);const hex=(fc[s-1]||"#808080").slice(0,7).toUpperCase();
       const i=C.PAL.findIndex(f=>f.hex===hex);const fil=i>=0?i:addPal({vendor:"",type:"",color:"Filament "+s+" "+hex,hex,fid:"",owned:false});
       return {id:ri,rgb:C.hex2rgb(hex),fil,area:0,dE:0,patch:false};});
@@ -160,9 +161,9 @@ function renderPieces(){
   if(!S.parts.length||S.parts.length<2&&S.figPart<0){box.innerHTML="";return;}
   const groups=new Map();S.parts.forEach((p,i)=>{const k=p.plate||0;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);});
   const keys=[...groups.keys()].sort((a,b)=>(a||99)-(b||99));
-  box.innerHTML=`<div class="note">Tick the pieces to color. Mark the one-piece figure with <b>figure</b> if it is in this file — then box 2 isn't needed.</div>`+
+  box.innerHTML=`<div class="note">Tick the pieces to color — anything unticked is left exactly as it is. Mark the one-piece figure with <b>figure</b> if it is in this file — then box 2 isn't needed.</div>`+
     keys.map(k=>{const ids=groups.get(k),all=ids.every(i=>S.on.has(i)||i===S.figPart);
-      return `<h4><input type="checkbox" data-plate="${k}" ${all?"checked":""}>${k?`Plate ${k}`:(keys.length>1?"Not listed on a plate":"Pieces")}</h4>`+
+      return `<h4><input type="checkbox" data-plate="${k}" ${all?"checked":""}>${k?`Plate ${k}`:(keys.length>1?"Off the plates":"Pieces")}</h4>`+
         ids.map(i=>`<label class="spc-pc${S.on.has(i)?"":" off"}"><input type="checkbox" data-i="${i}" ${S.on.has(i)?"checked":""} ${i===S.figPart?"disabled":""}><span>${esc(S.parts[i].name)}</span><button data-fig="${i}" class="${i===S.figPart?"on":""}" title="This is the one-piece figure the others were cut from">figure</button></label>`).join("");}).join("");
   box.querySelectorAll("input[data-i]").forEach(c=>c.onchange=()=>{const i=+c.dataset.i;c.checked?S.on.add(i):S.on.delete(i);renderPieces();paint();});
   box.querySelectorAll("input[data-plate]").forEach(c=>c.onchange=()=>{groups.get(+c.dataset.plate).forEach(i=>{if(i===S.figPart)return;c.checked?S.on.add(i):S.on.delete(i);});renderPieces();paint();});
@@ -316,30 +317,29 @@ q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel")
 /* ---------- save ---------- */
 q("spcSave").onclick=async()=>{
   try{q("spcSave").disabled=true;log("Writing the 3MF…");await tick();
-    /* filament order: most area first */
+    /* filaments: the project's own slots stay exactly as they are (unpainted pieces print in their
+       slot); colors already there are reused, new ones are added after them */
     sumAreas();const use=new Map();S.regions.forEach(r=>{if(r.area>0)use.set(r.fil,(use.get(r.fil)||0)+r.area);});
     const order=[...use.entries()].sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
-    if(order.length>16)throw new Error(`${order.length} filaments — Bambu painting stops at 16. Merge some regions first.`);
-    const slot=new Map(order.map((f,i)=>[f,i+1]));
-    const fils=order.map(f=>{const p=C.PAL[f];return {...p,type:p.type||p.ptype||"PLA"};});
-    /* pieces not colored this time keep any paint they had */
-    const oldFc=(S.project&&S.project.ps&&S.project.ps.filament_colour)||[], ps0=(S.project&&S.project.ps)||{};
+    const ps0=(S.project&&S.project.ps)||null, oldFc=(ps0&&ps0.filament_colour)||[];
+    const fils=oldFc.map((h,i)=>({keep:true,hex:h.slice(0,7).toUpperCase(),fid:((ps0.filament_ids||[])[i])||""}));
+    const slot=new Map();
+    order.forEach(pf=>{const p=C.PAL[pf],hex=p.hex.toUpperCase();
+      let k=fils.findIndex(f=>f.hex===hex&&(!f.keep||!p.fid||!f.fid||f.fid===p.fid));
+      if(k<0){fils.push({...p,hex,type:p.type||p.ptype||"PLA"});k=fils.length-1;}
+      slot.set(pf,k+1);});
+    if(fils.length>16)throw new Error(`${fils.length} filaments — Bambu painting stops at 16. Merge some regions first.`);
+    /* only pieces colored here are rewritten; everything else in the file is left as it was */
     const list=[],states=[];
     S.parts.forEach((p,pi)=>{const n=p.m.f.length/3,o=S.offs[pi];
-      let full=true;for(let i=0;i<n;i++)if(S.label[o+i]<0){full=false;break;}
-      if(full){const st=new Uint8Array(n);for(let i=0;i<n;i++)st[i]=slot.get(S.regions[S.label[o+i]].fil);list.push(p);states.push(st);return;}
-      if(!p.paint||p.subdivided)return;
-      const st=new Uint8Array(n);
-      for(let i=0;i<n;i++){const s=C.unpaint(p.paint[i])||1,hex=(oldFc[s-1]||"#808080").slice(0,7).toUpperCase();
-        let k=fils.findIndex(f=>f.hex.toUpperCase()===hex);
-        if(k<0){fils.push({hex,color:"kept "+hex,vendor:(ps0.filament_vendor||[])[s-1]||"",fid:(ps0.filament_ids||[])[s-1]||"",type:"PLA"});k=fils.length-1;}
-        st[i]=k+1;}
-      list.push(p);states.push(st);});
-    if(fils.length>16)throw new Error(`${fils.length} filaments — Bambu painting stops at 16.`);
+      for(let i=0;i<n;i++)if(S.label[o+i]<0)return;
+      const st=new Uint8Array(n);for(let i=0;i<n;i++)st[i]=slot.get(S.regions[S.label[o+i]].fil);list.push(p);states.push(st);});
+    if(!list.length)throw new Error("Nothing colored to save yet.");
     const blob=await C.save3MF({project:S.project,parts:list},fils,states);
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);
     a.download=S.targetName.replace(/\.\w+$/,"").replace(/_color$/,"")+"_color.3mf";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-    log(`Saved ${a.download}\n`+fils.map((f,i)=>`Filament ${i+1}: ${C.fname(f)} ${f.hex}`).join("\n"));
+    log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.\n`+
+      fils.map((f,i)=>`Filament ${i+1}: ${f.keep?"(already in project) "+f.hex:C.fname(f)+" "+f.hex}`).join("\n"));
   }catch(e){log(e.message,true);}finally{q("spcSave").disabled=false;}
 };
 q("spcClear").onclick=()=>{Object.assign(S,{target:null,figure:null,images:[],colored:null,parts:[],project:null,raw:null,label:null,regions:[],undo:[],selected:-1});
