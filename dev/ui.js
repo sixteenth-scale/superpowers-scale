@@ -406,7 +406,7 @@ async function photoDetail(file,fig,active,regM,hid){
   }
   if(!best||!isFinite(best.score))return 0;
   const {d,dep,sx,sy,toPhoto}=best, regLab=S.regions.map(r=>C.lab(...r.rgb)), R=Math.round(0.035*H), cosCrease=Math.cos(25*Math.PI/180);
-  let painted=0;
+  let painted=0,added=0;const newRegs=[];
   for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi],n=f.length/3,nb=S.nb[pi],A=S.area;
     let pieceA=0;for(let t=0;t<n;t++)pieceA+=A[o+t];
     /* sculpted sections of this piece */
@@ -428,8 +428,12 @@ async function photoDetail(file,fig,active,regM,hid){
         for(const [t,q] of smp){const L=S.label[o+t];if(L<0)continue;e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[L]);}
         if(e<be){be=e;bo=[dx,dy];}}
       if(be/smp.length>25)continue; /* no convincing match: leave it */
-      for(const [t,q] of vis){const l=C.lab(...px(q[0]+bo[0],q[1]+bo[1]));let bL=-1,bd=Infinity;
+      for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
         regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
+        /* a color the photo has and Meshy missed (an emblem's green): add it as a new region */
+        if(bd>18&&added<6){let nn=-1,nd=Infinity;newRegs.forEach(ri=>{const dd=C.dE(l,regLab[ri]);if(dd<nd){nd=dd;nn=ri;}});
+          if(nn>=0&&nd<14)bL=nn;else{S.regions.push({id:S.regions.length,rgb,fil:-1,area:0,dE:0,patch:false,photo:true});
+            regLab.push(l);bL=S.regions.length-1;newRegs.push(bL);added++;}}
         if(bL>=0&&S.label[o+t]!==bL){S.label[o+t]=bL;painted++;}}
       /* lone specks inside the feature follow their neighbors */
       for(let it=0;it<2;it++)for(const t of mem){const L=S.label[o+t],nl=[];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&sec[u2]===sec[t])nl.push(S.label[o+u2]);}
