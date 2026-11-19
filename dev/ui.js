@@ -402,7 +402,7 @@ async function photoDetail(file,fig,active,regM,hid){
       const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3,X=(v[a]+v[b]+v[c])/3,Y=(v[a+1]+v[b+1]+v[c+1])/3,Z=(v[a+2]+v[b+2]+v[c+2])/3;
       const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
       const q=toPhoto(X,Z),pc=px(q[0],q[1]),i=o+t;err+=C.dE(C.lab(...pc),C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2]));cnt++;}}
-    const score=cnt?err/cnt:Infinity;
+    const score=cnt?err/cnt:Infinity;(window._spcDbg.dirs=window._spcDbg.dirs||[]).push([d,cnt,+score.toFixed?.(2),fx0,fx1,fy0,fy1]);
     /* models face -Y by convention; the back view must win clearly to be chosen */
     if(!best||score<best.score*0.9)best={score,d,dep,sx,sy,toPhoto,s};
   }
