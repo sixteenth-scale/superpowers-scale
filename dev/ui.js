@@ -420,20 +420,29 @@ async function photoDetail(file,fig,active,regM,hid){
       while(st.length){const t=st.pop();for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
         const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];if(cs>=cosCrease){sec[u2]=secs.length;st.push(u2);mem.push(u2);}}}
       secs.push(mem);}
+    /* every face of this piece the camera can see, with where it lands in the photo */
+    const seen=new Map();
+    for(let t=0;t<n;t++){if(fn[t*3+1]*d<0.3||hid[o+t])continue;
+      const ia=f[t*3]*3,ib=f[t*3+1]*3,ic=f[t*3+2]*3,X=(v[ia]+v[ib]+v[ic])/3,Y=(v[ia+1]+v[ib+1]+v[ic+1])/3,Z=(v[ia+2]+v[ib+2]+v[ic+2])/3;
+      const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
+      seen.set(t,[toPhoto(X,Z),X,Z]);}
+    const seenList=[...seen.entries()];
     for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.04*pieceA||mem.length<8)continue;dbg.tried++;
-      const vis=[];
-      for(const t of mem){if(fn[t*3+1]*d<0.3||hid[o+t])continue;
-        const ia=f[t*3]*3,ib=f[t*3+1]*3,ic=f[t*3+2]*3,X=(v[ia]+v[ib]+v[ic])/3,Y=(v[ia+1]+v[ib+1]+v[ic+1])/3,Z=(v[ia+2]+v[ib+2]+v[ic+2])/3;
-        const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
-        vis.push([t,toPhoto(X,Z)]);}
+      const vis=mem.filter(t=>seen.has(t)).map(t=>[t,seen.get(t)[0]]);
       if(vis.length<0.6*mem.length||vis.length<8){(dbg.novis=dbg.novis||[]).push([mem.length,vis.length]);continue;}
-      /* nudge until the photo lines up with this feature */
-      let bo=[0,0],be=Infinity;const smp=vis.filter((_,i)=>i%Math.max(1,Math.floor(vis.length/120))===0);
+      /* line up on the surface around the feature, where Meshy's colors can be trusted */
+      let cx0=0,cz0=0;vis.forEach(([t])=>{const s=seen.get(t);cx0+=s[1];cz0+=s[2];});cx0/=vis.length;cz0/=vis.length;
+      let rad=0;vis.forEach(([t])=>{const s=seen.get(t);rad=Math.max(rad,Math.hypot(s[1]-cx0,s[2]-cz0));});
+      const secId=sec[vis[0][0]],ring=[];
+      for(const [t,s] of seenList){if(sec[t]===secId||S.label[o+t]<0)continue;const dd=Math.hypot(s[1]-cx0,s[2]-cz0);if(dd>rad*1.05&&dd<rad*2.2)ring.push([t,s[0]]);}
+      const rs=ring.filter((_,i)=>i%Math.max(1,Math.floor(ring.length/150))===0);
+      if(rs.length<10){(dbg.noring=dbg.noring||0);dbg.noring++;continue;}
+      let bo=[0,0],be=Infinity;
       for(let dy=-R;dy<=R;dy+=2)for(let dx=-R;dx<=R;dx+=2){let e=0;
-        for(const [t,q] of smp){const L=S.label[o+t];if(L<0)continue;e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[L]);}
-        if(e<be){be=e;bo=[dx,dy];}}
-      (dbg.fits=dbg.fits||[]).push([vis.length,+(be/smp.length).toFixed(1),bo]);
-      if(be/smp.length>25)continue; /* no convincing match: leave it */
+        for(const [t,q] of rs)e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[S.label[o+t]]);
+        e=e/rs.length+0.05*Math.hypot(dx,dy);if(e<be){be=e;bo=[dx,dy];}}
+      (dbg.fits=dbg.fits||[]).push([vis.length,+be.toFixed(1),bo]);
+      if(be>20)continue; /* the photo doesn't line up here: leave it */
       dbg.matched++;
       for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
         regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
