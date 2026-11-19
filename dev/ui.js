@@ -239,6 +239,22 @@ async function run(){
     if(!best)break;const [,A,B]=best,ia=regs.indexOf(A),ib=regs.indexOf(B),t=A.area+B.area;
     A.rgb=A.rgb.map((x,j)=>(x*A.area+B.rgb[j]*B.area)/t);A.area=t;B.area=0;regs.forEach(r=>{if(r.alias===ib)r.alias=ia;});}
   for(let i=0;i<S.nFaces;i++)if(lab[i]>=0)lab[i]=regs[lab[i]].alias;
+  /* edges follow the sculpt: a color boundary costs a lot across smooth surface and almost nothing
+     along a crease, so boundaries settle into the helmet rim, cuffs, belt edges; blotches dissolve */
+  log("Tidying color edges along the sculpt…");await tick();
+  {const cl=new Map();regs.forEach((r,i)=>{if(r.alias===i&&r.area>0)cl.set(i,C.lab(...r.rgb));});
+   for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],fn=C.faceNormals(p.m);
+     const w=new Float32Array(n*3);for(let t=0;t<n;t++)for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0)continue;
+       const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];w[t*3+e]=Math.exp(-(1-cs)/0.08);}
+     const cost=(t,Lb)=>{const c0=cl.get(Lb);if(!c0)return 99;const i=o+t;return Math.hypot(L[i*3]-c0[0],L[i*3+1]-c0[1],L[i*3+2]-c0[2])/18;};
+     for(let sweep=0;sweep<6;sweep++){let changed=0;
+       for(let t=0;t<n;t++){const i=o+t;if(hid[i]||lab[i]<0)continue;
+         const cand=new Set([lab[i]]);for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&lab[o+u2]>=0&&!hid[o+u2])cand.add(lab[o+u2]);}
+         if(cand.size<2)continue;let best=lab[i],be=Infinity;
+         for(const Lb of cand){let en=cost(t,Lb);for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||hid[o+u2]||lab[o+u2]<0)continue;if(lab[o+u2]!==Lb)en+=1.6*w[t*3+e];}
+           if(en<be){be=en;best=Lb;}}
+         if(best!==lab[i]){lab[i]=best;changed++;}}
+       if(!changed)break;await tick();}}}
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=lab.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,Math.max(0.5,detail*detail*4));});
   /* specks of color under 0.1% of the model go to the nearest-colored region */

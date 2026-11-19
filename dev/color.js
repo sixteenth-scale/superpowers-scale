@@ -440,6 +440,12 @@ async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece si
   return r.err<=best.err?r:best;
 }
 
+function faceNormals(m,M){const v=M?xf(M,m.v):m.v,f=m.f,n=f.length/3,o=new Float32Array(n*3);
+  for(let t=0;t<n;t++){const i=f[t*3]*3,j=f[t*3+1]*3,k=f[t*3+2]*3;
+    const ux=v[j]-v[i],uy=v[j+1]-v[i+1],uz=v[j+2]-v[i+2],wx=v[k]-v[i],wy=v[k+1]-v[i+1],wz=v[k+2]-v[i+2];
+    let x=uy*wz-uz*wy,y=uz*wx-ux*wz,z=ux*wy-uy*wx;const l=Math.hypot(x,y,z)||1;o[t*3]=x/l;o[t*3+1]=y/l;o[t*3+2]=z/l;}
+  return o;}
+
 /* ---------- colored source -> point cloud ---------- */
 function sampleColor(src,fid,u,w){
   const f=src.m.f,a=f[fid*3],b=f[fid*3+1],c=f[fid*3+2],z=1-u-w;
@@ -454,24 +460,31 @@ function sampleColor(src,fid,u,w){
 function colorCloud(sources,M,spacing){
   const tot=sources.reduce((s,x)=>s+areas(x.m,M).reduce((a,b)=>a+b,0),0);
   const N=Math.min(3000000,Math.max(200000,Math.round(tot/(spacing*spacing))));
-  const pts=[],cols=[];const rng=RNG(3);
+  const pts=[],cols=[],nrms=[];const rng=RNG(3);
   for(const src of sources){const a=areas(src.m,M).reduce((x,y)=>x+y,0),n=Math.round(N*a/tot);
-    const s=samplePts(src.m,M,n,rng);pts.push(s.p);const c=new Float32Array(n*3);
-    for(let i=0;i<n;i++){const r=sampleColor(src,s.fid[i],s.b[i*2],s.b[i*2+1]);c[i*3]=r[0];c[i*3+1]=r[1];c[i*3+2]=r[2];}cols.push(c);}
-  const P=new Float32Array(pts.reduce((s,x)=>s+x.length,0)),C=new Float32Array(P.length);let o=0;
-  pts.forEach((p,i)=>{P.set(p,o);C.set(cols[i],o);o+=p.length;});
-  return {P,C,G:grid(P,spacing*2)};
+    const s=samplePts(src.m,M,n,rng);pts.push(s.p);const c=new Float32Array(n*3),nn=new Float32Array(n*3),fn=faceNormals(src.m,M);
+    for(let i=0;i<n;i++){const r=sampleColor(src,s.fid[i],s.b[i*2],s.b[i*2+1]);c[i*3]=r[0];c[i*3+1]=r[1];c[i*3+2]=r[2];
+      const f=s.fid[i];nn[i*3]=fn[f*3];nn[i*3+1]=fn[f*3+1];nn[i*3+2]=fn[f*3+2];}cols.push(c);nrms.push(nn);}
+  const P=new Float32Array(pts.reduce((s,x)=>s+x.length,0)),C=new Float32Array(P.length),NN=new Float32Array(P.length);let o=0;
+  pts.forEach((p,i)=>{P.set(p,o);C.set(cols[i],o);NN.set(nrms[i],o);o+=p.length;});
+  return {P,C,N:NN,G:grid(P,spacing*2)};
 }
 async function transferColors(part,cloud,Mextra,tick0){
   let last=Date.now(); /* -> Float32Array rgb per face */
-  const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3),dist=new Float32Array(n);
+  const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3),dist=new Float32Array(n),
+    dot=new Float32Array(n),fn=faceNormals(part.m,M);
   const B=[[1/3,1/3]]; /* one sample: averaging across a boundary invents blend colors */
   for(let t=0;t<n;t++){if(tick0&&(t&4095)===0&&Date.now()-last>40){await tick0();last=Date.now();}
     const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3;let r=0,g=0,bl=0,k=0;
     for(const [u,w] of B){const z=1-u-w,x=z*v[a]+u*v[b]+w*v[c],y=z*v[a+1]+u*v[b+1]+w*v[c+1],zz=z*v[a+2]+u*v[b+2]+w*v[c+2];
       let [j,d]=cloud.G.near(x,y,zz,4); if(j<0)[j,d]=cloud.G.near(x,y,zz,40); if(j<0){d=1e9;continue;}
-      r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;dist[t]=d;}
+      r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;dist[t]=d;
+      dot[t]=fn[t*3]*cloud.N[j*3]+fn[t*3+1]*cloud.N[j*3+1]+fn[t*3+2]*cloud.N[j*3+2];}
     if(k){out[t*3]=r/k;out[t*3+1]=g/k;out[t*3+2]=bl/k;}else{dist[t]=1e9;}}
+  /* a face that points a different way from the surface it's nearest to (a cut face beside the
+     neck, a socket wall) is not that surface: mark it hidden. Meshy's winding may be reversed. */
+  let pos=0;for(let t=0;t<n;t+=7)if(dot[t]>0)pos++;const flip=pos<Math.ceil(n/7)/2?-1:1;
+  for(let t=0;t<n;t++)if(dot[t]*flip<0.35)dist[t]=Math.max(dist[t],1e6);
   return {rgb:out,dist};
 }
 
@@ -695,7 +708,7 @@ async function save3MF(S,fils,faceState){
 }
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
-return {OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
+return {faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
   hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,meanEdge,stlOf,stlBytes,read3MF,readGLB,
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
