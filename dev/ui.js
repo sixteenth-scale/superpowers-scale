@@ -134,27 +134,29 @@ function setupTarget(){
 function rebuildIndex(){S.offs=[];let o=0;S.parts.forEach(p=>{S.offs.push(o);o+=p.m.f.length/3;});S.nFaces=o;
   S.area=new Float32Array(o);S.parts.forEach((p,pi)=>S.area.set(C.areas(p.m,p.M),S.offs[pi]));S.nb=S.parts.map(p=>C.adjacency(p.m));}
 function sumAreas(){S.regions.forEach(r=>r.area=0);for(let i=0;i<S.nFaces;i++)if(S.label[i]>=0)S.regions[S.label[i]].area+=S.area[i];}
-function showViewer(){
+function visibleParts(){const on=[...S.on].filter(i=>i!==S.figPart);return on.length?on.sort((a,b)=>a-b):S.parts.map((_,i)=>i);}
+function showViewer(keepView){
   q("spcViewWrap").hidden=false;
   if(!S.viewer){S.viewer=C.Viewer(q("spcCv"),onPick);if(!S.viewer){log("This browser has no WebGL2 — the 3D view is off, but coloring and saving still work.",true);return;}}
-  const pos=new Float32Array(S.nFaces*9);
-  S.parts.forEach((p,pi)=>{const v=C.xf(p.M,p.m.v),f=p.m.f,o=S.offs[pi]*9;for(let i=0;i<f.length;i++){const k=f[i]*3;pos[o+i*3]=v[k];pos[o+i*3+1]=v[k+1];pos[o+i*3+2]=v[k+2];}});
-  S.viewer.setGeometry(pos); paint();
+  const vis=visibleParts();let n=0;vis.forEach(pi=>n+=S.parts[pi].m.f.length/3);
+  const pos=new Float32Array(n*9);S.vmap=new Int32Array(n);S.vrange=new Map();let o=0;
+  vis.forEach(pi=>{const p=S.parts[pi],v=C.xf(p.M,p.m.v),f=p.m.f,nf=f.length/3,g=S.offs[pi];
+    for(let i=0;i<f.length;i++){const k=f[i]*3;pos[o*9+i*3]=v[k];pos[o*9+i*3+1]=v[k+1];pos[o*9+i*3+2]=v[k+2];}
+    for(let t=0;t<nf;t++)S.vmap[o+t]=g+t; S.vrange.set(pi,[o,o+nf]); o+=nf;});
+  S.vpos=pos; S.viewer.setGeometry(pos,keepView); paint();
+  q("spcFocus").innerHTML='<option value="">Zoom to piece…</option>'+vis.map(pi=>`<option value="${pi}">${esc(S.parts[pi].name)}</option>`).join("");
 }
-function paint(){ if(!S.viewer)return;
-  const col=new Uint8Array(S.nFaces*9);
+function paint(){ if(!S.viewer||!S.vmap)return;
+  const n=S.vmap.length,col=new Uint8Array(n*9);
   const fc=S.regions.map((r,ri)=>{const c=S.showRaw||r.fil<0?r.rgb:C.hex2rgb(C.PAL[r.fil].hex);
     const h=ri===S.selected?0.35:0;return c.map(x=>Math.round(255*(x+(1-x)*h)));});
-  const off=new Uint8Array(S.nFaces);S.parts.forEach((p,pi)=>{if(!S.on.has(pi))off.fill(1,S.offs[pi],S.offs[pi]+p.m.f.length/3);});
-  for(let i=0;i<S.nFaces;i++){let c;
-    if(off[i]&&!(S.label&&S.label[i]>=0&&!S.showRaw))c=i>=S.offs[S.figPart]&&S.figPart>=0&&i<S.offs[S.figPart]+S.parts[S.figPart].m.f.length/3?[150,170,205]:[215,215,220];
-    else if(S.showRaw&&S.raw)c=[S.raw[i*3]*255,S.raw[i*3+1]*255,S.raw[i*3+2]*255];
-    else if(S.label&&S.label[i]>=0)c=fc[S.label[i]];else c=[200,200,205];
-    if(S.showRaw&&S.raw&&S.label&&S.label[i]===S.selected)c=c.map(x=>x+(255-x)*0.35);
-    for(let k=0;k<3;k++){col[i*9+k*3]=c[0];col[i*9+k*3+1]=c[1];col[i*9+k*3+2]=c[2];}}
+  for(let d=0;d<n;d++){const i=S.vmap[d];let c;const L=S.label?S.label[i]:-1;
+    if(S.showRaw&&S.raw&&L>=0)c=[S.raw[i*3]*255,S.raw[i*3+1]*255,S.raw[i*3+2]*255];
+    else if(L>=0)c=fc[L];else c=[205,205,212];
+    if(S.showRaw&&L>=0&&L===S.selected)c=c.map(x=>x+(255-x)*0.35);
+    for(let k=0;k<3;k++){col[d*9+k*3]=c[0];col[d*9+k*3+1]=c[1];col[d*9+k*3+2]=c[2];}}
   S.viewer.setColors(col);
 }
-
 /* ---------- pieces ---------- */
 function renderPieces(){
   const box=q("spcPieces");
@@ -165,11 +167,11 @@ function renderPieces(){
     keys.map(k=>{const ids=groups.get(k),all=ids.every(i=>S.on.has(i)||i===S.figPart);
       return `<h4><input type="checkbox" data-plate="${k}" ${all?"checked":""}>${k?`Plate ${k}`:(keys.length>1?"Off the plates":"Pieces")}</h4>`+
         ids.map(i=>`<label class="spc-pc${S.on.has(i)?"":" off"}"><input type="checkbox" data-i="${i}" ${S.on.has(i)?"checked":""} ${i===S.figPart?"disabled":""}><span>${esc(S.parts[i].name)}</span><button data-fig="${i}" class="${i===S.figPart?"on":""}" title="This is the one-piece figure the others were cut from">figure</button></label>`).join("");}).join("");
-  box.querySelectorAll("input[data-i]").forEach(c=>c.onchange=()=>{const i=+c.dataset.i;c.checked?S.on.add(i):S.on.delete(i);renderPieces();paint();});
-  box.querySelectorAll("input[data-plate]").forEach(c=>c.onchange=()=>{groups.get(+c.dataset.plate).forEach(i=>{if(i===S.figPart)return;c.checked?S.on.add(i):S.on.delete(i);});renderPieces();paint();});
+  box.querySelectorAll("input[data-i]").forEach(c=>c.onchange=()=>{const i=+c.dataset.i;c.checked?S.on.add(i):S.on.delete(i);renderPieces();showViewer();});
+  box.querySelectorAll("input[data-plate]").forEach(c=>c.onchange=()=>{groups.get(+c.dataset.plate).forEach(i=>{if(i===S.figPart)return;c.checked?S.on.add(i):S.on.delete(i);});renderPieces();showViewer();});
   box.querySelectorAll("button[data-fig]").forEach(b=>b.onclick=e=>{e.preventDefault();const i=+b.dataset.fig;
     if(S.figPart===i){S.figPart=-1;S.on.add(i);}else{if(S.figPart>=0)S.on.add(S.figPart);S.figPart=i;S.on.delete(i);}
-    renderPieces();paint();ready();});
+    renderPieces();showViewer();ready();});
 }
 
 /* ---------- color it ---------- */
@@ -205,19 +207,23 @@ async function run(){
   /* 3. pieces */
   let G=null;
   if(parted){G=C.grid(figPts.p,al.diag/80);}
-  const raws=[];let flags=[];
+  const raws=[],tol=[];let flags=[],lastErr=0;
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi)){raws.push(null);continue;}
     if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
     let Mx=null;
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
-      const r=await C.registerPart(p,figPts,G,tick,al.diag/80); Mx=r.M; if(r.err>0.6)flags.push(`${p.name} (${r.err.toFixed(2)} mm)`);}
+      const r=await C.registerPart(p,figPts,G,tick,al.diag/80); Mx=r.M; lastErr=r.err; if(r.err>0.6)flags.push(`${p.name} (${r.err.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
-    raws.push(await C.transferColors(p,cloud,Mx,tick));}
+    const tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
   rebuildIndex();
-  S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r,S.offs[pi]*3);});
+  S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r.rgb,S.offs[pi]*3);});
   const act=new Uint8Array(S.nFaces);active.forEach(pi=>act.fill(1,S.offs[pi],S.offs[pi]+S.parts[pi].m.f.length/3));
-  const W=Float32Array.from(S.area,(a,i)=>a*act[i]);
+  /* faces with no matching surface on the figure (cut faces, joints, hip tops, sockets) are hidden:
+     they don't vote for colors and later take the color next to them */
+  const hid=new Uint8Array(S.nFaces);
+  raws.forEach((r,pi)=>{if(!r)return;const o=S.offs[pi];for(let i=0;i<r.dist.length;i++)if(r.dist[i]>tol[pi])hid[o+i]=1;});
+  const W=Float32Array.from(S.area,(a,i)=>a*act[i]*(hid[i]?0:1));
   /* 4. regions */
   log("Finding color regions…");await tick();
   const L=new Float32Array(S.nFaces*3);for(let i=0;i<S.nFaces;i++){const l=C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2]);L[i*3]=l[0];L[i*3+1]=l[1];L[i*3+2]=l[2];}
@@ -243,17 +249,38 @@ async function run(){
     if(to.size)for(let i=0;i<S.nFaces;i++)if(to.has(lab[i]))lab[i]=to.get(lab[i]);}
   const ids=[...new Set(lab)].filter(x=>x>=0);const remap=new Map(ids.map((x,i)=>[x,i]));remap.set(-1,-1);
   S.label=Int32Array.from(lab,x=>remap.get(x));
+  fillHidden(hid);
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
   sumAreas();S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
   /* region colors from final labels */
-  {const acc=S.regions.map(()=>[0,0,0,0]);for(let i=0;i<S.nFaces;i++){if(S.label[i]<0)continue;const s=acc[S.label[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
+  {const acc=S.regions.map(()=>[0,0,0,0]);for(let i=0;i<S.nFaces;i++){if(S.label[i]<0||hid[i])continue;const s=acc[S.label[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;
-  showViewer();renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
+  showViewer(true);renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
   const bad=S.regions.filter(r=>r.dE>10).length;
   log(`Done — ${S.regions.length} regions on ${new Set(S.regions.map(r=>r.fil)).size} filaments.`+
     (bad?` ${bad} flagged: no close match on your shelf.`:"")+(flags.length?`\nCheck these pieces, they did not fit the figure cleanly: ${flags.join(", ")}`:""));
+}
+/* hidden patches take the color around them. Each connected hidden patch gets one color (fewer
+   filament swaps): the neighbor color with the most shared edge, weighted by how much of the piece
+   that color covers, so a body color beats a thin trim like a belt. */
+function fillHidden(hid){
+  S.parts.forEach((p,pi)=>{const o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi];
+    const share=new Map();let tot=0;
+    for(let i=0;i<n;i++){const L=S.label[o+i];if(L<0||hid[o+i])continue;share.set(L,(share.get(L)||0)+S.area[o+i]);tot+=S.area[o+i];}
+    if(!tot)return;
+    const seen=new Uint8Array(n);
+    for(let s=0;s<n;s++){if(seen[s]||!hid[o+s]||S.label[o+s]<0)continue;
+      const patch=[s],votes=new Map();seen[s]=1;
+      for(let q2=0;q2<patch.length;q2++){const t=patch[q2];
+        for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0)continue;
+          if(hid[o+u2]){if(!seen[u2]&&S.label[o+u2]>=0){seen[u2]=1;patch.push(u2);}}
+          else{const L=S.label[o+u2];if(L>=0)votes.set(L,(votes.get(L)||0)+1);}}}
+      if(!votes.size)continue; /* a whole piece hidden inside (knee pins): keep its nearest color */
+      let best=-1,bs=-1;for(const [L,cnt] of votes){const sc=cnt*Math.sqrt((share.get(L)||0)/tot);if(sc>bs){bs=sc;best=L;}}
+      patch.forEach(t=>S.label[o+t]=best);}
+  });
 }
 function matchFilaments(slots){
   const PL=palLab(), owned=C.PAL.map((f,i)=>f.owned!==false?i:-1).filter(i=>i>=0);
@@ -296,7 +323,8 @@ q("spcUndo").onclick=()=>{const u=S.undo.pop();if(!u)return;
   q("spcUndo").disabled=!S.undo.length;paint();renderRegions();};
 
 /* ---------- picking ---------- */
-function onPick(face){
+function onPick(dface){
+  const face=S.vmap?S.vmap[dface]:dface;
   if(!S.label||face<0||face>=S.nFaces||S.label[face]<0)return;
   if(S.mode==="sel"){select(S.label[face]);const el=q("spcRegions").querySelector(`[data-i="${S.label[face]}"]`);if(el)el.scrollIntoView({block:"nearest"});return;}
   /* paint the connected patch of this face */
@@ -310,6 +338,12 @@ function onPick(face){
   faces.forEach(f=>S.label[f]=ri);
   pushUndo({type:"patch",faces,prev,newRegion});sumAreas();paint();renderRegions();
 }
+q("spcFit").onclick=()=>S.viewer&&S.viewer.fit();
+q("spcZoomIn").onclick=()=>S.viewer&&S.viewer.zoom(0.7);
+q("spcZoomOut").onclick=()=>S.viewer&&S.viewer.zoom(1/0.7);
+document.querySelectorAll("#spc [data-view]").forEach(b=>b.onclick=()=>{const v={front:[-Math.PI/2,0.1],back:[Math.PI/2,0.1],left:[Math.PI,0.1],right:[0,0.1],top:[-Math.PI/2,1.5]}[b.dataset.view];S.viewer&&S.viewer.view(...v);});
+q("spcFocus").onchange=e=>{const pi=+e.target.value;if(e.target.value===""||!S.viewer)return;const [a,b]=S.vrange.get(pi);
+  S.viewer.fitBox(C.bboxOf(S.vpos.subarray(a*9,b*9)));};
 const press=(on,off)=>{q(on).setAttribute("aria-pressed","true");q(off).setAttribute("aria-pressed","false");};
 q("spcShowFil").onclick=()=>{S.showRaw=false;press("spcShowFil","spcShowRaw");paint();};
 q("spcShowRaw").onclick=()=>{if(!S.raw)return;S.showRaw=true;press("spcShowRaw","spcShowFil");paint();};

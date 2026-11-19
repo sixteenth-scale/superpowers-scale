@@ -46,3 +46,5 @@
 .spc-pc button{font:11px "IBM Plex Sans",sans-serif;padding:1px 7px;border:1px solid var(--line);border-radius:3px;background:none;color:var(--text-3);cursor:pointer}
 .spc-pc button.on{background:var(--rule);border-color:var(--rule);color:#fff}
 .spc-pieces .note{padding:6px 8px;font-size:11.5px;color:var(--text-3)}
+.spc-nav{border-top:0;padding-top:0}
+.spc-nav select{max-width:220px}

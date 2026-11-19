@@ -464,14 +464,15 @@ function colorCloud(sources,M,spacing){
 }
 async function transferColors(part,cloud,Mextra,tick0){
   let last=Date.now(); /* -> Float32Array rgb per face */
-  const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3);
+  const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3),dist=new Float32Array(n);
   const B=[[1/3,1/3]]; /* one sample: averaging across a boundary invents blend colors */
   for(let t=0;t<n;t++){if(tick0&&(t&4095)===0&&Date.now()-last>40){await tick0();last=Date.now();}
     const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3;let r=0,g=0,bl=0,k=0;
     for(const [u,w] of B){const z=1-u-w,x=z*v[a]+u*v[b]+w*v[c],y=z*v[a+1]+u*v[b+1]+w*v[c+1],zz=z*v[a+2]+u*v[b+2]+w*v[c+2];
-      const [j]=cloud.G.near(x,y,zz,4); if(j<0)continue; r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;}
-    if(k){out[t*3]=r/k;out[t*3+1]=g/k;out[t*3+2]=bl/k;}else{out[t*3]=out[t*3+1]=out[t*3+2]=0.5;}}
-  return out;
+      let [j,d]=cloud.G.near(x,y,zz,4); if(j<0)[j,d]=cloud.G.near(x,y,zz,40); if(j<0){d=1e9;continue;}
+      r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;dist[t]=d;}
+    if(k){out[t*3]=r/k;out[t*3+1]=g/k;out[t*3+2]=bl/k;}else{dist[t]=1e9;}}
+  return {rgb:out,dist};
 }
 
 /* ---------- regions ---------- */
@@ -524,8 +525,12 @@ vec3 col=vc*l;o=vec4(col,1.);}`;
   const bP=gl.createBuffer(),bC=gl.createBuffer();let count=0,center=[0,0,0],radius=1;
   let yaw=-Math.PI/2,pitch=0.15,dist=3,panX=0,panY=0;
   const fbo=gl.createFramebuffer(),rb=gl.createRenderbuffer(),db=gl.createRenderbuffer();
-  function setGeometry(pos){gl.bindBuffer(gl.ARRAY_BUFFER,bP);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);count=pos.length/3;
-    const b=bboxOf(pos);center=[0,1,2].map(k=>(b.lo[k]+b.hi[k])/2);radius=Math.hypot(b.hi[0]-b.lo[0],b.hi[1]-b.lo[1],b.hi[2]-b.lo[2])/2||1;dist=radius*2.6;panX=panY=0;draw();}
+  let P0=new Float32Array(0);
+  function fitBox(b){center=[0,1,2].map(k=>(b.lo[k]+b.hi[k])/2);radius=Math.hypot(b.hi[0]-b.lo[0],b.hi[1]-b.lo[1],b.hi[2]-b.lo[2])/2||1;dist=radius*2.6;panX=panY=0;draw();}
+  function setGeometry(pos,keepView){gl.bindBuffer(gl.ARRAY_BUFFER,bP);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);count=pos.length/3;P0=pos;
+    if(!keepView&&count)fitBox(bboxOf(pos));else draw();}
+  function faceCenter(id){const o=id*9;return [(P0[o]+P0[o+3]+P0[o+6])/3,(P0[o+1]+P0[o+4]+P0[o+7])/3,(P0[o+2]+P0[o+5]+P0[o+8])/3];}
+  function lookAt(p,shrink){center=p;panX=panY=0;if(shrink)dist=Math.max(radius*0.02,dist*shrink);draw();}
   function setColors(col){gl.bindBuffer(gl.ARRAY_BUFFER,bC);gl.bufferData(gl.ARRAY_BUFFER,col,gl.DYNAMIC_DRAW);draw();}
   function mats(){const w=canvas.clientWidth,h=canvas.clientHeight,asp=w/Math.max(h,1),f=1/Math.tan(0.35),nr=dist/50,fr=dist*10;
     const Pm=[f/asp,0,0,0,0,f,0,0,0,0,(fr+nr)/(nr-fr),-1,0,0,2*fr*nr/(nr-fr),0];
@@ -558,10 +563,18 @@ vec3 col=vc*l;o=vec4(col,1.);}`;
     if(drag.b===2||drag.shift){panX+=dx*dist/canvas.clientHeight;panY-=dy*dist/canvas.clientHeight;}
     else{yaw-=dx*0.01;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.01));}draw();});
   canvas.addEventListener("pointerup",e=>{if(drag&&moved<4&&drag.b===0){const r=canvas.getBoundingClientRect();const id=pickAt(e.clientX-r.left,e.clientY-r.top);if(id>=0)onPick(id,e);}drag=null;});
-  canvas.addEventListener("wheel",e=>{e.preventDefault();dist*=Math.exp(e.deltaY*0.001);draw();},{passive:false});
+  /* wheel zooms toward whatever is under the cursor */
+  let wheelPick=0;
+  canvas.addEventListener("wheel",e=>{e.preventDefault();const f=Math.exp(e.deltaY*0.0015);
+    if(f<1&&Date.now()-wheelPick>120){wheelPick=Date.now();const r=canvas.getBoundingClientRect(),id=pickAt(e.clientX-r.left,e.clientY-r.top);
+      if(id>=0){const p=faceCenter(id),t=1-f;center=center.map((c0,k)=>c0+(p[k]-c0)*t*1.6);}}
+    dist=Math.max(radius*0.02,Math.min(radius*12,dist*f));draw();},{passive:false});
+  canvas.addEventListener("dblclick",e=>{const r=canvas.getBoundingClientRect(),id=pickAt(e.clientX-r.left,e.clientY-r.top);if(id>=0)lookAt(faceCenter(id),0.45);});
   canvas.addEventListener("contextmenu",e=>e.preventDefault());
   new ResizeObserver(draw).observe(canvas);
-  return {setGeometry,setColors,draw,view:(y,p)=>{yaw=y;pitch=p;draw();}};
+  return {setGeometry,setColors,draw,fitBox,lookAt,
+    view:(y,p)=>{yaw=y;pitch=p;draw();},zoom:f=>{dist=Math.max(radius*0.02,Math.min(radius*12,dist*f));draw();},
+    fit:()=>{if(count)fitBox(bboxOf(P0));}};
 }
 
 /* ---------- Meshy ---------- */

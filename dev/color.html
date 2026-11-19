@@ -35,7 +35,20 @@
             <button class="catbtn" id="spcModePaint" aria-pressed="false" title="Click a patch to repaint just that patch">Paint patch</button>
             <select id="spcBrush" title="Filament for Paint patch"></select>
             <button class="catbtn" id="spcUndo" disabled>Undo</button>
-            <span class="spc-hint">drag to turn · right-drag to move · wheel to zoom</span>
+          </div>
+          <div class="spc-tools spc-nav">
+            <button class="catbtn" id="spcFit" title="Show everything">Fit</button>
+            <button class="catbtn" id="spcZoomOut" title="Zoom out">−</button>
+            <button class="catbtn" id="spcZoomIn" title="Zoom in">+</button>
+            <span class="spc-sep"></span>
+            <button class="catbtn" data-view="front">Front</button>
+            <button class="catbtn" data-view="back">Back</button>
+            <button class="catbtn" data-view="left">Left</button>
+            <button class="catbtn" data-view="right">Right</button>
+            <button class="catbtn" data-view="top">Top</button>
+            <span class="spc-sep"></span>
+            <select id="spcFocus" title="Zoom to one piece"><option value="">Zoom to piece…</option></select>
+            <span class="spc-hint">wheel zooms where you point · double-click to center · drag to turn · right-drag to move</span>
           </div>
         </div>
         <div id="spcLog" class="spc-log"></div>

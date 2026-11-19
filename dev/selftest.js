@@ -73,3 +73,16 @@ export async function setupInFile(){ /* one project: pieces + the whole figure +
   await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
   return $("spcPieces").innerText;
 }
+
+export async function setupPeg(){ /* legs piece carries a peg hidden inside the torso: it must not come out gray */
+  hooks();
+  const toMesh=g=>({v:new Float32Array(g.v),f:new Uint32Array(g.f)}), legs=cyl(8,55,0),torso=cyl(13,40,56),head=sph(9,106),peg=cyl(4,12,52,32,6);
+  const legsPeg={v:[...legs.v,...peg.v],f:[...legs.f,...peg.f.map(x=>x+legs.v.length/3)]};
+  const figParts=[legs,torso,head].map(g=>({m:toMesh(g),M:SPC.I4()}));
+  const parts=[{name:"Legs",m:toMesh(legsPeg),M:[0,1,0,0,-1,0,0,0,0,0,1,0,-60,0,0,1]},{name:"Torso",m:toMesh(torso),M:[1,0,0,0,0,0,1,0,0,-1,0,0,20,-50,13,1]},{name:"Head",m:toMesh(head),M:[-1,0,0,0,0,-1,0,0,0,0,1,0,70,40,-97,1]}];
+  const blob=await SPC.save3MF({project:null,parts},[{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}],parts.map(p=>new Uint8Array(p.m.f.length/3)));
+  await drop("spcDropT",new File([blob],"SynthPeg.3mf"));
+  await drop("spcDropF",new File([SPC.stlBytes(figParts)],"SynthFigure.stl"));
+  await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
+  return $("spcFiles").innerText;
+}
