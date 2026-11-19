@@ -9307,7 +9307,7 @@ function setupTarget(){
   const t=S.target; S.parts=t.parts; S.project=t.pr&&t.pr.bambu?t.pr:(t.pr||null);
   S.raw=null;S.undo=[];S.selected=-1;q("spcUndo").disabled=true;
   const nPl=new Set(t.parts.map(p=>p.plate||0)).size;
-  S.on=nPl>1?new Set():new Set(t.parts.map((_,i)=>i));S.figPart=-1;
+  S.on=nPl>1?new Set():new Set(t.parts.map((_,i)=>i));S.figPart=-1;S.isolate=-1;
   /* a piece named like the project is the whole figure, already in the file */
   const stem=t.name.replace(/\.\w+$/,"").toLowerCase();
   if(t.parts.length>1){const fi=t.parts.findIndex(p=>p.name.replace(/\.\w+$/,"").toLowerCase()===stem);if(fi>=0&&!S.figure){S.figPart=fi;S.on.delete(fi);}}
@@ -9331,7 +9331,8 @@ function setupTarget(){
 function rebuildIndex(){S.offs=[];let o=0;S.parts.forEach(p=>{S.offs.push(o);o+=p.m.f.length/3;});S.nFaces=o;
   S.area=new Float32Array(o);S.parts.forEach((p,pi)=>S.area.set(C.areas(p.m,p.M),S.offs[pi]));S.nb=S.parts.map(p=>C.adjacency(p.m));}
 function sumAreas(){S.regions.forEach(r=>r.area=0);for(let i=0;i<S.nFaces;i++)if(S.label[i]>=0)S.regions[S.label[i]].area+=S.area[i];}
-function visibleParts(){const on=[...S.on].filter(i=>i!==S.figPart);return on.length?on.sort((a,b)=>a-b):S.parts.map((_,i)=>i);}
+function shownParts(){const on=[...S.on].filter(i=>i!==S.figPart);return on.length?on.sort((a,b)=>a-b):S.parts.map((_,i)=>i);}
+function visibleParts(){const all=shownParts();return S.isolate!=null&&S.isolate>=0&&all.includes(S.isolate)?[S.isolate]:all;}
 function showViewer(keepView){
   q("spcViewWrap").hidden=false;
   if(!S.viewer){S.viewer=C.Viewer(q("spcCv"),onPick);if(!S.viewer){log("This browser has no WebGL2 — the 3D view is off, but coloring and saving still work.",true);return;}}
@@ -9341,7 +9342,8 @@ function showViewer(keepView){
     for(let i=0;i<f.length;i++){const k=f[i]*3;pos[o*9+i*3]=v[k];pos[o*9+i*3+1]=v[k+1];pos[o*9+i*3+2]=v[k+2];}
     for(let t=0;t<nf;t++)S.vmap[o+t]=g+t; S.vrange.set(pi,[o,o+nf]); o+=nf;});
   S.vpos=pos; S.viewer.setGeometry(pos,keepView); paint();
-  q("spcFocus").innerHTML='<option value="">Zoom to piece…</option>'+vis.map(pi=>`<option value="${pi}">${esc(S.parts[pi].name)}</option>`).join("");
+  const iso=S.isolate!=null&&S.isolate>=0&&vis.length===1?S.isolate:-1;
+  q("spcFocus").innerHTML=`<option value="">${iso>=0?"Show all pieces":"Zoom to piece…"}</option>`+shownParts().map(pi=>`<option value="${pi}"${pi===iso?" selected":""}>${esc(S.parts[pi].name)}</option>`).join("");
 }
 function paint(){ if(!S.viewer||!S.vmap)return;
   const n=S.vmap.length,col=new Uint8Array(n*9);
@@ -9571,8 +9573,7 @@ q("spcFit").onclick=()=>S.viewer&&S.viewer.fit();
 q("spcZoomIn").onclick=()=>S.viewer&&S.viewer.zoom(0.7);
 q("spcZoomOut").onclick=()=>S.viewer&&S.viewer.zoom(1/0.7);
 document.querySelectorAll("#spc [data-view]").forEach(b=>b.onclick=()=>{const v={front:[-Math.PI/2,0.1],back:[Math.PI/2,0.1],left:[Math.PI,0.1],right:[0,0.1],top:[-Math.PI/2,1.5]}[b.dataset.view];S.viewer&&S.viewer.view(...v);});
-q("spcFocus").onchange=e=>{const pi=+e.target.value;if(e.target.value===""||!S.viewer)return;const [a,b]=S.vrange.get(pi);
-  S.viewer.fitBox(C.bboxOf(S.vpos.subarray(a*9,b*9)));};
+q("spcFocus").onchange=e=>{if(!S.viewer)return;S.isolate=e.target.value===""?-1:+e.target.value;S.selected=-1;q("spcPop").hidden=true;showViewer();};
 const press=(on,off)=>{q(on).setAttribute("aria-pressed","true");q(off).setAttribute("aria-pressed","false");};
 q("spcShowFil").onclick=()=>{S.showRaw=false;press("spcShowFil","spcShowRaw");paint();};
 q("spcShowRaw").onclick=()=>{if(!S.raw)return;S.showRaw=true;press("spcShowRaw","spcShowFil");paint();};
