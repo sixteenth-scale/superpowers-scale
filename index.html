@@ -300,6 +300,15 @@ tr.crown td{color:var(--accent);font-weight:600}
 .spc-pieces .note{padding:6px 8px;font-size:11.5px;color:var(--text-3)}
 .spc-nav{border-top:0;padding-top:0}
 .spc-nav select{max-width:220px}
+.spc-view{position:relative}
+.spc-pop{position:absolute;z-index:5;min-width:240px;max-width:300px;padding:8px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.18);font-size:12px}
+.spc-pop .hd{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-weight:600}
+.spc-pop .hd i{width:18px;height:18px;border-radius:3px;border:1px solid rgba(0,0,0,.25)}
+.spc-pop .hd button{margin-left:auto;border:0;background:none;font-size:16px;cursor:pointer;color:var(--text-3)}
+.spc-pop select{width:100%;font:12px "IBM Plex Sans",sans-serif;padding:3px}
+.spc-pop .act{display:flex;gap:6px;margin-top:6px}
+.spc-pop .act button{flex:1;font:11px "IBM Plex Sans",sans-serif;padding:3px 6px;border:1px solid var(--line);border-radius:3px;background:var(--sunken);cursor:pointer}
+.spc-tip{position:absolute;left:10px;top:10px;padding:4px 8px;border-radius:3px;background:rgba(255,255,255,.85);font-size:11.5px;color:var(--text-2);pointer-events:none}
 
 /*</spc-css>*/
 </style>
@@ -488,6 +497,8 @@ tr.crown td{color:var(--accent);font-weight:600}
         <div id="spcPieces" class="spc-pieces"></div>
         <div class="spc-view" id="spcViewWrap" hidden>
           <canvas id="spcCv"></canvas>
+          <div id="spcPop" class="spc-pop" hidden></div>
+          <div id="spcTip" class="spc-tip">Click any color on the model to change its filament</div>
           <div class="spc-tools">
             <button class="catbtn" id="spcShowFil" aria-pressed="true">Filaments</button>
             <button class="catbtn" id="spcShowRaw" aria-pressed="false">Meshy colors</button>
@@ -9334,12 +9345,12 @@ function showViewer(keepView){
 }
 function paint(){ if(!S.viewer||!S.vmap)return;
   const n=S.vmap.length,col=new Uint8Array(n*9);
-  const fc=S.regions.map((r,ri)=>{const c=S.showRaw||r.fil<0?r.rgb:C.hex2rgb(C.PAL[r.fil].hex);
-    const h=ri===S.selected?0.35:0;return c.map(x=>Math.round(255*(x+(1-x)*h)));});
+  const fade=x=>x*0.25+235*0.75;
+  const fc=S.regions.map((r,ri)=>{const c=(S.showRaw||r.fil<0?r.rgb:C.hex2rgb(C.PAL[r.fil].hex)).map(x=>x*255);
+    return S.selected>=0&&ri!==S.selected?c.map(fade):c;});
   for(let d=0;d<n;d++){const i=S.vmap[d];let c;const L=S.label?S.label[i]:-1;
-    if(S.showRaw&&S.raw&&L>=0)c=[S.raw[i*3]*255,S.raw[i*3+1]*255,S.raw[i*3+2]*255];
+    if(S.showRaw&&S.raw&&L>=0){c=[S.raw[i*3]*255,S.raw[i*3+1]*255,S.raw[i*3+2]*255];if(S.selected>=0&&L!==S.selected)c=c.map(fade);}
     else if(L>=0)c=fc[L];else c=[205,205,212];
-    if(S.showRaw&&L>=0&&L===S.selected)c=c.map(x=>x+(255-x)*0.35);
     for(let k=0;k<3;k++){col[d*9+k*3]=c[0];col[d*9+k*3+1]=c[1];col[d*9+k*3+2]=c[2];}}
   S.viewer.setColors(col);
 }
@@ -9517,7 +9528,20 @@ function renderRegions(){
         const j=addPal({...best[0],owned:false});pushUndo({type:"fil",i:+b.dataset.sug,prev:r.fil});r.fil=j;paint();renderRegions();}}
     catch(e){log("Could not load Bambu's color list: "+e.message,true);}});
 }
-function select(i){S.selected=S.selected===i?-1:i;paint();renderRegions();}
+function select(i,ev){S.selected=(S.selected===i&&!ev)?-1:i;paint();renderRegions();showPop(ev);}
+function showPop(ev){const pop=q("spcPop");
+  if(S.selected<0){pop.hidden=true;return;}
+  const r=S.regions[S.selected],l=C.lab(...r.rgb),PL=palLab(),tot=S.regions.reduce((s,x)=>s+x.area,0)||1;
+  const opts=C.PAL.map((f,j)=>[j,C.dE(l,PL[j])]).sort((a,b)=>a[1]-b[1]).map(([j,d])=>`<option value="${j}"${j===r.fil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""} · ΔE ${d.toFixed(0)}</option>`).join("");
+  pop.innerHTML=`<div class="hd"><i style="background:${C.rgb2hex(r.rgb)}"></i><i style="background:${(C.PAL[r.fil]||{hex:"#000"}).hex}"></i>Region · ${(100*r.area/tot).toFixed(1)}%<button title="Close">×</button></div>`+
+    `<select>${opts}</select><div class="act"><button data-a="same">Match another region…</button></div>`;
+  const wrap=q("spcViewWrap").getBoundingClientRect();
+  if(ev){pop.style.left=Math.min(wrap.width-310,Math.max(6,ev.clientX-wrap.left+12))+"px";pop.style.top=Math.min(wrap.height-140,Math.max(6,ev.clientY-wrap.top+12))+"px";}
+  pop.hidden=false;
+  pop.querySelector(".hd button").onclick=()=>{S.selected=-1;pop.hidden=true;paint();renderRegions();};
+  pop.querySelector("select").onchange=e=>{pushUndo({type:"fil",i:S.selected,prev:r.fil});r.fil=+e.target.value;r.manual=true;paint();renderRegions();showPop();};
+  pop.querySelector('[data-a="same"]').onclick=()=>{S.matchFrom=S.selected;q("spcTip").textContent="Now click the region whose filament this one should use";};
+}
 function pushUndo(u){S.undo.push(u);if(S.undo.length>40)S.undo.shift();q("spcUndo").disabled=false;}
 q("spcUndo").onclick=()=>{const u=S.undo.pop();if(!u)return;
   if(u.type==="fil")S.regions[u.i].fil=u.prev;
@@ -9525,10 +9549,13 @@ q("spcUndo").onclick=()=>{const u=S.undo.pop();if(!u)return;
   q("spcUndo").disabled=!S.undo.length;paint();renderRegions();};
 
 /* ---------- picking ---------- */
-function onPick(dface){
+function onPick(dface,ev){
   const face=S.vmap?S.vmap[dface]:dface;
   if(!S.label||face<0||face>=S.nFaces||S.label[face]<0)return;
-  if(S.mode==="sel"){select(S.label[face]);const el=q("spcRegions").querySelector(`[data-i="${S.label[face]}"]`);if(el)el.scrollIntoView({block:"nearest"});return;}
+  if(S.mode==="sel"&&S.matchFrom!=null&&S.matchFrom>=0){const src=S.regions[S.label[face]],dst=S.regions[S.matchFrom];
+    pushUndo({type:"fil",i:S.matchFrom,prev:dst.fil});dst.fil=src.fil;dst.manual=true;S.matchFrom=null;
+    q("spcTip").textContent="Click any color on the model to change its filament";S.selected=-1;q("spcPop").hidden=true;paint();renderRegions();return;}
+  if(S.mode==="sel"){select(S.label[face],arguments[1]);const el=q("spcRegions").querySelector(`[data-i="${S.label[face]}"]`);if(el)el.scrollIntoView({block:"nearest"});return;}
   /* paint the connected patch of this face */
   let pi=0;while(pi+1<S.offs.length&&S.offs[pi+1]<=face)pi++;
   const off=S.offs[pi],nb=S.nb[pi],start=face-off,lab0=S.label[face],brush=+q("spcBrush").value;
@@ -9550,7 +9577,9 @@ const press=(on,off)=>{q(on).setAttribute("aria-pressed","true");q(off).setAttri
 q("spcShowFil").onclick=()=>{S.showRaw=false;press("spcShowFil","spcShowRaw");paint();};
 q("spcShowRaw").onclick=()=>{if(!S.raw)return;S.showRaw=true;press("spcShowRaw","spcShowFil");paint();};
 q("spcModeSel").onclick=()=>{S.mode="sel";press("spcModeSel","spcModePaint");};
-q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel");};
+q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel");S.selected=-1;q("spcPop").hidden=true;paint();
+  q("spcTip").textContent="Pick a filament in the box beside Paint patch, then click a patch to repaint just that patch";};
+q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click any color on the model to change its filament";});
 
 /* ---------- save ---------- */
 q("spcSave").onclick=async()=>{

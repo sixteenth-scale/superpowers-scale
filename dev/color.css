@@ -48,3 +48,12 @@
 .spc-pieces .note{padding:6px 8px;font-size:11.5px;color:var(--text-3)}
 .spc-nav{border-top:0;padding-top:0}
 .spc-nav select{max-width:220px}
+.spc-view{position:relative}
+.spc-pop{position:absolute;z-index:5;min-width:240px;max-width:300px;padding:8px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.18);font-size:12px}
+.spc-pop .hd{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-weight:600}
+.spc-pop .hd i{width:18px;height:18px;border-radius:3px;border:1px solid rgba(0,0,0,.25)}
+.spc-pop .hd button{margin-left:auto;border:0;background:none;font-size:16px;cursor:pointer;color:var(--text-3)}
+.spc-pop select{width:100%;font:12px "IBM Plex Sans",sans-serif;padding:3px}
+.spc-pop .act{display:flex;gap:6px;margin-top:6px}
+.spc-pop .act button{flex:1;font:11px "IBM Plex Sans",sans-serif;padding:3px 6px;border:1px solid var(--line);border-radius:3px;background:var(--sunken);cursor:pointer}
+.spc-tip{position:absolute;left:10px;top:10px;padding:4px 8px;border-radius:3px;background:rgba(255,255,255,.85);font-size:11.5px;color:var(--text-2);pointer-events:none}
