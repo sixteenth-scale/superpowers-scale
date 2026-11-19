@@ -407,8 +407,8 @@ async function registerPart(part,fig,G,tick,cell){ /* find where a cut piece sit
   const cap=cell*8, cand=[];
   for(const R of rot24()){
     for(const st of starts){const c=ap(R,...pc),M=R.slice();M[12]=st[0]-c[0];M[13]=st[1]-c[1];M[14]=st[2]-c[2];
-      const r=icp(P60,G,fig.p,M,8,false,4,cap); if(isFinite(r.err))cand.push(r);}
-    await tick();
+      const r=icp(P60,G,fig.p,M,8,false,4,cap); if(isFinite(r.err))cand.push(r);
+      if(starts.indexOf(st)%8===7)await tick();}
   }
   cand.sort((a,b)=>a.err-b.err);
   let best={err:Infinity};
@@ -442,7 +442,7 @@ function colorCloud(sources,M,spacing){
 }
 function transferColors(part,cloud,Mextra){ /* -> Float32Array rgb per face */
   const M=Mextra?mul4(Mextra,part.M):part.M, v=xf(M,part.m.v),f=part.m.f,n=f.length/3,out=new Float32Array(n*3);
-  const B=[[1/3,1/3],[0.6,0.2],[0.2,0.6],[0.2,0.2]];
+  const B=[[1/3,1/3]]; /* one sample: averaging across a boundary invents blend colors */
   for(let t=0;t<n;t++){const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3;let r=0,g=0,bl=0,k=0;
     for(const [u,w] of B){const z=1-u-w,x=z*v[a]+u*v[b]+w*v[c],y=z*v[a+1]+u*v[b+1]+w*v[c+1],zz=z*v[a+2]+u*v[b+2]+w*v[c+2];
       const [j]=cloud.G.near(x,y,zz,4); if(j<0)continue; r+=cloud.C[j*3];g+=cloud.C[j*3+1];bl+=cloud.C[j*3+2];k++;}

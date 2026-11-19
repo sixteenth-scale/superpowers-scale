@@ -187,6 +187,12 @@ async function run(){
   for(let i=0;i<S.nFaces;i++)lab[i]=regs[lab[i]].alias;
   S.parts.forEach((p,pi)=>{const n=p.m.f.length/3,sub=lab.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,Math.max(0.5,detail*detail*4));});
+  /* specks of color under 0.1% of the model go to the nearest-colored region */
+  {const tot=S.area.reduce((a,b)=>a+b,0),ar=new Map();for(let i=0;i<S.nFaces;i++)ar.set(lab[i],(ar.get(lab[i])||0)+S.area[i]);
+    const big=[...ar.keys()].filter(x=>ar.get(x)>=tot*0.001),to=new Map();
+    for(const [x,a] of ar)if(a<tot*0.001&&big.length){const l=C.lab(...regs[x].rgb);let b=big[0],bd=Infinity;
+      for(const y of big){const d=C.dE(l,C.lab(...regs[y].rgb));if(d<bd){bd=d;b=y;}}to.set(x,b);}
+    if(to.size)for(let i=0;i<S.nFaces;i++)if(to.has(lab[i]))lab[i]=to.get(lab[i]);}
   const ids=[...new Set(lab)];const remap=new Map(ids.map((x,i)=>[x,i]));
   S.label=Int32Array.from(lab,x=>remap.get(x));
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
