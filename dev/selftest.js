@@ -86,3 +86,35 @@ export async function setupPeg(){ /* legs piece carries a peg hidden inside the 
   await drop("spcDropI",new File([await glbOf(figParts)],"SynthColored.glb"));
   return $("spcFiles").innerText;
 }
+
+export async function setupDetail(){ /* a raised chest badge Meshy painted plain; the photo shows a black mark on it */
+  hooks();
+  const toMesh=g=>({v:new Float32Array(g.v),f:new Uint32Array(g.f)}), legs=cyl(8,55,0),torso=cyl(13,40,56),head=sph(9,106);
+  const b=cyl(4,2,0,48,2);for(let i=0;i<b.v.length;i+=3){const x=b.v[i],y=b.v[i+1],z=b.v[i+2];b.v[i]=x;b.v[i+1]=-12.6-z;b.v[i+2]=78+y;}
+  const torsoB={v:[...torso.v,...b.v],f:[...torso.f,...b.f.map(x=>x+torso.v.length/3)]};
+  const figParts=[legs,torsoB,head].map(g=>({m:toMesh(g),M:SPC.I4()}));
+  const parts=[{name:"Legs",m:toMesh(legs),M:[0,1,0,0,-1,0,0,0,0,0,1,0,-60,0,0,1]},{name:"Torso",m:toMesh(torsoB),M:[1,0,0,0,0,0,1,0,0,-1,0,0,20,-50,13,1]},{name:"Head",m:toMesh(head),M:[-1,0,0,0,0,-1,0,0,0,0,1,0,70,40,-97,1]}];
+  const blob=await SPC.save3MF({project:null,parts},[{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}],parts.map(p=>new Uint8Array(p.m.f.length/3)));
+  await drop("spcDropT",new File([blob],"SynthBadge.3mf"));
+  await drop("spcDropF",new File([SPC.stlBytes(figParts)],"SynthFigure.stl"));
+  /* front photo: 8 px per mm, plain white background */
+  const k=8,Wp=70*k,Hp=135*k,c=new OffscreenCanvas(Wp,Hp),g=c.getContext("2d"),X=x=>Wp/2+x*k,Y=z=>Hp-10*k-z*k;
+  g.fillStyle="#fff";g.fillRect(0,0,Wp,Hp);
+  g.fillStyle="#14288C";g.fillRect(X(-8),Y(54),16*k,54*k);g.fillStyle="#EEE432";g.fillRect(X(-8),Y(57.5),16*k,3.5*k);
+  g.fillStyle="#BE2823";g.fillRect(X(-13),Y(96.6),26*k,39*k);g.fillStyle="#E5BC9E";g.fillRect(X(-13),Y(96),26*k,0.6*k);
+  g.beginPath();g.arc(X(0),Y(106),9*k,0,7);g.fill();
+  g.fillStyle="#2E9E44";g.beginPath();g.arc(X(0),Y(78),4*k,0,7);g.fill();
+  g.fillStyle="#111";g.beginPath();g.moveTo(X(0),Y(81));g.lineTo(X(-2.5),Y(76));g.lineTo(X(2.5),Y(76));g.closePath();g.fill();
+  const photo=new File([await c.convertToBlob({type:"image/png"})],"front.png",{type:"image/png"});
+  const dt=new DataTransfer();dt.items.add(photo);dt.items.add(new File([await glbOf(figParts)],"SynthColored.glb"));
+  $("spcDropI").dispatchEvent(new DragEvent("drop",{dataTransfer:dt,bubbles:true,cancelable:true}));await wait(1500);
+  window._badgeFaces=[torso.f.length/3, (torso.f.length+b.f.length)/3];
+  return $("spcFiles").innerText;
+}
+export function badge(){ /* labels on the badge's front cap (the faces facing -Y in the figure) */
+  const S=window._spcS,pi=S.parts.findIndex(p=>p.name==="Torso"),o=S.offs[pi],[a,b]=window._badgeFaces,cnt={};
+  const fn=SPC.faceNormals(S.parts[pi].m);
+  for(let t=a;t<b;t++){if(fn[t*3+2]<0.9)continue; /* torso piece is rotated on the plate: -Y became +Z */
+    const L=S.label[o+t],nm=L>=0?SPC.fname(SPC.PAL[S.regions[L].fil]):"-";cnt[nm]=(cnt[nm]||0)+1;}
+  return cnt;
+}
