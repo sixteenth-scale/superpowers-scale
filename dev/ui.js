@@ -388,7 +388,7 @@ async function photoDetail(file,fig,active,regM,hid){
     const dep=new Float32Array(RW*RH).fill(Infinity);
     const sx=X=>(d<0?X-X0:X1-X)*k, sy=Z=>(Z1-Z)*k;
     fv.forEach(({v,f})=>{for(let t=0;t<f.length;t+=3){const a=f[t]*3,b=f[t+1]*3,c=f[t+2]*3;
-      const ax=sx(v[a]),ay=sy(v[a+2]),bx=sx(v[b]),by=sy(v[b+2]),cxx=sx(v[c]),cy=sy(v[c+2]),az=v[a+1]*d,bz=v[b+1]*d,cz=v[c+1]*d;
+      const ax=sx(v[a]),ay=sy(v[a+2]),bx=sx(v[b]),by=sy(v[b+2]),cxx=sx(v[c]),cy=sy(v[c+2]),az=-v[a+1]*d,bz=-v[b+1]*d,cz=-v[c+1]*d; /* camera on the d side: nearer = smaller */
       const x0=Math.max(0,Math.floor(Math.min(ax,bx,cxx))),x1=Math.min(RW-1,Math.ceil(Math.max(ax,bx,cxx))),y0=Math.max(0,Math.floor(Math.min(ay,by,cy))),y1=Math.min(RH-1,Math.ceil(Math.max(ay,by,cy)));
       const den=(by-cy)*(ax-cxx)+(cxx-bx)*(ay-cy);if(Math.abs(den)<1e-9)continue;
       for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const w1=((by-cy)*(x-cxx)+(cxx-bx)*(y-cy))/den,w2=((cy-ay)*(x-cxx)+(ax-cxx)*(y-cy))/den,w3=1-w1-w2;
@@ -398,9 +398,9 @@ async function photoDetail(file,fig,active,regM,hid){
     const toPhoto=(X,Z)=>[pcx+(sx(X)-fcx)*s,py0+(sy(Z)-fy0)*s];
     /* which way the figure faces: whichever side agrees with Meshy's colors */
     let err=0,cnt=0;
-    for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi];for(let t=0;t<f.length/3;t+=13){if(fn[t*3+1]*d>-0.4)continue;
+    for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi];for(let t=0;t<f.length/3;t+=13){if(fn[t*3+1]*d<0.4)continue;
       const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3,X=(v[a]+v[b]+v[c])/3,Y=(v[a+1]+v[b+1]+v[c+1])/3,Z=(v[a+2]+v[b+2]+v[c+2])/3;
-      const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||Y*d>dep[ry*RW+rx]+0.8)continue;
+      const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
       const q=toPhoto(X,Z),pc=px(q[0],q[1]),i=o+t;err+=C.dE(C.lab(...pc),C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2]));cnt++;}}
     const score=cnt?err/cnt:Infinity;
     if(!best||score<best.score)best={score,d,dep,sx,sy,toPhoto,s};
@@ -419,9 +419,9 @@ async function photoDetail(file,fig,active,regM,hid){
       secs.push(mem);}
     for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.04*pieceA||mem.length<8)continue;dbg.tried++;
       const vis=[];
-      for(const t of mem){if(fn[t*3+1]*d>-0.3||hid[o+t])continue;
+      for(const t of mem){if(fn[t*3+1]*d<0.3||hid[o+t])continue;
         const ia=f[t*3]*3,ib=f[t*3+1]*3,ic=f[t*3+2]*3,X=(v[ia]+v[ib]+v[ic])/3,Y=(v[ia+1]+v[ib+1]+v[ic+1])/3,Z=(v[ia+2]+v[ib+2]+v[ic+2])/3;
-        const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||Y*d>dep[ry*RW+rx]+0.8)continue;
+        const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
         vis.push([t,toPhoto(X,Z)]);}
       if(vis.length<0.6*mem.length||vis.length<8){(dbg.novis=dbg.novis||[]).push([mem.length,vis.length]);continue;}
       /* nudge until the photo lines up with this feature */
