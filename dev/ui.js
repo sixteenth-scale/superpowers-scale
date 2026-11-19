@@ -222,18 +222,18 @@ function renderRegions(){
   const box=q("spcRegions");
   if(!S.regions.length||!S.label){box.innerHTML="";return;}
   const tot=S.regions.reduce((s,r)=>s+r.area,0)||1, PL=palLab();
-  box.innerHTML=S.regions.map((r,i)=>{
+  box.innerHTML=S.regions.map((r,i)=>{ if(r.area<=0)return "";
     const l=C.lab(...r.rgb), order=C.PAL.map((f,j)=>[j,C.dE(l,PL[j])]).sort((a,b)=>a[1]-b[1]);
     const opts=order.map(([j,d])=>`<option value="${j}"${j===r.fil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""} · ΔE ${d.toFixed(0)}</option>`).join("");
     const cur=C.PAL[r.fil]||{hex:"#000"}, d=r.fil>=0?C.dE(l,PL[r.fil]):99;
-    const warn=d>10?`<span class="warn">No close match on your shelf<button data-sug="${i}">find a Bambu color</button></span>`:"";
+    const warn=d>10&&!r.manual?`<span class="warn">No close match on your shelf<button data-sug="${i}">find a Bambu color</button></span>`:"";
     return `<div class="spc-reg${i===S.selected?" sel":""}" data-i="${i}"><i style="background:${C.rgb2hex(r.rgb)}" title="color found"></i><i style="background:${cur.hex}" title="filament"></i>`+
       `<select data-i="${i}">${opts}<option value="add">+ Add a filament…</option></select>`+
       `<small>${r.patch?"patch · ":""}${(100*r.area/tot).toFixed(1)}% · found ${C.rgb2hex(r.rgb)} ${warn}</small></div>`;}).join("");
   box.querySelectorAll(".spc-reg").forEach(el=>el.addEventListener("click",e=>{if(e.target.tagName==="SELECT"||e.target.tagName==="BUTTON"||e.target.tagName==="OPTION")return;select(+el.dataset.i);}));
   box.querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{const i=+s.dataset.i;
     if(s.value==="add"){q("spcPal").parentElement.open=true;q("spcPal").parentElement.scrollIntoView({block:"nearest"});renderRegions();return;}
-    pushUndo({type:"fil",i,prev:S.regions[i].fil});S.regions[i].fil=+s.value;paint();renderRegions();}));
+    pushUndo({type:"fil",i,prev:S.regions[i].fil});S.regions[i].fil=+s.value;S.regions[i].manual=true;paint();renderRegions();}));
   box.querySelectorAll("button[data-sug]").forEach(b=>b.onclick=async()=>{const r=S.regions[+b.dataset.sug];
     try{const cat=await C.catalog(),l=C.lab(...r.rgb);const best=cat.filter(c=>/^PLA/.test(c.type)).map(c=>[c,C.dE(l,C.labHex(c.hex))]).sort((a,b)=>a[1]-b[1])[0];
       if(confirm(`Closest Bambu filament: ${best[0].type} ${best[0].color} (${best[0].code}), ΔE ${best[1].toFixed(0)}.\nAdd it as "not owned" and use it here?`)){
@@ -272,7 +272,7 @@ q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel")
 q("spcSave").onclick=async()=>{
   try{q("spcSave").disabled=true;log("Writing the 3MF…");await tick();
     /* filament order: most area first */
-    const use=new Map();S.regions.forEach(r=>use.set(r.fil,(use.get(r.fil)||0)+r.area));
+    sumAreas();const use=new Map();S.regions.forEach(r=>{if(r.area>0)use.set(r.fil,(use.get(r.fil)||0)+r.area);});
     const order=[...use.entries()].sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
     if(order.length>16)throw new Error(`${order.length} filaments — Bambu painting stops at 16. Merge some regions first.`);
     const slot=new Map(order.map((f,i)=>[f,i+1]));

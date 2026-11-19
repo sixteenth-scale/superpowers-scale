@@ -668,3 +668,4 @@ return {OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){P
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
 })();
+window.SPC=SPC;
