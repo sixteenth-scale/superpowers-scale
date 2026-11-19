@@ -8964,7 +8964,10 @@ async function transferColors(part,cloud,Mextra,tick0){
   /* a face that points a different way from the surface it's nearest to (a cut face beside the
      neck, a socket wall) is not that surface: mark it hidden. Meshy's winding may be reversed. */
   let pos=0;for(let t=0;t<n;t+=7)if(dot[t]>0)pos++;const flip=pos<Math.ceil(n/7)/2?-1:1;
-  for(let t=0;t<n;t++)if(dot[t]*flip<0.35)dist[t]=Math.max(dist[t],1e6);
+  /* hidden = points a different way from the nearest figure surface (cut faces, socket walls), or is
+     far from it. A piece reshaped in part-out (extended limb, rounded hip) still faces the same way as
+     the figure, so it stays visible up to 3 mm off the figure. */
+  for(let t=0;t<n;t++){if(dot[t]*flip<0.35)dist[t]=Math.max(dist[t],1e6);else if(dist[t]<3)dist[t]=0;}
   return {rgb:out,dist};
 }
 
@@ -9624,7 +9627,8 @@ async function photoDetail(file,fig,active,regM,hid){
       const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
       seen.set(t,[toPhoto(X,Z),X,Z]);}
     const seenList=[...seen.entries()];
-    for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.04*pieceA||mem.length<8)continue;dbg.tried++;
+    const before=Int32Array.from(S.label.subarray(o,o+n));let pieceChanged=0;
+    for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.02*pieceA||mem.length<8)continue;dbg.tried++;
       const vis=mem.filter(t=>seen.has(t)).map(t=>[t,seen.get(t)[0]]);
       if(vis.length<0.6*mem.length||vis.length<8){(dbg.novis=dbg.novis||[]).push([mem.length,vis.length]);continue;}
       /* line up on the surface around the feature, where Meshy's colors can be trusted */
@@ -9639,7 +9643,12 @@ async function photoDetail(file,fig,active,regM,hid){
         for(const [t,q] of rs)e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[S.label[o+t]]);
         e=e/rs.length+0.05*Math.hypot(dx,dy);if(e<be){be=e;bo=[dx,dy];}}
       (dbg.fits=dbg.fits||[]).push([vis.length,+be.toFixed(1),bo]);
-      if(be>20)continue; /* the photo doesn't line up here: leave it */
+      if(be>12)continue; /* the photo doesn't line up here: leave it */
+      /* only a real detail: the photo inside must clearly differ from the photo around it */
+      {let ins=[0,0,0],nI=0,out2=[0,0,0],nO=0;
+        vis.forEach(([t,q])=>{const l=C.lab(...px(q[0]+bo[0],q[1]+bo[1]));ins[0]+=l[0];ins[1]+=l[1];ins[2]+=l[2];nI++;});
+        rs.forEach(([t,q])=>{const l=C.lab(...px(q[0]+bo[0],q[1]+bo[1]));out2[0]+=l[0];out2[1]+=l[1];out2[2]+=l[2];nO++;});
+        if(C.dE(ins.map(x=>x/nI),out2.map(x=>x/nO))<15)continue;}
       dbg.matched++;
       for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
         regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
@@ -9647,11 +9656,13 @@ async function photoDetail(file,fig,active,regM,hid){
         if(bd>18&&added<6&&flat(q[0]+bo[0],q[1]+bo[1])){let nn=-1,nd=Infinity;newRegs.forEach(ri=>{const dd=C.dE(l,regLab[ri]);if(dd<nd){nd=dd;nn=ri;}});
           if(nn>=0&&nd<14)bL=nn;else{S.regions.push({id:S.regions.length,rgb,fil:-1,area:0,dE:0,patch:false,photo:true});
             regLab.push(l);bL=S.regions.length-1;newRegs.push(bL);added++;}}
-        if(bL>=0&&S.label[o+t]!==bL){S.label[o+t]=bL;painted++;}}
+        if(bL>=0&&S.label[o+t]!==bL){S.label[o+t]=bL;painted++;pieceChanged+=A[o+t];}}
       /* lone specks inside the feature follow their neighbors */
       for(let it=0;it<2;it++)for(const t of mem){const L=S.label[o+t],nl=[];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&sec[u2]===sec[t])nl.push(S.label[o+u2]);}
         if(nl.length>=2&&nl.every(x=>x!==L)&&nl[0]===nl[1])S.label[o+t]=nl[0];}
     }
+    /* if the photo would repaint much of a piece, it isn't lining up: put the piece back */
+    if(pieceChanged>0.06*pieceA){S.label.set(before,o);(dbg.reverted=dbg.reverted||[]).push(S.parts[pi].name);}
     await tick();
   }
   /* a new color that only caught a few triangles was an edge blend in the photo: drop it */

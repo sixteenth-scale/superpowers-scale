@@ -484,7 +484,10 @@ async function transferColors(part,cloud,Mextra,tick0){
   /* a face that points a different way from the surface it's nearest to (a cut face beside the
      neck, a socket wall) is not that surface: mark it hidden. Meshy's winding may be reversed. */
   let pos=0;for(let t=0;t<n;t+=7)if(dot[t]>0)pos++;const flip=pos<Math.ceil(n/7)/2?-1:1;
-  for(let t=0;t<n;t++)if(dot[t]*flip<0.35)dist[t]=Math.max(dist[t],1e6);
+  /* hidden = points a different way from the nearest figure surface (cut faces, socket walls), or is
+     far from it. A piece reshaped in part-out (extended limb, rounded hip) still faces the same way as
+     the figure, so it stays visible up to 3 mm off the figure. */
+  for(let t=0;t<n;t++){if(dot[t]*flip<0.35)dist[t]=Math.max(dist[t],1e6);else if(dist[t]<3)dist[t]=0;}
   return {rgb:out,dist};
 }
 
