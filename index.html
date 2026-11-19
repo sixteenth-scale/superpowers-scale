@@ -9479,9 +9479,10 @@ async function run(){
   log(`Done — ${S.regions.length} regions on ${new Set(S.regions.map(r=>r.fil)).size} filaments.`+
     (bad?` ${bad} flagged: no close match on your shelf.`:"")+(flags.length?`\nCheck these pieces, they did not fit the figure cleanly: ${flags.join(", ")}`:""));
 }
-/* hidden patches take the color around them. Each connected hidden patch gets one color (fewer
-   filament swaps): the neighbor color with the most shared edge, weighted by how much of the piece
-   that color covers, so a body color beats a thin trim like a belt. */
+/* hidden surfaces (sockets, cavities, cut faces, joints) take the color of the visible surface they
+   meet: each hidden face takes the nearest bordering color across the mesh, so a wing socket goes red
+   below and gold where it reaches the feathers, and a shoulder socket ringed by red is all red.
+   Thin trim (a belt) is skipped when a main body color also borders the patch. */
 function fillHidden(hid){
   S.parts.forEach((p,pi)=>{const o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi];
     const share=new Map();let tot=0;
@@ -9489,14 +9490,19 @@ function fillHidden(hid){
     if(!tot)return;
     const seen=new Uint8Array(n);
     for(let s=0;s<n;s++){if(seen[s]||!hid[o+s]||S.label[o+s]<0)continue;
-      const patch=[s],votes=new Map();seen[s]=1;
+      const patch=[s],border=new Map();seen[s]=1;
       for(let q2=0;q2<patch.length;q2++){const t=patch[q2];
         for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0)continue;
           if(hid[o+u2]){if(!seen[u2]&&S.label[o+u2]>=0){seen[u2]=1;patch.push(u2);}}
-          else{const L=S.label[o+u2];if(L>=0)votes.set(L,(votes.get(L)||0)+1);}}}
-      if(!votes.size)continue; /* a whole piece hidden inside (knee pins): keep its nearest color */
-      let best=-1,bs=-1;for(const [L,cnt] of votes){const sc=cnt*Math.sqrt((share.get(L)||0)/tot);if(sc>bs){bs=sc;best=L;}}
-      patch.forEach(t=>S.label[o+t]=best);}
+          else{const L=S.label[o+u2];if(L>=0){if(!border.has(L))border.set(L,[]);border.get(L).push(t);}}}}
+      if(!border.size)continue; /* a whole piece hidden inside (knee pins): keep its nearest color */
+      let labs=[...border.keys()];const main=labs.filter(L=>(share.get(L)||0)/tot>=0.08);if(main.length)labs=main;
+      /* grow every allowed border color inward at once; each hidden face keeps the first to reach it */
+      const inPatch=new Set(patch),got=new Map(),queue=[];
+      labs.forEach(L=>border.get(L).forEach(t=>{if(!got.has(t)){got.set(t,L);queue.push(t);}}));
+      for(let q2=0;q2<queue.length;q2++){const t=queue[q2],L=got.get(t);
+        for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&inPatch.has(u2)&&!got.has(u2)){got.set(u2,L);queue.push(u2);}}}
+      patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
 /* split each piece into sections at its sculpted creases (eye sockets, helmet rim, cuffs, the
