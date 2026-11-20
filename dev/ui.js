@@ -506,7 +506,9 @@ async function photoGuide(files,fig,active,regM,hid,Lraw){
       await tick();}}
   /* each paint's look per photo: the middle of what its faces show there (Meshy's color if too few) */
   const calib=photos.map((_,pIdx)=>regLab.map((rl,L)=>{const a=calS[pIdx][L];if(!a||a.length<90)return rl;
-    const med=k=>{const v=[];for(let i=k;i<a.length;i+=3)v.push(a[i]);v.sort((x,y)=>x-y);return v[v.length>>1];};return [med(0),med(1),med(2)];}));
+    const med=k=>{const v=[];for(let i=k;i<a.length;i+=3)v.push(a[i]);v.sort((x,y)=>x-y);return v[v.length>>1];};const m=[med(0),med(1),med(2)];
+    /* lighting shifts a paint, it doesn't turn skin into shadow: a look far from the paint was measured in the wrong place */
+    return Math.hypot(m[0]-rl[0],m[1]-rl[1],m[2]-rl[2])<=26?m:rl;}));
   dbg.calib=calib.map(cs=>cs.map(c=>c.map(x=>Math.round(x))));
   /* line each piece up again, now against how its paints really look in that photo */
   for(const F of fitsOK){const ph=photos[F.pIdx],o=S.offs[F.g.pi],cal=calib[F.pIdx],{cx,cy}=F;
