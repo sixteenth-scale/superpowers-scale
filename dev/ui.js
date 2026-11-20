@@ -238,52 +238,46 @@ async function run(){
   for(let i=0;i<S.nFaces;i++){if(lab[i]<0)continue;const s=rgbSum[lab[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
   let regs=rgbSum.map((s,i)=>({rgb:s[3]?[s[0]/s[3],s[1]/s[3],s[2]/s[3]]:[0,0,0],area:s[3],alias:i}));
   for(;;){let best=null;const live=regs.filter(r=>r.area>0&&r.alias===regs.indexOf(r));
-    for(let a=0;a<live.length;a++)for(let b=a+1;b<live.length;b++){const d=C.dE(C.lab(...live[a].rgb),C.lab(...live[b].rgb));if(d<7&&(!best||d<best[0]))best=[d,live[a],live[b]];}
+    for(let a=0;a<live.length;a++)for(let b=a+1;b<live.length;b++){const d=C.dE(C.lab(...live[a].rgb),C.lab(...live[b].rgb)),sh=shadeOf(live[a],live[b]);if((d<7||sh)&&(!best||d<best[0]))best=[d,live[a],live[b]];}
     if(!best)break;const [,A,B]=best,ia=regs.indexOf(A),ib=regs.indexOf(B),t=A.area+B.area;
     A.rgb=A.rgb.map((x,j)=>(x*A.area+B.rgb[j]*B.area)/t);A.area=t;B.area=0;regs.forEach(r=>{if(r.alias===ib)r.alias=ia;});}
   for(let i=0;i<S.nFaces;i++)if(lab[i]>=0)lab[i]=regs[lab[i]].alias;
   if(window._spcSnap)window._spcSnap('merged',lab,x=>regs[x].rgb,hid);
-  /* edges follow the sculpt: a color boundary costs a lot across smooth surface and almost nothing
-     along a crease, so boundaries settle into the helmet rim, cuffs, belt edges; blotches dissolve */
-  log("Tidying color edges along the sculpt…");await tick();
-  {const cl=new Map();regs.forEach((r,i)=>{if(r.alias===i&&r.area>0)cl.set(i,C.lab(...r.rgb));});
-   for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],fn=C.faceNormals(p.m);
-     const w=new Float32Array(n*3);for(let t=0;t<n;t++)for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0)continue;
-       const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];w[t*3+e]=Math.exp(-(1-cs)/0.08);}
-     const cost=(t,Lb)=>{const c0=cl.get(Lb);if(!c0)return 99;const i=o+t;return Math.hypot(L[i*3]-c0[0],L[i*3+1]-c0[1],L[i*3+2]-c0[2])/18;};
-     for(let sweep=0;sweep<6;sweep++){let changed=0;
-       for(let t=0;t<n;t++){const i=o+t;if(hid[i]||lab[i]<0)continue;
-         const cand=new Set([lab[i]]);for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&lab[o+u2]>=0&&!hid[o+u2])cand.add(lab[o+u2]);}
-         if(cand.size<2)continue;let best=lab[i],be=Infinity;
-         for(const Lb of cand){let en=cost(t,Lb);for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||hid[o+u2]||lab[o+u2]<0)continue;if(lab[o+u2]!==Lb)en+=1.6*w[t*3+e];}
-           if(en<be){be=en;best=Lb;}}
-         if(best!==lab[i]){lab[i]=best;changed++;}}
-       if(!changed)break;await tick();}}}
-  if(window._spcSnap)window._spcSnap('icm',lab,x=>regs[x].rgb,hid);
-  S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=lab.subarray(S.offs[pi],S.offs[pi]+n);
-    C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,Math.max(0.5,detail*detail*4));});
   /* specks of color under 0.1% of the model go to the nearest-colored region */
   {const tot=W.reduce((a,b)=>a+b,0),ar=new Map();for(let i=0;i<S.nFaces;i++)if(lab[i]>=0)ar.set(lab[i],(ar.get(lab[i])||0)+S.area[i]);
     const big=[...ar.keys()].filter(x=>ar.get(x)>=tot*0.001),to=new Map();
     for(const [x,a] of ar)if(a<tot*0.001&&big.length){const l=C.lab(...regs[x].rgb);let b=big[0],bd=Infinity;
       for(const y of big){const d=C.dE(l,C.lab(...regs[y].rgb));if(d<bd){bd=d;b=y;}}to.set(x,b);}
     if(to.size)for(let i=0;i<S.nFaces;i++)if(to.has(lab[i]))lab[i]=to.get(lab[i]);}
-  if(window._spcSnap)window._spcSnap('specks',lab,x=>regs[x].rgb,hid);
   const ids=[...new Set(lab)].filter(x=>x>=0);const remap=new Map(ids.map((x,i)=>[x,i]));remap.set(-1,-1);
   S.label=Int32Array.from(lab,x=>remap.get(x));
-  fillHidden(hid);
-  if(window._spcSnap)window._spcSnap('fillHidden',S.label,x=>regs[ids[x]].rgb,hid);
-  log("Snapping colors to the sculpted sections…");await tick();
-  sculptTidy(active);
-  pinColors(active,hid);
-  if(window._spcSnap)window._spcSnap('tidy+pins',S.label,x=>regs[ids[x]].rgb,hid);
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
-  sumAreas();S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
-  /* region colors from final labels */
-  {const acc=S.regions.map(()=>[0,0,0,0]);for(let i=0;i<S.nFaces;i++){if(S.label[i]<0||hid[i])continue;const s=acc[S.label[i]],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
+  /* where two pieces touch, nobody sees it; soles stand on the ground: both count as hidden */
+  let fz0=Infinity,fz1=-Infinity;for(let i=2;i<figPts.p.length;i+=3){fz0=Math.min(fz0,figPts.p[i]);fz1=Math.max(fz1,figPts.p[i]);}
+  const gnd=markContacts(active,regM,hid,fz0,fz1);
+  /* the photos say what each visible face really looks like */
+  let photo=null;
+  if(S.images.length){log("Reading your photos…");await tick();
+    try{photo=await photoGuide(S.images,fig,active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
+  /* final colors: follow the photos (Meshy where no photo can see), with color edges on the sculpt's ridges and creases */
+  log("Putting color edges on the sculpted ridges…");await tick();
+  await solveLabels(active,hid,photo,L);
+  if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
+  S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
+    C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
+  fillHidden(hid);
+  groundFill(active,gnd);
+  pinColors(active,hid);
+  if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
+  sumAreas();
+  {const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));
+    S.regions=keep.map((x,i)=>({...S.regions[x],id:i}));S.label=S.label.map(x=>x<0?-1:mp.get(x));sumAreas();}
+  S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
+  /* region colors: average of the faces that really are that color */
+  {const acc=S.regions.map(()=>[0,0,0,0]),rl=S.regions.map(r=>C.lab(...r.rgb));
+    for(let i=0;i<S.nFaces;i++){const Lb=S.label[i];if(Lb<0||hid[i])continue;
+      if(Math.hypot(L[i*3]-rl[Lb][0],L[i*3+1]-rl[Lb][1],L[i*3+2]-rl[Lb][2])>20)continue;const s=acc[Lb],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
-  if(S.images.length){log("Painting fine detail from your front photo…");await tick();
-    try{const n=await photoDetail(S.images[0],fig,active,regM,hid);if(n){sculptTidy(active);sumAreas();log(`Repainted ${n} triangles of fine detail from your photo.`);}}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;
   showViewer(true);renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
@@ -317,40 +311,6 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
-/* split each piece into sections at its sculpted creases (eye sockets, helmet rim, cuffs, the
-   underside); inside a section, small stray bits of another color join the section's main color.
-   Larger areas are kept, so a painted logo on a smooth surface survives. */
-function sculptTidy(active){
-  const cosCrease=Math.cos(25*Math.PI/180);
-  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],fn=C.faceNormals(p.m),A=S.area;
-    const before=S.label.slice(o,o+n);
-    const sec=new Int32Array(n).fill(-1);let ns=0;const secArea=[];
-    for(let s=0;s<n;s++){if(sec[s]>=0)continue;const st=[s];sec[s]=ns;let a=0;
-      while(st.length){const t=st.pop();a+=A[o+t];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
-        const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];if(cs>=cosCrease){sec[u2]=ns;st.push(u2);}}}
-      secArea.push(a);ns++;}
-    for(let round=0;round<3;round++){
-      /* main color per section */
-      const main=new Map();
-      for(let t=0;t<n;t++){const L=S.label[o+t];if(L<0)continue;const k=sec[t]*4096+L;main.set(k,(main.get(k)||0)+A[o+t]);}
-      const dom=new Int32Array(ns).fill(-1),domA=new Float32Array(ns);
-      for(const [k,a] of main){const s=Math.floor(k/4096),L=k%4096;if(a>domA[s]){domA[s]=a;dom[s]=L;}}
-      /* same-color bits inside a section */
-      const comp=new Int32Array(n).fill(-1);let changed=0;
-      for(let s=0;s<n;s++){if(comp[s]>=0||S.label[o+s]<0)continue;const L=S.label[o+s],sc=sec[s],cl=[s];comp[s]=s;let a=0;
-        let bleed=false;
-        for(let q2=0;q2<cl.length;q2++){const t=cl[q2];a+=A[o+t];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0)continue;
-          if(sec[u2]!==sc){if(dom[sec[u2]]===L)bleed=true;continue;}
-          if(comp[u2]<0&&S.label[o+u2]===L){comp[u2]=s;cl.push(u2);}}}
-        /* absorb specks, and color that bled in from the next section; keep real details like logos */
-        const tiny=a<Math.min(2,Math.max(0.6,0.015*secArea[sc])), bled=bleed&&a<Math.min(4,0.1*secArea[sc]);
-        if(L!==dom[sc]&&dom[sc]>=0&&(tiny||bled)){cl.forEach(t=>S.label[o+t]=dom[sc]);changed++;}}
-      if(!changed)break;}
-    /* a tidy-up never repaints a real part of the piece: if more than 4% moved, undo it */
-    let tot=0,mv=0;for(let t=0;t<n;t++){tot+=A[o+t];if(S.label[o+t]!==before[t])mv+=A[o+t];}
-    if(mv>0.04*tot)S.label.set(before,o);
-  }
-}
 /* pins sit inside a joint where nothing can see them, and a plain cylinder can't be placed on the
    figure. A pin (or any piece that is entirely hidden) takes the main color of the hidden joint faces
    of the pieces it joins: a left knee pin follows the left thigh and calf, an elbow pin the arm. */
@@ -372,116 +332,206 @@ function pinColors(active,hid){
     let best=-1,ba=-1;for(const [L,a] of tally)if(a>ba){ba=a;best=L;}
     if(best<0)continue;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let i=0;i<n;i++)S.label[o+i]=best;}
 }
-/* fine detail from the front photo: Meshy blurs small graphics (a chest emblem, eyes). Line the photo
-   up with the figure seen from the front, then for each small, forward-facing sculpted feature, find
-   it in the photo, nudge until they match, and paint it from the photo face by face. */
-async function photoDetail(file,fig,active,regM,hid){
+/* two colors that are the same paint in light and shadow (a red and its darker red): same hue, both
+   clearly colored, the darker one much smaller */
+function shadeOf(A,B){const a=C.lab(...A.rgb),b=C.lab(...B.rgb),ca=Math.hypot(a[1],a[2]),cb=Math.hypot(b[1],b[2]);
+  if(ca<25||cb<25)return false;let dh=Math.abs(Math.atan2(a[2],a[1])-Math.atan2(b[2],b[1]))*180/Math.PI;if(dh>180)dh=360-dh;
+  return dh<14&&Math.min(A.area,B.area)<0.35*Math.max(A.area,B.area);}
+/* faces in figure space for each piece */
+function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
+  for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
+/* hidden: faces pressed against another piece (joints, sockets, pin holes), and soles on the ground */
+function markContacts(active,regM,hid,fz0,fz1){
+  const gnd=new Uint8Array(S.nFaces),geo=active.map(pi=>pieceGeo(pi,regM));
+  const box=g=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(let i=0;i<g.c.length;i+=3)for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],g.c[i+k]);hi[k]=Math.max(hi[k],g.c[i+k]);}return {lo,hi};};
+  geo.forEach(g=>{g.b=box(g);g.G=null;});
+  const near=1.2;let nc=0,ng=0;
+  for(const A of geo){const o=S.offs[A.pi];
+    for(let t=0;t<A.n;t++)if(A.fn[t*3+2]<-0.8&&A.c[t*3+2]<fz0+0.025*(fz1-fz0)){hid[o+t]=1;gnd[o+t]=1;ng++;}
+    /* touching, or covered: looking straight out from the face, another piece is right there facing back */
+    const reach=3;
+    for(const B of geo){const self=B===A;
+      if(!self&&[0,1,2].some(k=>A.b.lo[k]>B.b.hi[k]+reach||A.b.hi[k]<B.b.lo[k]-reach))continue;
+      if(!B.G)B.G=C.grid(B.c,0.6);
+      for(let t=0;t<A.n;t++){if(hid[o+t])continue;const x=A.c[t*3],y=A.c[t*3+1],z=A.c[t*3+2],nx=A.fn[t*3],ny=A.fn[t*3+1],nz=A.fn[t*3+2];
+        if([x,y,z].some((w,k)=>w<B.b.lo[k]-reach||w>B.b.hi[k]+reach))continue;
+        for(let s2=self?1:0;s2<=(self?5:reach);s2+=1){const r=s2===0?near:0.8,[j,d]=B.G.near(x+nx*s2,y+ny*s2,z+nz*s2,2);if(j<0||d>r)continue;
+          if(nx*B.fn[j*3]+ny*B.fn[j*3+1]+nz*B.fn[j*3+2]<-0.2){hid[o+t]=1;nc++;break;}}}}}
+  (window._spcDbg=window._spcDbg||{}).contacts=[nc,ng];
+  return gnd;
+}
+/* a sole takes one color: the one running round its edge the most */
+function groundFill(active,gnd){
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],seen=new Uint8Array(n);
+    for(let s=0;s<n;s++){if(seen[s]||!gnd[o+s])continue;const cl=[s],vote=new Map();seen[s]=1;
+      for(let q2=0;q2<cl.length;q2++){const t=cl[q2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;
+        if(gnd[o+u]){if(!seen[u]){seen[u]=1;cl.push(u);}}else{const L=S.label[o+u];if(L>=0)vote.set(L,(vote.get(L)||0)+1);}}}
+      let b=-1,bv=0;for(const [L,v] of vote)if(v>bv){bv=v;b=L;}if(b>=0)cl.forEach(t=>S.label[o+t]=b);}}
+}
+/* ---------- the photos ---------- */
+async function readPhoto(file){
   const bmp=await createImageBitmap(file),sc=Math.min(1,1100/bmp.height),W=Math.round(bmp.width*sc),H=Math.round(bmp.height*sc);
   const cv=new OffscreenCanvas(W,H),cx=cv.getContext("2d");cx.drawImage(bmp,0,0,W,H);const im=cx.getImageData(0,0,W,H).data;
-  const px=(x,y)=>{x=Math.max(1,Math.min(W-2,Math.round(x)));y=Math.max(1,Math.min(H-2,Math.round(y)));let r=0,g=0,b=0;
-    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const o=((y+j)*W+x+i)*4;r+=im[o];g+=im[o+1];b+=im[o+2];}return [r/2295,g/2295,b/2295];};
-  const flat=(x,y)=>{x=Math.max(1,Math.min(W-2,Math.round(x)));y=Math.max(1,Math.min(H-2,Math.round(y)));const m=px(x,y);let dv=0;
-    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const o=((y+j)*W+x+i)*4;dv+=Math.abs(im[o]/255-m[0])+Math.abs(im[o+1]/255-m[1])+Math.abs(im[o+2]/255-m[2]);}return dv/9<0.05;};
-  /* the figure in the photo: everything that isn't the background */
-  const bord=[];for(let x=0;x<W;x+=4){bord.push(px(x,1),px(x,H-2));}for(let y=0;y<H;y+=4){bord.push(px(1,y),px(W-2,y));}
-  const bg=[0,1,2].map(k=>bord.map(c=>c[k]).sort((a,b)=>a-b)[bord.length>>1]);
-  let px0=W,px1=0,py0=H,py1=0;
-  for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2){const c=px(x,y);if(Math.abs(c[0]-bg[0])+Math.abs(c[1]-bg[1])+Math.abs(c[2]-bg[2])>0.18){if(x<px0)px0=x;if(x>px1)px1=x;if(y<py0)py0=y;if(y>py1)py1=y;}}
-  const dbg=window._spcDbg={photo:[W,H],box:null,secs:0,tried:0,matched:0};
-  if(px1<=px0||py1<=py0)return 0;dbg.box=[px0,py0,px1,py1];
-  /* the figure from the front: a depth map */
-  const fv=fig.map(p=>({v:C.xf(p.M,p.m.v),f:p.m.f}));
+  const L0=new Float32Array(W*H*3);for(let i=0;i<W*H;i++){const l=C.lab(im[i*4]/255,im[i*4+1]/255,im[i*4+2]/255);L0[i*3]=l[0];L0[i*3+1]=l[1];L0[i*3+2]=l[2];}
+  const L=new Float32Array(W*H*3),edge=new Float32Array(W*H);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){let a=0,b=0,c=0,m=0;
+    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const xx=Math.min(W-1,Math.max(0,x+i)),yy=Math.min(H-1,Math.max(0,y+j)),o=(yy*W+xx)*3;a+=L0[o];b+=L0[o+1];c+=L0[o+2];m++;}
+    const o=(y*W+x)*3;L[o]=a/m;L[o+1]=b/m;L[o+2]=c/m;}
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const o=(y*W+x)*3;let e=0;
+    for(const d of [3,-3,W*3,-W*3])e=Math.max(e,Math.hypot(L0[o]-L0[o+d],L0[o+1]-L0[o+d+1],L0[o+2]-L0[o+d+2]));edge[y*W+x]=e;}
+  /* background: the color round the border */
+  const bs=[[],[],[]];const push=(x,y)=>{const o=(y*W+x)*3;bs[0].push(L[o]);bs[1].push(L[o+1]);bs[2].push(L[o+2]);};
+  for(let x=0;x<W;x+=3){push(x,2);push(x,H-3);}for(let y=0;y<H;y+=3){push(2,y);push(W-3,y);}
+  const bg=bs.map(a=>a.sort((p,q)=>p-q)[a.length>>1]);
+  const fg=new Uint8Array(W*H),rows=new Int32Array(H),cols=new Int32Array(W);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const o=(y*W+x)*3;if(Math.hypot(L[o]-bg[0],L[o+1]-bg[1],L[o+2]-bg[2])>14){fg[y*W+x]=1;rows[y]++;cols[x]++;}}
+  let x0=0,x1=W-1,y0=0,y1=H-1;while(x0<W&&cols[x0]<3)x0++;while(x1>0&&cols[x1]<3)x1--;while(y0<H&&rows[y0]<3)y0++;while(y1>0&&rows[y1]<3)y1--;
+  return {W,H,L,edge,fg,box:[x0,y0,x1,y1],name:file.name};
+}
+/* the figure seen from the front (d=-1) or the back (d=+1): a depth map */
+function figView(fv,d){
   let X0=Infinity,X1=-Infinity,Z0=Infinity,Z1=-Infinity;fv.forEach(({v})=>{for(let i=0;i<v.length;i+=3){X0=Math.min(X0,v[i]);X1=Math.max(X1,v[i]);Z0=Math.min(Z0,v[i+2]);Z1=Math.max(Z1,v[i+2]);}});
-  const k=700/(Z1-Z0),RW=Math.ceil((X1-X0)*k)+2,RH=702;
-  const pieceFaces=active.filter(pi=>!/pin|peg/.test(S.parts[pi].name.toLowerCase())).map(pi=>{const p=S.parts[pi],M=regM[pi]?C.mul4(regM[pi],p.M):p.M;
-    return {pi,v:C.xf(M,p.m.v),f:p.m.f,fn:C.faceNormals(p.m,M)};});
-  let best=null;
-  for(const d of [-1,1]){
-    const dep=new Float32Array(RW*RH).fill(Infinity);
-    const sx=X=>(d<0?X-X0:X1-X)*k, sy=Z=>(Z1-Z)*k;
-    fv.forEach(({v,f})=>{for(let t=0;t<f.length;t+=3){const a=f[t]*3,b=f[t+1]*3,c=f[t+2]*3;
-      const ax=sx(v[a]),ay=sy(v[a+2]),bx=sx(v[b]),by=sy(v[b+2]),cxx=sx(v[c]),cy=sy(v[c+2]),az=-v[a+1]*d,bz=-v[b+1]*d,cz=-v[c+1]*d; /* camera on the d side: nearer = smaller */
-      const x0=Math.max(0,Math.floor(Math.min(ax,bx,cxx))),x1=Math.min(RW-1,Math.ceil(Math.max(ax,bx,cxx))),y0=Math.max(0,Math.floor(Math.min(ay,by,cy))),y1=Math.min(RH-1,Math.ceil(Math.max(ay,by,cy)));
-      const den=(by-cy)*(ax-cxx)+(cxx-bx)*(ay-cy);if(Math.abs(den)<1e-9)continue;
-      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const w1=((by-cy)*(x-cxx)+(cxx-bx)*(y-cy))/den,w2=((cy-ay)*(x-cxx)+(ax-cxx)*(y-cy))/den,w3=1-w1-w2;
-        if(w1<-0.01||w2<-0.01||w3<-0.01)continue;const z=w1*az+w2*bz+w3*cz,o=y*RW+x;if(z<dep[o])dep[o]=z;}}});
-    let fx0=RW,fx1=0,fy0=RH,fy1=0;for(let y=0;y<RH;y++)for(let x=0;x<RW;x++)if(dep[y*RW+x]<Infinity){if(x<fx0)fx0=x;if(x>fx1)fx1=x;if(y<fy0)fy0=y;if(y>fy1)fy1=y;}
-    const s=(py1-py0)/Math.max(1,fy1-fy0),pcx=(px0+px1)/2,fcx=(fx0+fx1)/2;
-    const toPhoto=(X,Z)=>[pcx+(sx(X)-fcx)*s,py0+(sy(Z)-fy0)*s];
-    /* which way the figure faces: whichever side agrees with Meshy's colors */
-    const errs=[];let cnt=0;
-    for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi];for(let t=0;t<f.length/3;t+=13){if(fn[t*3+1]*d<0.4)continue;
-      const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3,X=(v[a]+v[b]+v[c])/3,Y=(v[a+1]+v[b+1]+v[c+1])/3,Z=(v[a+2]+v[b+2]+v[c+2])/3;
-      const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
-      const q=toPhoto(X,Z),pc=px(q[0],q[1]),i=o+t;errs.push(C.dE(C.lab(...pc),C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2])));cnt++;}}
-    errs.sort((a,b)=>a-b);const score=cnt?errs[Math.floor(cnt*0.5)]+errs[Math.floor(cnt*0.75)]:Infinity; /* robust: details that differ don't decide it */(window._spcDbg.dirs=window._spcDbg.dirs||[]).push([d,cnt,+score.toFixed?.(2),fx0,fx1,fy0,fy1]);
-    /* models face -Y by convention; the back view must win clearly to be chosen */
-    if(!best||score<best.score*0.9)best={score,d,dep,sx,sy,toPhoto,s};
+  const k=700/(Z1-Z0),RW=Math.ceil((X1-X0)*k)+2,RH=702,dep=new Float32Array(RW*RH).fill(Infinity);
+  const sx=X=>(d<0?X-X0:X1-X)*k, sy=Z=>(Z1-Z)*k;
+  fv.forEach(({v,f})=>{for(let t=0;t<f.length;t+=3){const a=f[t]*3,b=f[t+1]*3,c=f[t+2]*3;
+    const ax=sx(v[a]),ay=sy(v[a+2]),bx=sx(v[b]),by=sy(v[b+2]),cxx=sx(v[c]),cy=sy(v[c+2]),az=-v[a+1]*d,bz=-v[b+1]*d,cz=-v[c+1]*d;
+    const x0=Math.max(0,Math.floor(Math.min(ax,bx,cxx))),x1=Math.min(RW-1,Math.ceil(Math.max(ax,bx,cxx))),y0=Math.max(0,Math.floor(Math.min(ay,by,cy))),y1=Math.min(RH-1,Math.ceil(Math.max(ay,by,cy)));
+    const den=(by-cy)*(ax-cxx)+(cxx-bx)*(ay-cy);if(Math.abs(den)<1e-9)continue;
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const w1=((by-cy)*(x-cxx)+(cxx-bx)*(y-cy))/den,w2=((cy-ay)*(x-cxx)+(ax-cxx)*(y-cy))/den,w3=1-w1-w2;
+      if(w1<-0.01||w2<-0.01||w3<-0.01)continue;const z=w1*az+w2*bz+w3*cz,o=y*RW+x;if(z<dep[o])dep[o]=z;}}});
+  let fx0=RW,fx1=0,fy0=RH,fy1=0;for(let y=0;y<RH;y++)for(let x=0;x<RW;x++)if(dep[y*RW+x]<Infinity){if(x<fx0)fx0=x;if(x>fx1)fx1=x;if(y<fy0)fy0=y;if(y>fy1)fy1=y;}
+  return {d,dep,RW,RH,sx,sy,fx0,fx1,fy0,fy1};
+}
+/* For every visible face: the photo's color there, and how much to trust it. Each piece is lined up on
+   its own (shift, scale, a few degrees of turn), because a photo's pose is never exactly the model's. */
+async function photoGuide(files,fig,active,regM,hid){
+  const dbg=(window._spcDbg=window._spcDbg||{});dbg.photos=[];
+  const fv=fig.map(p=>({v:C.xf(p.M,p.m.v),f:p.m.f}));
+  const views={"-1":figView(fv,-1),"1":figView(fv,1)};
+  const photos=[];for(const f of files.slice(0,4))photos.push(await readPhoto(f));
+  await tick();
+  const geo=active.filter(pi=>!/pin|peg/.test(S.parts[pi].name.toLowerCase())).map(pi=>pieceGeo(pi,regM));
+  const regLab=S.regions.map(r=>C.lab(...r.rgb));
+  const mapper=(ph,V)=>{const [px0,py0,px1,py1]=ph.box,s=(py1-py0)/Math.max(1,V.fy1-V.fy0),pcx=(px0+px1)/2,fcx=(V.fx0+V.fx1)/2;
+    return (X,Z)=>[pcx+(V.sx(X)-fcx)*s,py0+(V.sy(Z)-V.fy0)*s];};
+  const look=(ph,x,y)=>{const xi=Math.round(x),yi=Math.round(y);if(xi<1||yi<1||xi>=ph.W-1||yi>=ph.H-1)return -1;return yi*ph.W+xi;};
+  /* visible faces of a piece from a view */
+  const seenBy=(g,V,toP)=>{const out=[],o=S.offs[g.pi];
+    for(let t=0;t<g.n;t++){if(hid[o+t])continue;const cs=g.fn[t*3+1]*V.d;if(cs<0.35)continue;
+      const X=g.c[t*3],Y=g.c[t*3+1],Z=g.c[t*3+2],rx=Math.round(V.sx(X)),ry=Math.round(V.sy(Z));
+      if(rx<0||ry<0||rx>=V.RW||ry>=V.RH||-Y*V.d>V.dep[ry*V.RW+rx]+2)continue;const q=toP(X,Z);out.push([t,q[0],q[1],cs]);}
+    return out;};
+  /* which photo is the front and which the back: whichever way agrees with Meshy's colors */
+  const score=photos.map(ph=>{const r={};for(const d of [-1,1]){const V=views[d],toP=mapper(ph,V),errs=[];
+    for(const g of geo){const o=S.offs[g.pi];const sv=seenBy(g,V,toP);for(let k=0;k<sv.length;k+=7){const [t,x,y]=sv[k],j=look(ph,x,y);if(j<0)continue;
+      const i=o+t,l=regLab[S.label[i]];errs.push(Math.min(60,Math.hypot(ph.L[j*3]-l[0],ph.L[j*3+1]-l[1],ph.L[j*3+2]-l[2])));}}
+    errs.sort((a,b)=>a-b);r[d]=errs.length?errs[errs.length>>1]+errs[Math.floor(errs.length*0.75)]:Infinity;}return r;});
+  const use=[];
+  if(photos.length===1)use.push([0,score[0][-1]<=score[0][1]*1.1?-1:1]);
+  else{const a=score[0][-1]+score[1][1],b=score[0][1]+score[1][-1];if(a<=b)use.push([0,-1],[1,1]);else use.push([0,1],[1,-1]);}
+  dbg.photos=photos.map((ph,i)=>({name:ph.name,size:[ph.W,ph.H],box:ph.box,score:[+score[i][-1].toFixed(1),+score[i][1].toFixed(1)]}));
+  dbg.use=use;dbg.fits=[];
+  /* per face and color: how far the photo is from that color, looking a few pixels round the spot, so a
+     photo that is a hair off never wipes out a small detail like an eye. */
+  const R0=S.regions.length,dist=new Float32Array(S.nFaces*R0).fill(40),w=new Float32Array(S.nFaces),sure=new Float32Array(S.nFaces*2).fill(-1);
+  const offs=[[0,0]];for(const r of [2,4])for(let k=0;k<8;k++)offs.push([Math.round(r*Math.cos(k*Math.PI/4)),Math.round(r*Math.sin(k*Math.PI/4))]);
+  for(const [pIdx,d] of use){const ph=photos[pIdx],V=views[d],toP=mapper(ph,V),R=Math.round(0.035*ph.H);
+    for(const g of geo){const o=S.offs[g.pi],sv=seenBy(g,V,toP);if(sv.length<30)continue;
+      let cx=0,cy=0;sv.forEach(s=>{cx+=s[1];cy+=s[2];});cx/=sv.length;cy/=sv.length;
+      const sub=sv.filter((_,k)=>k%Math.max(1,Math.floor(sv.length/600))===0);
+      const err=(dx,dy,sc,rot)=>{const c=Math.cos(rot),s=Math.sin(rot);let e=0;
+        for(const [t,x,y] of sub){const ux=x-cx,uy=y-cy,j=look(ph,cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy);
+          if(j<0||!ph.fg[j]){e+=40;continue;}const l=regLab[S.label[o+t]];e+=Math.min(40,Math.hypot(ph.L[j*3]-l[0],ph.L[j*3+1]-l[1],ph.L[j*3+2]-l[2]));}
+        return e/sub.length;};
+      let best=[0,0,1,0],be=err(0,0,1,0);const e0=be;
+      for(let dy=-R;dy<=R;dy+=3)for(let dx=-R;dx<=R;dx+=3){const e=err(dx,dy,1,0)+0.02*Math.hypot(dx,dy);if(e<be){be=e;best=[dx,dy,1,0];}}
+      for(const sc of [0.94,0.97,1,1.03,1.06])for(const rd of [-6,-3,0,3,6]){const e=err(best[0],best[1],sc,rd*Math.PI/180);if(e<be){be=e;best=[best[0],best[1],sc,rd*Math.PI/180];}}
+      {const [bx,by,bs,br]=best;for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){const e=err(bx+dx,by+dy,bs,br);if(e<be){be=e;best=[bx+dx,by+dy,bs,br];}}}
+      dbg.fits.push([S.parts[g.pi].name,d,+e0.toFixed(1),+be.toFixed(1),best.map(x=>+x.toFixed(2))]);
+      if(window._spcOverlay){const [dx,dy,sc,rot]=best,c=Math.cos(rot),s=Math.sin(rot);window._spcOverlay(pIdx,S.parts[g.pi].name,sub.map(([t,x,y])=>{const ux=x-cx,uy=y-cy;return [cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy,S.regions[S.label[o+t]].rgb];}),[ph.W,ph.H]);}
+      if(be>32)continue; /* this photo doesn't line up with this piece */
+      const [dx,dy,sc,rot]=best,c=Math.cos(rot),s=Math.sin(rot);
+      for(const [t,x,y,cs] of sv){const ux=x-cx,uy=y-cy,j=look(ph,cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy);if(j<0||!ph.fg[j])continue;
+        const e=ph.edge[j],trust=cs*(e<8?1:e<18?0.6:0.35),i=o+t;if(trust<=w[i])continue;w[i]=trust;
+        const jx=j%ph.W,jy=(j/ph.W)|0;sure[i*2]=-1;sure[i*2+1]=99;
+        for(let L=0;L<R0;L++){const c=regLab[L];let m=40;const c0=Math.min(40,Math.hypot(ph.L[j*3]-c[0],ph.L[j*3+1]-c[1],ph.L[j*3+2]-c[2]));if(c0<sure[i*2+1]){sure[i*2+1]=c0;sure[i*2]=L;}
+          for(const [ox,oy] of offs){const xx=jx+ox,yy=jy+oy;if(xx<0||yy<0||xx>=ph.W||yy>=ph.H)continue;const jj=yy*ph.W+xx;if(!ph.fg[jj])continue;
+            const dd=Math.hypot(ph.L[jj*3]-c[0],ph.L[jj*3+1]-c[1],ph.L[jj*3+2]-c[2]);if(dd<m)m=dd;}
+          dist[i*R0+L]=0.5*m+0.5*c0;}}
+      await tick();}}
+  return {dist,w,R:R0,sure};
+}
+/* ---------- final colors ----------
+   Each visible face picks a region. It pays for disagreeing with the photo (heavily) and with Meshy
+   (lightly), and every color edge pays by its length: a lot across smooth surface, almost nothing along a
+   ridge, crease or raised edge. So edges settle on the sculpt's own lines, wherever they are, and blotches
+   and ragged edges go away. Solved exactly per pair of colors with a minimum cut (alpha-beta swap). */
+async function solveLabels(active,hid,photo,Lraw){
+  const R=S.regions.length,rl=S.regions.map(r=>C.lab(...r.rgb)),beta=window._spcBeta||0.3,wp=2;
+  const dbg=(window._spcDbg=window._spcDbg||{});dbg.solve=[];
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area,f=p.m.f,v=C.xf(p.M,p.m.v),fn=C.faceNormals(p.m,p.M);
+    const vis=new Uint8Array(n);let nv=0;for(let t=0;t<n;t++)if(!hid[o+t]&&S.label[o+t]>=0){vis[t]=1;nv++;}
+    if(!nv)continue;
+    log(`Putting color edges on the sculpted ridges: ${p.name}…`);await tick();
+    const U=new Float32Array(n*R),lab=new Int32Array(n).fill(-1);
+    for(let t=0;t<n;t++){if(!vis[t])continue;const i=o+t,pw=photo?photo.w[i]:0;let b=0,bu=Infinity;
+      for(let L=0;L<R;L++){const c=rl[L];let u=Math.min(40,Math.hypot(Lraw[i*3]-c[0],Lraw[i*3+1]-c[1],Lraw[i*3+2]-c[2]))/40;
+        if(pw>0){u+=wp*pw*photo.dist[i*R+L]/40;if(photo.sure[i*2]===L&&photo.sure[i*2+1]<12)u-=1.5*pw;} /* the photo plainly shows this paint here */
+        u*=A[i];U[t*R+L]=u;if(u<bu){bu=u;b=L;}}lab[t]=b;}
+    /* colors this piece really uses */
+    const ar=new Float64Array(R);let tot=0;for(let t=0;t<n;t++)if(vis[t]){ar[lab[t]]+=A[o+t];tot+=A[o+t];}
+    const cand=[...Array(R).keys()].filter(L=>ar[L]>=0.0003*tot);
+    for(let t=0;t<n;t++){if(!vis[t]||cand.includes(lab[t]))continue;let b=cand[0],bu=Infinity;for(const L of cand)if(U[t*R+L]<bu){bu=U[t*R+L];b=L;}lab[t]=b;}
+    /* edge weights: shared edge length, nearly free across a ridge or crease */
+    const wE=new Float32Array(n*3);
+    for(let t=0;t<n;t++){if(!vis[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!vis[u])continue;
+      const a=f[t*3+e]*3,b=f[t*3+(e+1)%3]*3,len=Math.hypot(v[a]-v[b],v[a+1]-v[b+1],v[a+2]-v[b+2]);
+      const cs=fn[t*3]*fn[u*3]+fn[t*3+1]*fn[u*3+1]+fn[t*3+2]*fn[u*3+2];wE[t*3+e]=len*beta*(Math.exp(-(1-cs)/0.04)+0.03);}}
+    const t0=Date.now();let flips=0;
+    for(let cyc=0;cyc<2;cyc++){let changed=0;
+      for(let ia=0;ia<cand.length;ia++)for(let ib=ia+1;ib<cand.length;ib++){const a=cand[ia],b=cand[ib];
+        /* only faces near where a meets b can change: a band 8 rings wide round their shared edges */
+        const ring=new Int32Array(n).fill(-1),fr=[];
+        for(let t=0;t<n;t++){if(!vis[t]||(lab[t]!==a&&lab[t]!==b))continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&vis[u]&&lab[u]!==lab[t]&&(lab[u]===a||lab[u]===b)){ring[t]=0;fr.push(t);break;}}}
+        for(let h=0;h<fr.length;h++){const t=fr[h];if(ring[t]>=8)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&vis[u]&&ring[u]<0&&(lab[u]===a||lab[u]===b)){ring[u]=ring[t]+1;fr.push(u);}}}
+        const idx=new Int32Array(n).fill(-1),nodes=[];for(const t of fr){idx[t]=nodes.length;nodes.push(t);}
+        if(nodes.length<2)continue;
+        const N=nodes.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
+        for(let k=0;k<N;k++){const t=nodes[k];let ca=U[t*R+a],cb=U[t*R+b];
+          for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!vis[u])continue;const we=wE[t*3+e];
+            if(idx[u]<0){if(lab[u]!==a)ca+=we;if(lab[u]!==b)cb+=we;}else if(u>t){eu.push(k);ev.push(idx[u]);ew.push(we);}}
+          const m=Math.min(ca,cb);sc[k]=cb-m;tc[k]=ca-m;}
+        const tc0=Date.now(),side=minCut(N,sc,tc,eu,ev,ew);if(window._spcTrace)window._spcTrace(p.name,a,b,N,eu.length,Date.now()-tc0);
+        for(let k=0;k<N;k++){const t=nodes[k],L=side[k]?a:b;if(L!==lab[t]){lab[t]=L;changed++;}}
+        await tick();}
+      flips+=changed;if(!changed)break;}
+    for(let t=0;t<n;t++)if(vis[t])S.label[o+t]=lab[t];
+    const ar2=new Float64Array(R);for(let t=0;t<n;t++)if(vis[t])ar2[lab[t]]+=A[o+t];
+    let pwN=0;for(let t=0;t<n;t++)if(vis[t]&&photo&&photo.w[o+t]>0)pwN++;
+    dbg.solve.push([p.name,nv,cand.map(L=>[L,+(100*ar[L]/tot).toFixed(2),+(100*ar2[L]/tot).toFixed(2)]),flips,Date.now()-t0,'photo%',+(100*pwN/nv).toFixed(0)]);
   }
-  dbg.score=best&&best.score;dbg.dir=best&&best.d;
-  if(!best||!isFinite(best.score))return 0;
-  const {d,dep,sx,sy,toPhoto}=best, regLab=S.regions.map(r=>C.lab(...r.rgb)), R=Math.round(0.015*H), cosCrease=Math.cos(25*Math.PI/180);
-  let painted=0,added=0;const newRegs=[];
-  for(const P of pieceFaces){const {v,f,fn,pi}=P,o=S.offs[pi],n=f.length/3,nb=S.nb[pi],A=S.area;
-    let pieceA=0;for(let t=0;t<n;t++)pieceA+=A[o+t];
-    /* sculpted sections of this piece */
-    const sec=new Int32Array(n).fill(-1),secs=[];
-    for(let s0=0;s0<n;s0++){if(sec[s0]>=0)continue;const st=[s0],mem=[s0];sec[s0]=secs.length;
-      while(st.length){const t=st.pop();for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||sec[u2]>=0)continue;
-        const cs=fn[t*3]*fn[u2*3]+fn[t*3+1]*fn[u2*3+1]+fn[t*3+2]*fn[u2*3+2];if(cs>=cosCrease){sec[u2]=secs.length;st.push(u2);mem.push(u2);}}}
-      secs.push(mem);}
-    /* every face of this piece the camera can see, with where it lands in the photo */
-    const seen=new Map();
-    for(let t=0;t<n;t++){if(fn[t*3+1]*d<0.3||hid[o+t])continue;
-      const ia=f[t*3]*3,ib=f[t*3+1]*3,ic=f[t*3+2]*3,X=(v[ia]+v[ib]+v[ic])/3,Y=(v[ia+1]+v[ib+1]+v[ic+1])/3,Z=(v[ia+2]+v[ib+2]+v[ic+2])/3;
-      const rx=Math.round(sx(X)),ry=Math.round(sy(Z));if(rx<0||ry<0||rx>=RW||ry>=RH||-Y*d>dep[ry*RW+rx]+0.8)continue;
-      seen.set(t,[toPhoto(X,Z),X,Z]);}
-    const seenList=[...seen.entries()];
-    const before=Int32Array.from(S.label.subarray(o,o+n));let pieceChanged=0;
-    for(const mem of secs){let a=0;mem.forEach(t=>a+=A[o+t]);dbg.secs++;if(a>0.02*pieceA||mem.length<8)continue;dbg.tried++;
-      const vis=mem.filter(t=>seen.has(t)).map(t=>[t,seen.get(t)[0]]);
-      if(vis.length<0.6*mem.length||vis.length<8){(dbg.novis=dbg.novis||[]).push([mem.length,vis.length]);continue;}
-      /* line up on the surface around the feature, where Meshy's colors can be trusted */
-      let cx0=0,cz0=0;vis.forEach(([t])=>{const s=seen.get(t);cx0+=s[1];cz0+=s[2];});cx0/=vis.length;cz0/=vis.length;
-      let rad=0;vis.forEach(([t])=>{const s=seen.get(t);rad=Math.max(rad,Math.hypot(s[1]-cx0,s[2]-cz0));});
-      const secId=sec[vis[0][0]],ring=[];
-      for(const [t,s] of seenList){if(sec[t]===secId||S.label[o+t]<0)continue;const dd=Math.hypot(s[1]-cx0,s[2]-cz0);if(dd>rad*1.05&&dd<rad*2.2)ring.push([t,s[0]]);}
-      const rs=ring.filter((_,i)=>i%Math.max(1,Math.floor(ring.length/150))===0);
-      if(rs.length<10){(dbg.noring=dbg.noring||0);dbg.noring++;continue;}
-      let bo=[0,0],be=Infinity;
-      for(let dy=-R;dy<=R;dy+=2)for(let dx=-R;dx<=R;dx+=2){let e=0;
-        for(const [t,q] of rs)e+=C.dE(C.lab(...px(q[0]+dx,q[1]+dy)),regLab[S.label[o+t]]);
-        e=e/rs.length+0.05*Math.hypot(dx,dy);if(e<be){be=e;bo=[dx,dy];}}
-      (dbg.fits=dbg.fits||[]).push([vis.length,+be.toFixed(1),bo]);
-      if(be>12)continue; /* the photo doesn't line up here: leave it */
-      /* only a real detail: the photo inside must clearly differ from the photo around it */
-      {let ins=[0,0,0],nI=0,out2=[0,0,0],nO=0;
-        vis.forEach(([t,q])=>{const l=C.lab(...px(q[0]+bo[0],q[1]+bo[1]));ins[0]+=l[0];ins[1]+=l[1];ins[2]+=l[2];nI++;});
-        rs.forEach(([t,q])=>{const l=C.lab(...px(q[0]+bo[0],q[1]+bo[1]));out2[0]+=l[0];out2[1]+=l[1];out2[2]+=l[2];nO++;});
-        if(C.dE(ins.map(x=>x/nI),out2.map(x=>x/nO))<15)continue;}
-      dbg.matched++;
-      for(const [t,q] of vis){const rgb=px(q[0]+bo[0],q[1]+bo[1]),l=C.lab(...rgb);let bL=-1,bd=Infinity;
-        regLab.forEach((rl,ri)=>{const dd=C.dE(l,rl);if(dd<bd){bd=dd;bL=ri;}});
-        /* a color the photo has and Meshy missed (an emblem's green): add it as a new region */
-        if(bd>18&&added<6&&flat(q[0]+bo[0],q[1]+bo[1])){let nn=-1,nd=Infinity;newRegs.forEach(ri=>{const dd=C.dE(l,regLab[ri]);if(dd<nd){nd=dd;nn=ri;}});
-          if(nn>=0&&nd<14)bL=nn;else{S.regions.push({id:S.regions.length,rgb,fil:-1,area:0,dE:0,patch:false,photo:true});
-            regLab.push(l);bL=S.regions.length-1;newRegs.push(bL);added++;}}
-        if(bL>=0&&S.label[o+t]!==bL){S.label[o+t]=bL;painted++;pieceChanged+=A[o+t];}}
-      /* lone specks inside the feature follow their neighbors */
-      for(let it=0;it<2;it++)for(const t of mem){const L=S.label[o+t],nl=[];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2>=0&&sec[u2]===sec[t])nl.push(S.label[o+u2]);}
-        if(nl.length>=2&&nl.every(x=>x!==L)&&nl[0]===nl[1])S.label[o+t]=nl[0];}
-    }
-    /* if the photo would repaint much of a piece, it isn't lining up: put the piece back */
-    if(pieceChanged>0.06*pieceA){S.label.set(before,o);(dbg.reverted=dbg.reverted||[]).push(S.parts[pi].name);}
-    await tick();
-  }
-  /* a new color that only caught a few triangles was an edge blend in the photo: drop it */
-  if(newRegs.length){const cnt=new Map();for(let i=0;i<S.nFaces;i++)if(newRegs.includes(S.label[i]))cnt.set(S.label[i],(cnt.get(S.label[i])||0)+1);
-    const keep=S.regions.map((_,ri)=>!newRegs.includes(ri)||(cnt.get(ri)||0)>=20);
-    for(let i=0;i<S.nFaces;i++){const L=S.label[i];if(L<0||keep[L])continue;let bL=-1,bd=Infinity;
-      regLab.forEach((rl,ri)=>{if(!keep[ri])return;const dd=C.dE(regLab[L],rl);if(dd<bd){bd=dd;bL=ri;}});S.label[i]=bL;}}
-  if(painted)sumAreas();
-  return painted;
+}
+/* minimum s-t cut (Dinic). sc[k]: capacity source->k, tc[k]: k->sink, edges (eu,ev) with capacity ew both ways.
+   Returns 1 for nodes left on the source side. */
+function minCut(N,sc,tc,eu,ev,ew){
+  const S0=N,T0=N+1,NN=N+2;let M=0;for(let k=0;k<N;k++){if(sc[k]>0)M++;if(tc[k]>0)M++;}M+=eu.length;
+  const head=new Int32Array(NN).fill(-1),to=new Int32Array(M*2),nx=new Int32Array(M*2),cap=new Float64Array(M*2);let E=0;
+  const add=(a,b,c1,c2)=>{to[E]=b;cap[E]=c1;nx[E]=head[a];head[a]=E++;to[E]=a;cap[E]=c2;nx[E]=head[b];head[b]=E++;};
+  for(let k=0;k<N;k++){if(sc[k]>0)add(S0,k,sc[k],0);if(tc[k]>0)add(k,T0,tc[k],0);}
+  for(let j=0;j<eu.length;j++)add(eu[j],ev[j],ew[j],ew[j]);
+  const level=new Int32Array(NN),it=new Int32Array(NN),qu=new Int32Array(NN),eps=1e-12,path=[];
+  const bfs=()=>{level.fill(-1);level[S0]=0;let h=0,tl=0;qu[tl++]=S0;while(h<tl){const u=qu[h++];for(let e=head[u];e>=0;e=nx[e])if(cap[e]>eps&&level[to[e]]<0){level[to[e]]=level[u]+1;qu[tl++]=to[e];}}return level[T0]>=0;};
+  while(bfs()){it.set(head);let u=S0;path.length=0;
+    for(;;){
+      if(u===T0){let m=Infinity;for(const e of path)if(cap[e]<m)m=cap[e];for(const e of path){cap[e]-=m;cap[e^1]+=m;}
+        let k=0;while(k<path.length&&cap[path[k]]>eps)k++;path.length=k;u=k?to[path[k-1]]:S0;continue;}
+      let e=it[u];while(e>=0&&!(cap[e]>eps&&level[to[e]]===level[u]+1))e=nx[e];it[u]=e;
+      if(e<0){level[u]=-1;if(!path.length)break;const pe=path.pop();u=to[pe^1];it[u]=nx[it[u]];continue;}
+      path.push(e);u=to[e];}}
+  /* source side: reachable from the source in what's left */
+  const side=new Uint8Array(N),seen=new Uint8Array(NN);let h=0,tl=0;qu[tl++]=S0;seen[S0]=1;
+  while(h<tl){const u=qu[h++];for(let e=head[u];e>=0;e=nx[e])if(cap[e]>eps&&!seen[to[e]]){seen[to[e]]=1;qu[tl++]=to[e];}}
+  for(let k=0;k<N;k++)side[k]=seen[k];return side;
 }
 function matchFilaments(slots){
   const PL=palLab(), owned=C.PAL.map((f,i)=>f.owned!==false?i:-1).filter(i=>i>=0);
