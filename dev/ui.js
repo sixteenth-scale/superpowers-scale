@@ -487,7 +487,12 @@ async function photoGuide(files,fig,active,regM,hid,Lraw){
   const offs=[[0,0]];for(const r of [2,4])for(let k=0;k<8;k++)offs.push([Math.round(r*Math.cos(k*Math.PI/4)),Math.round(r*Math.sin(k*Math.PI/4))]);
   const fitsOK=[],calS=photos.map(()=>({}));
   for(const [pIdx,d] of use){const ph=photos[pIdx],V=views[d],toP=mapper(ph,V),R=Math.round(0.035*ph.H);
-    for(const g of geo){const o=S.offs[g.pi],sv=seenBy(g,V,toP);if(sv.length<30)continue;
+    for(const g of geo){const o=S.offs[g.pi],svAll=seenBy(g,V,toP);
+      /* a long piece (a whole leg, an arm) is lined up in sections: the boot can sit differently from the thigh */
+      let z0=Infinity,z1=-Infinity;svAll.forEach(s=>{const z=g.c[s[0]*3+2];if(z<z0)z0=z;if(z>z1)z1=z;});
+      const nch=Math.max(1,Math.min(3,Math.round((z1-z0)/35)));
+      for(let ch=0;ch<nch;ch++){const lo=z0+(z1-z0)*ch/nch,hi=z0+(z1-z0)*(ch+1)/nch;
+      const sv=svAll.filter(s=>{const z=g.c[s[0]*3+2];return z>=lo&&(ch===nch-1?z<=hi:z<hi);});if(sv.length<30)continue;
       let cx=0,cy=0;sv.forEach(s=>{cx+=s[1];cy+=s[2];});cx/=sv.length;cy/=sv.length;
       const sub=sv.filter((_,k)=>k%Math.max(1,Math.floor(sv.length/600))===0);
       const err=(dx,dy,sc,rot)=>{const c=Math.cos(rot),s=Math.sin(rot);let e=0;
@@ -506,7 +511,7 @@ async function photoGuide(files,fig,active,regM,hid,Lraw){
       const [dx,dy,sc,rot]=best,c=Math.cos(rot),s=Math.sin(rot);
       for(const [t,x,y,cs] of sv){if(cs<0.6)continue;const ux=x-cx,uy=y-cy,j=look(ph,cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy);if(j<0||!ph.fg[j]||ph.edge[j]>=8)continue;
         const L=S.label[o+t],i=o+t;if(L<0||!Lraw||Math.hypot(Lraw[i*3]-regLab[L][0],Lraw[i*3+1]-regLab[L][1],Lraw[i*3+2]-regLab[L][2])>10)continue;(calS[pIdx][L]=calS[pIdx][L]||[]).push(ph.L[j*3],ph.L[j*3+1],ph.L[j*3+2]);}
-      await tick();}}
+      await tick();}}}
   /* each paint's look per photo: the middle of what its faces show there (Meshy's color if too few) */
   const calib=photos.map((_,pIdx)=>regLab.map((rl,L)=>{const a=calS[pIdx][L];if(!a||a.length<90)return rl;
     const med=k=>{const v=[];for(let i=k;i<a.length;i+=3)v.push(a[i]);v.sort((x,y)=>x-y);return v[v.length>>1];};const m=[med(0),med(1),med(2)];
