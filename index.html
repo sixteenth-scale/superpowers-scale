@@ -9615,13 +9615,15 @@ function markContacts(active,regM,hid,fz0,fz1){
   (window._spcDbg=window._spcDbg||{}).contacts=[nc,ng];
   return gnd;
 }
-/* a sole takes one color: the one running round its edge the most */
+/* a sole takes the boot's own color: the paint covering most of the foot just above it (black on a black
+   boot), not a trim strap that happens to run along its edge */
 function groundFill(active,gnd){
-  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],seen=new Uint8Array(n);
-    for(let s=0;s<n;s++){if(seen[s]||!gnd[o+s])continue;const cl=[s],vote=new Map();seen[s]=1;
-      for(let q2=0;q2<cl.length;q2++){const t=cl[q2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;
-        if(gnd[o+u]){if(!seen[u]){seen[u]=1;cl.push(u);}}else{const L=S.label[o+u];if(L>=0)vote.set(L,(vote.get(L)||0)+1);}}}
-      let b=-1,bv=0;for(const [L,v] of vote)if(v>bv){bv=v;b=L;}if(b>=0)cl.forEach(t=>S.label[o+t]=b);}}
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,p=S.parts[pi];let any=false;for(let t=0;t<n;t++)if(gnd[o+t]){any=true;break;}if(!any)continue;
+    const v=C.xf(p.M,p.m.v),f=p.m.f;const cz=t=>(v[f[t*3]*3+2]+v[f[t*3+1]*3+2]+v[f[t*3+2]*3+2])/3;
+    let z0=Infinity;for(let t=0;t<n;t++)if(gnd[o+t])z0=Math.min(z0,cz(t));
+    const vote=new Map();for(let t=0;t<n;t++){if(gnd[o+t])continue;const z=cz(t);if(z<z0||z>z0+12)continue;const L=S.label[o+t];if(L>=0)vote.set(L,(vote.get(L)||0)+S.area[o+t]);}
+    let b=-1,bv=0;for(const [L,x] of vote)if(x>bv){bv=x;b=L;}if(b<0)continue;
+    for(let t=0;t<n;t++)if(gnd[o+t])S.label[o+t]=b;}
 }
 /* ---------- the photos ---------- */
 async function readPhoto(file){
