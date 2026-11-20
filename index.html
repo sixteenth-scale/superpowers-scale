@@ -9908,9 +9908,23 @@ function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)
       const tilt=a2=>{const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);return [nx*0.6+(ux*c+vx*s2)*0.8,ny*0.6+(uy*c+vy*s2)*0.8,nz*0.6+(uz*c+vz*s2)*0.8];};
       /* close by: pressed into another piece or a narrow pocket */
       if(hit(G,x,y,z,nx,ny,nz,6,0.6)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(G,x,y,z,dx,dy,dz,8,0.6))b++;}if(b>=6){hid[o+t]=1;tucked++;continue;}}
+      /* the wall of a narrow slot or channel: straight out, the opposite wall faces back within a few mm */
+      {const l=1;let wall=false;for(let d=1.2;d<=6&&!wall;d+=0.6){const [j,dd]=Gs.near(x+nx*d,y+ny*d,z+nz*d,1);if(j>=0&&dd<0.7&&nx*g.fn[j*3]+ny*g.fn[j*3+1]+nz*g.fn[j*3+2]<-0.5)wall=true;}
+        if(wall){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,10,0.6))b++;}if(b>=3){hid[o+t]=1;inside++;continue;}}}
       /* inside the piece: a socket or hollow that only opens through a slot (where the wings plug in) */
       if(hit(Gs,x,y,z,nx,ny,nz,25,0.8)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,25,0.8))b++;}if(b>=6){hid[o+t]=1;inside++;}}}}
-  (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside];
+  /* the floor of a slot: a small patch of visible surface whose whole border is hidden walls */
+  let floors=0;for(const g of geo){const o=S.offs[g.pi],nb=S.nb[g.pi],seen=new Uint8Array(g.n);
+    for(let s0=0;s0<g.n;s0++){if(seen[s0]||hid[o+s0])continue;const comp=[s0];seen[s0]=1;let a=0,open=false;
+      for(let h=0;h<comp.length;h++){const t=comp[h];a+=S.area[o+t];if(a>80){open=true;}for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0){open=true;continue;}if(!seen[u]&&!hid[o+u]){seen[u]=1;comp.push(u);}}}
+      if(open)continue;
+      /* and it sits down in the slot: tilted looks from it run into the walls (a raised belt box doesn't) */
+      const Gs=g.Gs||(g.Gs=C.grid(g.c,0.8));let looks=0,blk=0;
+      for(let k=0;k<comp.length;k+=Math.max(1,Math.floor(comp.length/10))){const t=comp[k],x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
+        let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
+        for(let a2=0;a2<6;a2++){const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);looks++;if(hit(Gs,x,y,z,nx*0.5+(ux*c+vx*s2)*0.87,ny*0.5+(uy*c+vy*s2)*0.87,nz*0.5+(uz*c+vz*s2)*0.87,5,0.6))blk++;}}
+      if(looks&&blk>=0.8*looks){for(const t of comp)hid[o+t]=1;floors+=comp.length;}}}
+  (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside,floors];
 }
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
