@@ -57,3 +57,6 @@
 .spc-pop .act{display:flex;gap:6px;margin-top:6px}
 .spc-pop .act button{flex:1;font:11px "IBM Plex Sans",sans-serif;padding:3px 6px;border:1px solid var(--line);border-radius:3px;background:var(--sunken);cursor:pointer}
 .spc-tip{position:absolute;left:10px;top:10px;padding:4px 8px;border-radius:3px;background:rgba(255,255,255,.85);font-size:11.5px;color:var(--text-2);pointer-events:none}
+
+.spc-poplab{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:6px 0}
+.spc-pop .act{display:flex;gap:6px;flex-wrap:wrap}

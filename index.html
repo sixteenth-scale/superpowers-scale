@@ -310,6 +310,9 @@ tr.crown td{color:var(--accent);font-weight:600}
 .spc-pop .act button{flex:1;font:11px "IBM Plex Sans",sans-serif;padding:3px 6px;border:1px solid var(--line);border-radius:3px;background:var(--sunken);cursor:pointer}
 .spc-tip{position:absolute;left:10px;top:10px;padding:4px 8px;border-radius:3px;background:rgba(255,255,255,.85);font-size:11.5px;color:var(--text-2);pointer-events:none}
 
+.spc-poplab{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:6px 0}
+.spc-pop .act{display:flex;gap:6px;flex-wrap:wrap}
+
 /*</spc-css>*/
 </style>
 </head>
@@ -498,12 +501,12 @@ tr.crown td{color:var(--accent);font-weight:600}
         <div class="spc-view" id="spcViewWrap" hidden>
           <canvas id="spcCv"></canvas>
           <div id="spcPop" class="spc-pop" hidden></div>
-          <div id="spcTip" class="spc-tip">Click any color on the model to change its filament</div>
+          <div id="spcTip" class="spc-tip">Click any color on the model to change that patch, or that color everywhere</div>
           <div class="spc-tools">
             <button class="catbtn" id="spcShowFil" aria-pressed="true">Filaments</button>
             <button class="catbtn" id="spcShowRaw" aria-pressed="false">Meshy colors</button>
             <span class="spc-sep"></span>
-            <button class="catbtn" id="spcModeSel" aria-pressed="true" title="Click the model to pick its color region">Pick region</button>
+            <button class="catbtn" id="spcModeSel" aria-pressed="true" title="Click a color on the model to change that patch or that color everywhere">Pick region</button>
             <button class="catbtn" id="spcModePaint" aria-pressed="false" title="Click a patch to repaint just that patch">Paint patch</button>
             <select id="spcBrush" title="Filament for Paint patch"></select>
             <button class="catbtn" id="spcUndo" disabled>Undo</button>
@@ -9356,6 +9359,7 @@ function paint(){ if(!S.viewer||!S.vmap)return;
   for(let d=0;d<n;d++){const i=S.vmap[d];let c;const L=S.label?S.label[i]:-1;
     if(S.showRaw&&S.raw&&L>=0){c=[S.raw[i*3]*255,S.raw[i*3+1]*255,S.raw[i*3+2]*255];if(S.selected>=0&&L!==S.selected)c=c.map(fade);}
     else if(L>=0)c=fc[L];else c=[205,205,212];
+    if(S.selSet&&!S.selSet[i])c=c.map(fade);
     for(let k=0;k<3;k++){col[d*9+k*3]=c[0];col[d*9+k*3+1]=c[1];col[d*9+k*3+2]=c[2];}}
   S.viewer.setColors(col);
 }
@@ -9766,19 +9770,37 @@ function renderRegions(){
         const j=addPal({...best[0],owned:false});pushUndo({type:"fil",i:+b.dataset.sug,prev:r.fil});r.fil=j;paint();renderRegions();}}
     catch(e){log("Could not load Bambu's color list: "+e.message,true);}});
 }
-function select(i,ev){S.selected=(S.selected===i&&!ev)?-1:i;paint();renderRegions();showPop(ev);}
-function showPop(ev){const pop=q("spcPop");
-  if(S.selected<0){pop.hidden=true;return;}
-  const r=S.regions[S.selected],l=C.lab(...r.rgb),PL=palLab(),tot=S.regions.reduce((s,x)=>s+x.area,0)||1;
-  const opts=C.PAL.map((f,j)=>[j,C.dE(l,PL[j])]).sort((a,b)=>a[1]-b[1]).map(([j,d])=>`<option value="${j}"${j===r.fil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""} · ΔE ${d.toFixed(0)}</option>`).join("");
-  pop.innerHTML=`<div class="hd"><i style="background:${C.rgb2hex(r.rgb)}"></i><i style="background:${(C.PAL[r.fil]||{hex:"#000"}).hex}"></i>Region · ${(100*r.area/tot).toFixed(1)}%<button title="Close">×</button></div>`+
-    `<select>${opts}</select><div class="act"><button data-a="same">Match another region…</button></div>`;
+function select(i,ev){S.selected=(S.selected===i&&!ev)?-1:i;S.selArea=null;paint();renderRegions();showPop(ev);}
+/* ---------- fixing one spot ----------
+   A click picks the patch under the cursor: the connected run of that color on that one piece (a stray
+   silver spot on a heel, a dark eye corner, the gold on one glove). It can be changed on its own, or the
+   color can be changed everywhere. */
+function pieceOf(face){let pi=0;while(pi+1<S.offs.length&&S.offs[pi+1]<=face)pi++;return pi;}
+function patchAt(face){const pi=pieceOf(face),o=S.offs[pi],nb=S.nb[pi],L=S.label[face],start=face-o,seen=new Uint8Array(S.parts[pi].m.f.length/3),out=[start];seen[start]=1;
+  for(let h=0;h<out.length;h++){const t=out[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&S.label[o+u]===L){seen[u]=1;out.push(u);}}}
+  return {pi,faces:out.map(t=>t+o)};}
+function pickArea(face,ev){S.selected=-1;S.areaFace=face;S.selArea=patchAt(face);
+  S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop(ev);}
+function paintArea(fil){const A=S.selArea;if(!A)return;
+  let ri=S.regions.findIndex(r=>r.fil===fil),newRegion=false;
+  if(ri<0){ri=S.regions.length;S.regions.push({id:ri,rgb:C.hex2rgb(C.PAL[fil].hex),fil,area:0,dE:0,patch:true});newRegion=true;}
+  const prev=A.faces.map(f=>S.label[f]);A.faces.forEach(f=>S.label[f]=ri);
+  pushUndo({type:"patch",faces:A.faces,prev,newRegion});sumAreas();paint();renderRegions();}
+function showAreaPop(ev){const pop=q("spcPop"),A=S.selArea;if(!A){pop.hidden=true;return;}
+  let a=0;A.faces.forEach(f=>a+=S.area[f]);const cur=S.label[A.faces[0]],r=S.regions[cur],curFil=r?r.fil:-1;
+  const ref=r?C.lab(...r.rgb):[50,0,0],PL=palLab();
+  const opts=C.PAL.map((f,j)=>[j,C.dE(ref,PL[j])]).sort((x,y)=>(x[0]===curFil?-1:y[0]===curFil?1:x[1]-y[1])).map(([j])=>`<option value="${j}"${j===curFil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""}</option>`).join("");
+  pop.innerHTML=`<div class="hd"><i style="background:${(C.PAL[curFil]||{hex:"#ccc"}).hex}"></i>${esc(S.parts[A.pi].name)} · ${a.toFixed(1)} mm²<button title="Close">×</button></div>`+
+    `<label class="spc-poplab">Change just this patch<select data-a="fil">${opts}</select></label>`+
+    `<label class="spc-poplab">Change this color on every piece<select data-a="all">${opts}</select></label>`+
+    `<div class="act"><button data-a="same">Match another region…</button></div>`;
   const wrap=q("spcViewWrap").getBoundingClientRect();
-  if(ev){pop.style.left=Math.min(wrap.width-310,Math.max(6,ev.clientX-wrap.left+12))+"px";pop.style.top=Math.min(wrap.height-140,Math.max(6,ev.clientY-wrap.top+12))+"px";}
+  if(ev){pop.style.left=Math.min(wrap.width-320,Math.max(6,ev.clientX-wrap.left+12))+"px";pop.style.top=Math.min(wrap.height-170,Math.max(6,ev.clientY-wrap.top+12))+"px";}
   pop.hidden=false;
-  pop.querySelector(".hd button").onclick=()=>{S.selected=-1;pop.hidden=true;paint();renderRegions();};
-  pop.querySelector("select").onchange=e=>{pushUndo({type:"fil",i:S.selected,prev:r.fil});r.fil=+e.target.value;r.manual=true;paint();renderRegions();showPop();};
-  pop.querySelector('[data-a="same"]').onclick=()=>{S.matchFrom=S.selected;q("spcTip").textContent="Now click the region whose filament this one should use";};
+  pop.querySelector(".hd button").onclick=()=>{S.selArea=null;S.selSet=null;pop.hidden=true;paint();};
+  pop.querySelector('[data-a="fil"]').onchange=e=>{paintArea(+e.target.value);S.selArea=patchAt(S.areaFace);S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop();};
+  pop.querySelector('[data-a="all"]').onchange=e=>{if(!r)return;pushUndo({type:"fil",i:cur,prev:r.fil});r.fil=+e.target.value;r.manual=true;paint();renderRegions();showAreaPop();};
+  pop.querySelector('[data-a="same"]').onclick=()=>{S.matchFrom=cur;S.selArea=null;S.selSet=null;pop.hidden=true;paint();q("spcTip").textContent="Now click the region whose filament this one should use";};
 }
 function pushUndo(u){S.undo.push(u);if(S.undo.length>40)S.undo.shift();q("spcUndo").disabled=false;}
 q("spcUndo").onclick=()=>{const u=S.undo.pop();if(!u)return;
@@ -9792,8 +9814,8 @@ function onPick(dface,ev){
   if(!S.label||face<0||face>=S.nFaces||S.label[face]<0)return;
   if(S.mode==="sel"&&S.matchFrom!=null&&S.matchFrom>=0){const src=S.regions[S.label[face]],dst=S.regions[S.matchFrom];
     pushUndo({type:"fil",i:S.matchFrom,prev:dst.fil});dst.fil=src.fil;dst.manual=true;S.matchFrom=null;
-    q("spcTip").textContent="Click any color on the model to change its filament";S.selected=-1;q("spcPop").hidden=true;paint();renderRegions();return;}
-  if(S.mode==="sel"){select(S.label[face],arguments[1]);const el=q("spcRegions").querySelector(`[data-i="${S.label[face]}"]`);if(el)el.scrollIntoView({block:"nearest"});return;}
+    q("spcTip").textContent="Click any color on the model to change that patch, or that color everywhere";S.selected=-1;q("spcPop").hidden=true;paint();renderRegions();return;}
+  if(S.mode==="sel"){pickArea(face,ev);return;}
   /* paint the connected patch of this face */
   let pi=0;while(pi+1<S.offs.length&&S.offs[pi+1]<=face)pi++;
   const off=S.offs[pi],nb=S.nb[pi],start=face-off,lab0=S.label[face],brush=+q("spcBrush").value;
@@ -9809,14 +9831,14 @@ q("spcFit").onclick=()=>S.viewer&&S.viewer.fit();
 q("spcZoomIn").onclick=()=>S.viewer&&S.viewer.zoom(0.7);
 q("spcZoomOut").onclick=()=>S.viewer&&S.viewer.zoom(1/0.7);
 document.querySelectorAll("#spc [data-view]").forEach(b=>b.onclick=()=>{const v={front:[-Math.PI/2,0.1],back:[Math.PI/2,0.1],left:[Math.PI,0.1],right:[0,0.1],top:[-Math.PI/2,1.5]}[b.dataset.view];S.viewer&&S.viewer.view(...v);});
-q("spcFocus").onchange=e=>{if(!S.viewer)return;S.isolate=e.target.value===""?-1:+e.target.value;S.selected=-1;q("spcPop").hidden=true;showViewer();};
+q("spcFocus").onchange=e=>{if(!S.viewer)return;S.isolate=e.target.value===""?-1:+e.target.value;S.selected=-1;S.selArea=null;S.selSet=null;q("spcPop").hidden=true;showViewer();};
 const press=(on,off)=>{q(on).setAttribute("aria-pressed","true");q(off).setAttribute("aria-pressed","false");};
 q("spcShowFil").onclick=()=>{S.showRaw=false;press("spcShowFil","spcShowRaw");paint();};
 q("spcShowRaw").onclick=()=>{if(!S.raw)return;S.showRaw=true;press("spcShowRaw","spcShowFil");paint();};
 q("spcModeSel").onclick=()=>{S.mode="sel";press("spcModeSel","spcModePaint");};
-q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel");S.selected=-1;q("spcPop").hidden=true;paint();
+q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel");S.selected=-1;S.selArea=null;S.selSet=null;q("spcPop").hidden=true;paint();
   q("spcTip").textContent="Pick a filament in the box beside Paint patch, then click a patch to repaint just that patch";};
-q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click any color on the model to change its filament";});
+q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click any color on the model to change that patch, or that color everywhere";});
 
 /* ---------- save ---------- */
 q("spcSave").onclick=async()=>{
