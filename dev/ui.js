@@ -299,6 +299,7 @@ async function run(){
   log("Putting color edges on the sculpted ridges…");await tick();
   await solveLabels(active,hid,photo,L);
   if(!window._spcNoSmooth){log("Cleaning up the edges…");await tick();smoothEdges(active,hid);}
+  if(!window._spcNoCrease){log("Setting edges onto the sculpt…");await tick();snapToCreases(active,hid,photo);}
   if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
@@ -308,14 +309,16 @@ async function run(){
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
-  {const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));
+  const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
     S.regions=keep.map((x,i)=>({...S.regions[x],id:i}));S.label=S.label.map(x=>x<0?-1:mp.get(x));sumAreas();}
-  S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
+  S.regions.sort((a,b)=>b.area-a.area);{const ord=new Map(S.regions.map((r,i)=>[r.id,i]));S._remap=Array.from({length:R0n},(_,x)=>S._mp1.has(x)?ord.get(S._mp1.get(x)):-1);S.regions.forEach((r,i)=>r.id=i);S.label=S.label.map(x=>x<0?-1:ord.get(x));}
   /* region colors: average of the faces that really are that color */
   {const acc=S.regions.map(()=>[0,0,0,0]),rl=S.regions.map(r=>C.lab(...r.rgb));
     for(let i=0;i<S.nFaces;i++){const Lb=S.label[i];if(Lb<0||hid[i])continue;
       if(Math.hypot(L[i*3]-rl[Lb][0],L[i*3+1]-rl[Lb][1],L[i*3+2]-rl[Lb][2])>20)continue;const s=acc[Lb],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
+  /* leftovers go after the paint colors are measured, so the flesh tone is read from the face, not the shadowed neck */
+  if(!window._spcNoStrays){dropStrays(active,hid,photo);sumAreas();}
   /* the sculpted areas, ready for clicking */
   for(const pi of active){log(`Finding the sculpted areas on ${S.parts[pi].name}…`);await tick();try{sculptAreaAt(S.offs[pi]);}catch(e){console.warn(e);}}
   matchFilaments(slots);
@@ -741,6 +744,61 @@ function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)
       if(looks&&blk>=0.8*looks){for(const t of comp)hid[o+t]=1;floors+=comp.length;}}}
   (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside,floors];
 }
+/* bleed across a sculpted line: inside a sculpted area, a small patch of the paint that fills the area next
+   door, touching the line between them, crossed over (red teeth on a gold cuff). It goes back to this area's
+   own paint, so the color change sits on the line */
+function unbleed(active,hid,photo){let moved=0;const plain=(i,L)=>photo&&photo.w[i]>0.5&&photo.sure[i*2]===L&&photo.sure[i*2+1]<12;
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;let ar;try{sculptAreaAt(o);ar=S.areaC[pi];}catch(e){continue;}
+    const tot=new Map(),tal=new Map();
+    for(let t=0;t<n;t++){const i=o+t;if(hid[i]||S.label[i]<0)continue;const k=ar[t];tot.set(k,(tot.get(k)||0)+A[i]);let m=tal.get(k);if(!m)tal.set(k,m=new Map());m.set(S.label[i],(m.get(S.label[i])||0)+A[i]);}
+    const dom=new Map(),share=new Map();for(const [k,m] of tal){let b=-1,bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}dom.set(k,b);share.set(k,bv/tot.get(k));}
+    const seen=new Uint8Array(n);
+    for(let s0=0;s0<n;s0++){const i0=o+s0;if(seen[s0]||hid[i0]||S.label[i0]<0)continue;const k=ar[s0],L=S.label[i0],D=dom.get(k);seen[s0]=1;if(L===D||share.get(k)<0.6)continue;
+      const comp=[s0];let a=0,touch=0,edge=0;
+      for(let h=0;h<comp.length;h++){const t=comp[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;
+        if(ar[u]===k){if(!seen[u]&&!hid[o+u]&&S.label[o+u]===L){seen[u]=1;comp.push(u);}}else{edge++;if(dom.get(ar[u])===L)touch++;}}}
+      if(touch>0&&touch>=0.5*edge&&a<Math.min(window._spcBleedMax||4,0.2*tot.get(k))){let pl=0;for(const t of comp)if(plain(o+t,L))pl+=A[o+t];
+        if(pl>0.25*a)continue; /* the photo plainly shows this paint here: it's a real detail */
+        for(const t of comp)S.label[o+t]=D;moved+=a;}}}
+  (window._spcDbg=window._spcDbg||{}).unbleed=+moved.toFixed(1);}
+/* color edges onto the sculpt's creases: where a crease (the top or bottom corner of a cuff, the edge of a
+   raised stripe) runs along a color edge within about a millimetre, the edge moves onto it. Each pair of paints
+   is re-cut along its shared edge: moving a face costs a little, an edge costs its length, and an edge lying on
+   a crease costs almost nothing. Teeth and fringes go; a real detail is too costly to erase. */
+function snapToCreases(active,hid,photo){const lam=window._spcSnapLam||0.6,dbg=(window._spcDbg=window._spcDbg||{});let moved=0;
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area,f=p.m.f,v=C.xf(p.M,p.m.v),fn=C.faceNormals(p.m,p.M);
+    const ok=t=>!hid[o+t]&&S.label[o+t]>=0;
+    const pairs=new Set();for(let t=0;t<n;t++){if(!ok(t))continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>t&&ok(u)&&S.label[o+u]!==S.label[o+t]){const a=Math.min(S.label[o+u],S.label[o+t]),b=Math.max(S.label[o+u],S.label[o+t]);pairs.add(a*1000+b);}}}
+    for(const key of pairs){const a=Math.floor(key/1000),b=key%1000;
+      const ring=new Int32Array(n).fill(-1),fr=[];
+      for(let t=0;t<n;t++){if(!ok(t))continue;const L=S.label[o+t];if(L!==a&&L!==b)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ok(u)){const M=S.label[o+u];if(M!==L&&(M===a||M===b)){ring[t]=0;fr.push(t);break;}}}}
+      for(let h=0;h<fr.length;h++){const t=fr[h];if(ring[t]>=(window._spcSnapRings||9))continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ok(u)&&ring[u]<0){const M=S.label[o+u];if(M===a||M===b){ring[u]=ring[t]+1;fr.push(u);}}}}
+      if(fr.length<3)continue;
+      const idx=new Int32Array(n).fill(-1);fr.forEach((t,k)=>idx[t]=k);const N=fr.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
+      for(let k=0;k<N;k++){const t=fr[k],i=o+t,cur=S.label[i],keep=photo&&photo.w[i]>0.5&&photo.sure[i*2]===cur&&photo.sure[i*2+1]<10?3:1;
+        let ca=cur===a?0:lam*keep*A[i],cb=cur===b?0:lam*keep*A[i];
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!ok(u))continue;const ia=f[t*3+e]*3,ib=f[t*3+(e+1)%3]*3,len=Math.hypot(v[ia]-v[ib],v[ia+1]-v[ib+1],v[ia+2]-v[ib+2]);
+          const k1=1-(fn[t*3]*fn[u*3]+fn[t*3+1]*fn[u*3+1]+fn[t*3+2]*fn[u*3+2]),w=len*(0.05+0.95*Math.exp(-k1/0.04));
+          if(idx[u]<0){const M=S.label[o+u];if(M!==a)ca+=w;if(M!==b)cb+=w;}else if(u>t){eu.push(k);ev.push(idx[u]);ew.push(w);}}
+        const m=Math.min(ca,cb);sc[k]=cb-m;tc[k]=ca-m;}
+      const side=minCut(N,sc,tc,eu,ev,ew);
+      for(let k=0;k<N;k++){const L=side[k]?a:b,i=o+fr[k];if(S.label[i]!==L){S.label[i]=L;moved+=A[i];}}}}
+  dbg.creases=+moved.toFixed(1);}
+/* stray paints: a paint that covers only a sliver of a piece and that the photos don't plainly show on it
+   (flesh on the floor of a torso socket, a speck of silver on a heel) is a leftover. Each patch of it takes the
+   paint around it, so no filament change is spent on it */
+function dropStrays(active,hid,photo){let moved=0;const R=S.regions.length;
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
+    const ar=new Float64Array(R),shown=new Float64Array(R);let tot=0;
+    for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0)continue;tot+=A[i];ar[L]+=A[i];if(photo&&!hid[i]&&photo.w[i]>0.5&&photo.sure[i*2]>=0&&photo.sure[i*2+1]<12){const P=S._remap?S._remap[photo.sure[i*2]]:photo.sure[i*2];if(P===L)shown[L]+=A[i];}}
+    const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
+    if(!stray.length)continue;const isS=new Uint8Array(R);stray.forEach(L=>isS[L]=1);
+    for(let pass=0;pass<30;pass++){let ch=0;
+      for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0||!isS[L])continue;const v=new Map();
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M>=0&&!isS[M])v.set(M,(v.get(M)||0)+1);}
+        let b=-1,bv=0;for(const [M,c] of v)if(c>bv){bv=c;b=M;}if(b>=0){S.label[i]=b;moved+=A[i];ch++;}}
+      if(!ch)break;}}
+  (window._spcDbg=window._spcDbg||{}).strays=+moved.toFixed(1);}
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
    bend how sharply it turns at all. Paint lines on a sculpt sit in its valleys. */
