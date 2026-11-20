@@ -286,6 +286,7 @@ async function run(){
   if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
+  window._spcHid=hid;
   fillHidden(hid);
   groundFill(active,gnd);
   pinColors(active,hid);
@@ -649,16 +650,18 @@ function smoothEdges(active,hid){const R=S.regions.length,it=window._spcSmoothIt
    will see that area, so it is hidden and takes the color around it */
 function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM));const P=[];
   geo.forEach(g=>{for(let t=0;t<g.n;t++)P.push(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);});
-  const G=C.grid(Float32Array.from(P),0.7);let tucked=0;
-  const hit=(x,y,z,dx,dy,dz,max)=>{const l=Math.hypot(dx,dy,dz);for(let d=1.2;d<=max;d+=0.6){const [j,dd]=G.near(x+dx/l*d,y+dy/l*d,z+dz/l*d,1);if(j>=0&&dd<0.65)return true;}return false;};
-  for(const g of geo){const o=S.offs[g.pi];
+  const G=C.grid(Float32Array.from(P),0.7);let tucked=0,inside=0;
+  const hit=(Gr,x,y,z,dx,dy,dz,max,step)=>{const l=Math.hypot(dx,dy,dz);for(let d=1.2;d<=max;d+=step){const [j,dd]=Gr.near(x+dx/l*d,y+dy/l*d,z+dz/l*d,1);if(j>=0&&dd<0.7)return true;}return false;};
+  for(const g of geo){const o=S.offs[g.pi],Gs=C.grid(g.c,0.8);
     for(let t=0;t<g.n;t++){if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
-      if(!hit(x,y,z,nx,ny,nz,6))continue; /* looking straight out, something is in the way */
       let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
-      const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;let b=0;
-      for(let a2=0;a2<6;a2++){const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);if(hit(x,y,z,nx*0.6+(ux*c+vx*s2)*0.8,ny*0.6+(uy*c+vy*s2)*0.8,nz*0.6+(uz*c+vz*s2)*0.8,8))b++;}
-      if(b>=6){hid[o+t]=1;tucked++;}}}
-  (window._spcDbg=window._spcDbg||{}).tucked=tucked;
+      const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
+      const tilt=a2=>{const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);return [nx*0.6+(ux*c+vx*s2)*0.8,ny*0.6+(uy*c+vy*s2)*0.8,nz*0.6+(uz*c+vz*s2)*0.8];};
+      /* close by: pressed into another piece or a narrow pocket */
+      if(hit(G,x,y,z,nx,ny,nz,6,0.6)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(G,x,y,z,dx,dy,dz,8,0.6))b++;}if(b>=6){hid[o+t]=1;tucked++;continue;}}
+      /* inside the piece: a socket or hollow that only opens through a slot (where the wings plug in) */
+      if(hit(Gs,x,y,z,nx,ny,nz,25,0.8)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,25,0.8))b++;}if(b>=6){hid[o+t]=1;inside++;}}}}
+  (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside];
 }
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
