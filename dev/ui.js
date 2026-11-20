@@ -572,7 +572,26 @@ async function photoGuide(files,fig,active,regM,hid,Lraw){
     F.best=best;dbg.fits.push(['refit',S.parts[F.g.pi].name,F.d,+be.toFixed(1),best.map(x=>+x.toFixed(3))]);await tick();}
   for(const {pIdx,g,best,cx,cy,sv} of fitsOK){const ph=photos[pIdx],o=S.offs[g.pi],cal=calib[pIdx];
       const [dx,dy,sc,rot]=best,c=Math.cos(rot),s=Math.sin(rot);
-      for(const [t,x,y,cs] of sv){const ux=x-cx,uy=y-cy,j=look(ph,cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy);if(j<0||!ph.fg[j])continue;
+      const P0=sv.map(([t,x,y])=>{const ux=x-cx,uy=y-cy;return [cx+sc*(c*ux-s*uy)+dx,cy+sc*(s*ux+c*uy)+dy];});
+      /* small details get lined up on their own: the photo is cut into small tiles, and where a tile holds a
+         detail (two or more paints, like an eye, the emblem or the buckle) it may shift a few pixels to fit
+         that detail best. Shifts blend smoothly from tile to tile, so nothing tears. */
+      const TS=window._spcTile||22,LR=window._spcLocalR==null?5:window._spcLocalR;let tx0=Infinity,ty0=Infinity,tx1=-Infinity,ty1=-Infinity;
+      P0.forEach(([x,y])=>{tx0=Math.min(tx0,x);ty0=Math.min(ty0,y);tx1=Math.max(tx1,x);ty1=Math.max(ty1,y);});
+      const NX=Math.max(1,Math.ceil((tx1-tx0+1)/TS)),NY=Math.max(1,Math.ceil((ty1-ty0+1)/TS)),cells=Array.from({length:NX*NY},()=>[]);
+      P0.forEach(([x,y],k)=>{cells[Math.min(NY-1,Math.floor((y-ty0)/TS))*NX+Math.min(NX-1,Math.floor((x-tx0)/TS))].push(k);});
+      const shX=new Float32Array(NX*NY),shY=new Float32Array(NX*NY),shW=new Float32Array(NX*NY);
+      if(LR>0)cells.forEach((ks,ci)=>{if(ks.length<40)return;const cnt=new Map();for(const k of ks){const L=S.label[o+sv[k][0]];cnt.set(L,(cnt.get(L)||0)+1);}
+        if([...cnt.values()].filter(v=>v>=0.08*ks.length).length<2)return; /* plain area: nothing to line up */
+        const sub=ks.filter((_,q)=>q%Math.max(1,Math.floor(ks.length/250))===0);
+        const err=(ox,oy)=>{let e=0;for(const k of sub){const j=look(ph,P0[k][0]+ox,P0[k][1]+oy);if(j<0||!ph.fg[j]){e+=40;continue;}const l=cal[S.label[o+sv[k][0]]];e+=Math.min(40,Math.hypot(ph.L[j*3]-l[0],ph.L[j*3+1]-l[1],ph.L[j*3+2]-l[2]));}return e/sub.length+0.25*Math.hypot(ox,oy);};
+        const e0=err(0,0);let bx=0,by=0,be=e0;for(let oy=-LR;oy<=LR;oy++)for(let ox=-LR;ox<=LR;ox++){const e=err(ox,oy);if(e<be){be=e;bx=ox;by=oy;}}
+        if(be<e0-0.8){shX[ci]=bx;shY[ci]=by;shW[ci]=1;}});
+      const shiftAt=(x,y)=>{const fx=(x-tx0)/TS-0.5,fy=(y-ty0)/TS-0.5;let sx=0,sy=0,sw=0;
+        for(let cy2=Math.floor(fy)-1;cy2<=Math.floor(fy)+2;cy2++)for(let cx2=Math.floor(fx)-1;cx2<=Math.floor(fx)+2;cx2++){if(cx2<0||cy2<0||cx2>=NX||cy2>=NY)continue;const ci=cy2*NX+cx2,d2=(cx2-fx)**2+(cy2-fy)**2,wt=Math.exp(-d2/0.8);sw+=wt;if(shW[ci]){sx+=wt*shX[ci];sy+=wt*shY[ci];}}
+        return sw?[sx/sw,sy/sw]:[0,0];};
+      dbg.local=(dbg.local||0)+shW.reduce((a,b)=>a+b,0);
+      for(let k=0;k<sv.length;k++){const [t,x0,y0,cs]=sv[k],[qx,qy]=LR>0?shiftAt(P0[k][0],P0[k][1]):[0,0],j=look(ph,P0[k][0]+qx,P0[k][1]+qy);if(j<0||!ph.fg[j])continue;
         const e=ph.edge[j],cj=Math.hypot(ph.L[j*3+1],ph.L[j*3+2]),shine=cj<12&&ph.L[j*3]>40?0.3:1,trust=cs*shine*(e<8?1:e<18?0.6:0.35),i=o+t; /* pale gray in a photo is usually shine */if(trust<=w[i])continue;w[i]=trust;
         const jx=j%ph.W,jy=(j/ph.W)|0;sure[i*2]=-1;sure[i*2+1]=99;
         for(let L=0;L<R0;L++){const c=cal[L];let m=40;const c0=Math.min(40,Math.hypot(ph.L[j*3]-c[0],ph.L[j*3+1]-c[1],ph.L[j*3+2]-c[2]));if(c0<sure[i*2+1]){sure[i*2+1]=c0;sure[i*2]=L;}
