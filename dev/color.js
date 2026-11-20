@@ -420,7 +420,7 @@ async function alignSource(srcV,tgt,tick){ /* Meshy may rescale and re-axis. ret
   const r=icp(P,G,tgt.p,best.M,30,true);
   return {M:r.err<best.err?r.M:best.M,err:Math.min(r.err,best.err),diag};
 }
-async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece sits on the figure */
+async function registerPart(part,fig,G,tick0,cell,accept){ /* find where a cut piece sits on the figure */
   let last=Date.now(); const tick=async()=>{if(Date.now()-last>40){await tick0();last=Date.now();}};
   const rng=RNG(7), smp=samplePts(part.m,part.M,400,rng), P=[];
   for(let i=0;i<400;i++)P.push([smp.p[i*3],smp.p[i*3+1],smp.p[i*3+2]]);
@@ -433,11 +433,12 @@ async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece si
       await tick();}
   }
   cand.sort((a,b)=>a.err-b.err);
+  if(accept){const ok=cand.filter(r=>accept(r.M));if(ok.length)cand.splice(0,cand.length,...ok);}
   let best={err:Infinity};
-  for(const c of cand.slice(0,24)){const r=icp(P.filter((_,i)=>i%2===0),G,fig.p,c.M,25,false,3,cap*2);if(r.err<best.err)best=r;await tick();}
+  for(const c of cand.slice(0,24)){const r=icp(P.filter((_,i)=>i%2===0),G,fig.p,c.M,25,false,3,cap*2);if(r.err<best.err&&(!accept||accept(r.M)))best=r;await tick();}
   if(!isFinite(best.err))return {M:I4(),err:Infinity};
   const r=icp(P,G,fig.p,best.M,30,false,4);
-  return r.err<=best.err?r:best;
+  return r.err<=best.err&&(!accept||accept(r.M))?r:best;
 }
 
 function faceNormals(m,M){const v=M?xf(M,m.v):m.v,f=m.f,n=f.length/3,o=new Float32Array(n*3);

@@ -8903,7 +8903,7 @@ async function alignSource(srcV,tgt,tick){ /* Meshy may rescale and re-axis. ret
   const r=icp(P,G,tgt.p,best.M,30,true);
   return {M:r.err<best.err?r.M:best.M,err:Math.min(r.err,best.err),diag};
 }
-async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece sits on the figure */
+async function registerPart(part,fig,G,tick0,cell,accept){ /* find where a cut piece sits on the figure */
   let last=Date.now(); const tick=async()=>{if(Date.now()-last>40){await tick0();last=Date.now();}};
   const rng=RNG(7), smp=samplePts(part.m,part.M,400,rng), P=[];
   for(let i=0;i<400;i++)P.push([smp.p[i*3],smp.p[i*3+1],smp.p[i*3+2]]);
@@ -8916,11 +8916,12 @@ async function registerPart(part,fig,G,tick0,cell){ /* find where a cut piece si
       await tick();}
   }
   cand.sort((a,b)=>a.err-b.err);
+  if(accept){const ok=cand.filter(r=>accept(r.M));if(ok.length)cand.splice(0,cand.length,...ok);}
   let best={err:Infinity};
-  for(const c of cand.slice(0,24)){const r=icp(P.filter((_,i)=>i%2===0),G,fig.p,c.M,25,false,3,cap*2);if(r.err<best.err)best=r;await tick();}
+  for(const c of cand.slice(0,24)){const r=icp(P.filter((_,i)=>i%2===0),G,fig.p,c.M,25,false,3,cap*2);if(r.err<best.err&&(!accept||accept(r.M)))best=r;await tick();}
   if(!isFinite(best.err))return {M:I4(),err:Infinity};
   const r=icp(P,G,fig.p,best.M,30,false,4);
-  return r.err<=best.err?r:best;
+  return r.err<=best.err&&(!accept||accept(r.M))?r:best;
 }
 
 function faceNormals(m,M){const v=M?xf(M,m.v):m.v,f=m.f,n=f.length/3,o=new Float32Array(n*3);
@@ -9414,12 +9415,28 @@ async function run(){
   let G=null;
   if(parted){G=C.grid(figPts.p,al.diag/80);}
   const raws=[],tol=[],regM=[];let flags=[],lastErr=0;
+  const errs=[];
+  for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
+    if(!active.includes(pi))continue;
+    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
+    if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
+      const r=await C.registerPart(p,figPts,G,tick,al.diag/80);regM[pi]=r.M;errs[pi]=r.err;}}
+  /* a piece named left or right belongs on that side of the figure: the side the other left pieces landed on.
+     A mirror-image limb (a rigid leg) can fit the wrong leg almost as well, so it is placed again on its own side */
+  if(parted){let fx=0;for(let i=0;i<figPts.p.length;i+=3)fx+=figPts.p[i];fx/=figPts.p.length/3;
+    const side=pi=>{const nm=S.parts[pi].name.toLowerCase();return /left/.test(nm)?1:/right/.test(nm)?-1:0;};
+    const cx=(pi,M)=>{const v=C.xf(C.mul4(M,S.parts[pi].M),S.parts[pi].m.v);let x=0;for(let i=0;i<v.length;i+=3)x+=v[i];return x/(v.length/3)-fx;};
+    let vote=0;for(const pi of active){const sd=side(pi);if(sd&&regM[pi]&&errs[pi]<0.8)vote+=sd*Math.sign(cx(pi,regM[pi]));}
+    const leftSign=vote>=0?1:-1;
+    for(const pi of active){const sd=side(pi);if(!sd||!regM[pi])continue;const want=sd*leftSign;
+      if(Math.sign(cx(pi,regM[pi]))===want)continue;
+      log(`Placing ${S.parts[pi].name} on its own side…`);await tick();
+      const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,M=>Math.sign(cx(pi,M))===want);
+      if(isFinite(r.err)&&Math.sign(cx(pi,r.M))===want){regM[pi]=r.M;errs[pi]=r.err;}}}
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi)){raws.push(null);continue;}
-    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
     let Mx=null;
-    if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
-      const r=await C.registerPart(p,figPts,G,tick,al.diag/80); Mx=r.M; lastErr=r.err; regM[pi]=Mx; if(r.err>0.6)flags.push(`${p.name} (${r.err.toFixed(2)} mm)`);}
+    if(parted){Mx=regM[pi];lastErr=errs[pi];(window._spcReg=window._spcReg||{})[p.name]={M:Mx,err:lastErr};if(lastErr>0.6)flags.push(`${p.name} (${lastErr.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
     const tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
   rebuildIndex();S.areaC={};
@@ -9569,16 +9586,23 @@ function shadeOf(A,B){const a=C.lab(...A.rgb),b=C.lab(...B.rgb),ca=Math.hypot(a[
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
 /* hidden: faces pressed against another piece (joints, sockets, pin holes), and soles on the ground */
+/* two versions of the same part in one place (a rigid leg and the jointed leg it replaces) never touch or
+   hide each other: they are never assembled together */
+function samePlace(geo){const dup=new Set();
+  for(const A of geo)for(const B of geo){if(A===B)continue;if(!B.Gd)B.Gd=C.grid(B.c,0.8);let same=0,tried=0;
+    for(let t=0;t<A.n;t+=Math.max(1,Math.floor(A.n/300))){tried++;const [j,d]=B.Gd.near(A.c[t*3],A.c[t*3+1],A.c[t*3+2],2);if(j>=0&&d<0.8)same++;}
+    if(same>0.35*tried){dup.add(A.pi+"|"+B.pi);dup.add(B.pi+"|"+A.pi);}}
+  (window._spcDbg=window._spcDbg||{}).samePlace=[...dup];return dup;}
 function markContacts(active,regM,hid,fz0,fz1){
   const gnd=new Uint8Array(S.nFaces),geo=active.map(pi=>pieceGeo(pi,regM));
   const box=g=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(let i=0;i<g.c.length;i+=3)for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],g.c[i+k]);hi[k]=Math.max(hi[k],g.c[i+k]);}return {lo,hi};};
   geo.forEach(g=>{g.b=box(g);g.G=null;});
-  const near=1.2;let nc=0,ng=0;
+  const near=1.2,dup=samePlace(geo);let nc=0,ng=0;
   for(const A of geo){const o=S.offs[A.pi];
     for(let t=0;t<A.n;t++)if(A.fn[t*3+2]<-0.8&&A.c[t*3+2]<fz0+0.025*(fz1-fz0)){hid[o+t]=1;gnd[o+t]=1;ng++;}
     /* touching, or covered: looking straight out from the face, another piece is right there facing back */
     const reach=3;
-    for(const B of geo){const self=B===A;
+    for(const B of geo){const self=B===A;if(dup.has(A.pi+"|"+B.pi))continue;
       if(!self&&[0,1,2].some(k=>A.b.lo[k]>B.b.hi[k]+reach||A.b.hi[k]<B.b.lo[k]-reach))continue;
       if(!B.G)B.G=C.grid(B.c,0.6);
       for(let t=0;t<A.n;t++){if(hid[o+t])continue;const x=A.c[t*3],y=A.c[t*3+1],z=A.c[t*3+2],nx=A.fn[t*3],ny=A.fn[t*3+1],nz=A.fn[t*3+2];
@@ -9873,11 +9897,11 @@ function smoothEdges(active,hid){const R=S.regions.length,it=window._spcSmoothIt
 /* tucked-away areas: from a few spots in each sculpted area, look out in several directions; if nearly every
    look hits a piece within a short distance (a neck post inside the head, the inside of a wing slot), no one
    will see that area, so it is hidden and takes the color around it */
-function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM));const P=[];
-  geo.forEach(g=>{for(let t=0;t<g.n;t++)P.push(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);});
-  const G=C.grid(Float32Array.from(P),0.7);let tucked=0,inside=0;
+function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)),dup=samePlace(geo),gcache=new Map();
+  const gridFor=g=>{const key=geo.filter(h=>!dup.has(g.pi+"|"+h.pi)).map(h=>h.pi).join(',');if(gcache.has(key))return gcache.get(key);const P=[];geo.forEach(h=>{if(dup.has(g.pi+"|"+h.pi))return;for(let t=0;t<h.n;t++)P.push(h.c[t*3],h.c[t*3+1],h.c[t*3+2]);});const G=C.grid(Float32Array.from(P),0.7);gcache.set(key,G);return G;};
+  let tucked=0,inside=0;
   const hit=(Gr,x,y,z,dx,dy,dz,max,step)=>{const l=Math.hypot(dx,dy,dz);for(let d=1.2;d<=max;d+=step){const [j,dd]=Gr.near(x+dx/l*d,y+dy/l*d,z+dz/l*d,1);if(j>=0&&dd<0.7)return true;}return false;};
-  for(const g of geo){const o=S.offs[g.pi],Gs=C.grid(g.c,0.8);
+  for(const g of geo){const o=S.offs[g.pi],Gs=C.grid(g.c,0.8),G=gridFor(g);
     for(let t=0;t<g.n;t++){if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
       let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
       const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
