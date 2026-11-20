@@ -9484,6 +9484,7 @@ async function run(){
   /* final colors: follow the photos (Meshy where no photo can see), with color edges on the sculpt's ridges and creases */
   log("Putting color edges on the sculpted ridges…");await tick();
   await solveLabels(active,hid,photo,L);
+  if(!window._spcNoSmooth){log("Cleaning up the edges…");await tick();smoothEdges(active,hid);}
   if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
@@ -9818,6 +9819,32 @@ function sculptAreas(pi,geo){
     if(!merged)break;}
   const out=new Int32Array(n);for(let t=0;t<n;t++)out[t]=find(bas[t]);
   return out;
+}
+/* clean edges: each face's color is blended with its neighbours' a few times and then the strongest color
+   wins. Teeth and fringes along an edge melt away and edges come out as smooth lines; colors don't blend across
+   a sculpted line, so edges also settle onto the sculpt's own lines. A detail wider than about a millimetre
+   keeps its shape. */
+function smoothEdges(active,hid){const R=S.regions.length,it=window._spcSmoothIt||12;
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
+    let ar=null;try{sculptAreaAt(o);ar=S.areaC[pi];}catch(e){}
+    const ok=t=>!hid[o+t]&&S.label[o+t]>=0;
+    /* only faces near an edge need it */
+    const band=new Int32Array(n).fill(-1),q=[];
+    for(let t=0;t<n;t++){if(!ok(t))continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ok(u)&&S.label[o+u]!==S.label[o+t]){band[t]=0;q.push(t);break;}}}
+    for(let h=0;h<q.length;h++){const t=q[h];if(band[t]>=it+2)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ok(u)&&band[u]<0){band[u]=band[t]+1;q.push(u);}}}
+    if(!q.length)continue;
+    const idx=new Int32Array(n).fill(-1);q.forEach((t,k)=>idx[t]=k);const N=q.length;
+    let cur=new Float32Array(N*R),nxt=new Float32Array(N*R);
+    q.forEach((t,k)=>{cur[k*R+S.label[o+t]]=1;});
+    const val=(t,L,buf)=>{const k=idx[t];return k>=0?buf[k*R+L]:(S.label[o+t]===L?1:0);};
+    for(let r=0;r<it;r++){
+      for(let k=0;k<N;k++){const t=q[k];let wsum=A[o+t];for(let L=0;L<R;L++)nxt[k*R+L]=cur[k*R+L]*A[o+t];
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!ok(u))continue;const w=A[o+u]*(ar&&ar[u]!==ar[t]?0.08:1);wsum+=w;
+          const ku=idx[u];if(ku>=0)for(let L=0;L<R;L++)nxt[k*R+L]+=w*cur[ku*R+L];else nxt[k*R+S.label[o+u]]+=w;}
+        for(let L=0;L<R;L++)nxt[k*R+L]/=wsum;}
+      const tmp=cur;cur=nxt;nxt=tmp;}
+    for(let k=0;k<N;k++){let b=-1,bv=-1;for(let L=0;L<R;L++)if(cur[k*R+L]>bv){bv=cur[k*R+L];b=L;}S.label[o+q[k]]=b;}
+  }
 }
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
