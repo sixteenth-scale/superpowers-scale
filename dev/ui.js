@@ -300,6 +300,7 @@ async function run(){
   await solveLabels(active,hid,photo,L);
   if(!window._spcNoSmooth){log("Cleaning up the edges…");await tick();smoothEdges(active,hid);}
   if(!window._spcNoCrease){log("Setting edges onto the sculpt…");await tick();snapToCreases(active,hid,photo);}
+  if(!window._spcNoStrips){log("Fitting paint to raised strips…");await tick();fitStrips(active,hid);}
   if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
@@ -801,6 +802,56 @@ function dropStrays(active,hid,photo){let moved=0;const R=S.regions.length;
         let b=-1,bv=0;for(const [M,c] of v)if(c>bv){bv=c;b=M;}if(b>=0){S.label[i]=b;moved+=A[i];ch++;}}
       if(!ch)break;}}
   (window._spcDbg=window._spcDbg||{}).strays=+moved.toFixed(1);}
+/* ---------- raised strips ----------
+   How far each face stands out from the surface around it: its distance, along its own normal, from the
+   average of the surface within a couple of millimetres. A raised stripe, strap, cuff or rim stands out; a
+   plain curved surface barely does. */
+function raisedHeight(pi){const p=S.parts[pi],f=p.m.f,n=f.length/3,v=C.xf(p.M,p.m.v),fn=C.faceNormals(p.m,p.M),R=window._spcRaiseR||2,c=new Float32Array(n*3);
+  for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;
+  const step=Math.max(1,Math.floor(n/60000)),cell=R,key=(x,y,z)=>(Math.floor(x/cell)*73856093)^(Math.floor(y/cell)*19349663)^(Math.floor(z/cell)*83492791),H=new Map();
+  for(let t=0;t<n;t+=step){const k=key(c[t*3],c[t*3+1],c[t*3+2]);let a=H.get(k);if(!a)H.set(k,a=[]);a.push(t);}
+  const h=new Float32Array(n),R2=R*R;
+  for(let t=0;t<n;t++){const x=c[t*3],y=c[t*3+1],z=c[t*3+2];let sx=0,sy=0,sz=0,m=0;
+    for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k2=-1;k2<=1;k2++){const a=H.get(key(x+i*cell,y+j*cell,z+k2*cell));if(!a)continue;
+      for(const u of a){const dx=c[u*3]-x,dy=c[u*3+1]-y,dz=c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>R2)continue;
+        if(fn[t*3]*fn[u*3]+fn[t*3+1]*fn[u*3+1]+fn[t*3+2]*fn[u*3+2]<0.2)continue; /* the other side of a thin part */
+        sx+=c[u*3];sy+=c[u*3+1];sz+=c[u*3+2];m++;}}
+    if(m)h[t]=(x-sx/m)*fn[t*3]+(y-sy/m)*fn[t*3+1]+(z-sz/m)*fn[t*3+2];}
+  return h;}
+window._spcRaised=pi=>Array.from(raisedHeight(pi));
+/* raised strips and trim: a patch of paint (the gold stripe down a boot, a harness strap, a cuff) is grown
+   across smooth surface until it meets the sculpt's step edges on every side. If it closes off at about its
+   own size, that closed shape IS the strip: the whole strip gets the paint, and any of the paint that spilled
+   past the step goes back to the color next to it. If it leaks out across the piece, it isn't a sculpted
+   strip and is left alone. */
+function fitStrips(active,hid){const dbg=(window._spcDbg=window._spcDbg||{});dbg.strips=[];const T=window._spcStripT||0.12;
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area,fn=C.faceNormals(p.m,p.M),v=C.xf(p.M,p.m.v);
+    const bend=surfaceShape(p,nb,fn,v).bend,ok=t=>!hid[o+t]&&S.label[o+t]>=0;let tot=0;for(let t=0;t<n;t++)if(ok(t))tot+=A[o+t];
+    const seen=new Uint8Array(n);let fixed=0,tried=0;
+    for(let s0=0;s0<n;s0++){if(seen[s0]||!ok(s0))continue;const L=S.label[o+s0],comp=[s0];seen[s0]=1;let a=0;
+      for(let h=0;h<comp.length;h++){const t=comp[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&ok(u)&&S.label[o+u]===L){seen[u]=1;comp.push(u);}}}
+      if(a<0.8||a>0.35*tot)continue;tried++;
+      /* grow across smooth surface from the patch's smooth faces */
+      const inR=new Uint8Array(n),q=[],rg=new Int16Array(n).fill(-1);for(const t of comp)if(bend[t]<T){inR[t]=1;q.push(t);rg[t]=0;}const RK=window._spcStripRings||4;
+      let ra=0,leak=false;const lim=2.2*a+2;
+      for(let h=0;h<q.length;h++){const t=q[h];ra+=A[o+t];if(ra>lim){leak=true;break;}
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!inR[u]&&ok(u)&&bend[u]<T){const r=S.label[o+u]===L?0:rg[t]+1;if(r>RK){leak=true;break;}inR[u]=1;rg[u]=r;q.push(u);}}if(leak)break;}
+      if(leak||ra<0.5*a)continue;
+      /* the step edge round it belongs to the strip too (up to the corner) */
+      const edge=[];for(const t of q)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!inR[u]&&ok(u)){inR[u]=2;edge.push(u);}}
+      let changed=0;for(const t of q)if(S.label[o+t]!==L){S.label[o+t]=L;changed++;}
+      for(const t of edge)if(S.label[o+t]!==L&&bend[t]>=T){/* keep the corner with the strip only if most of the corner ring is the strip's paint */}
+      /* paint that spilled past the step: faces of the patch outside the strip */
+      for(const t of comp){if(inR[t])continue;const vote=new Map();
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ok(u)&&!inR[u]&&S.label[o+u]!==L)vote.set(S.label[o+u],(vote.get(S.label[o+u])||0)+1);}
+        let b=-1,bv=0;for(const [M,c] of vote)if(c>bv){bv=c;b=M;}if(b>=0){S.label[o+t]=b;changed++;}}
+      if(changed)fixed++;}
+    /* spilled faces cut off from their strip still carry it: settle them by their neighbours */
+    for(let pass=0;pass<4;pass++)for(let t=0;t<n;t++){if(!ok(t))continue;const L=S.label[o+t],vote=new Map();let same=0;
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!ok(u))continue;const M=S.label[o+u];if(M===L)same++;else vote.set(M,(vote.get(M)||0)+1);}
+      if(same===0){let b=-1,bv=0;for(const [M,c] of vote)if(c>bv){bv=c;b=M;}if(b>=0)S.label[o+t]=b;}}
+    dbg.strips.push([p.name,tried,fixed]);}
+}
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
    bend how sharply it turns at all. Paint lines on a sculpt sit in its valleys. */
