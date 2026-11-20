@@ -501,7 +501,7 @@ tr.crown td{color:var(--accent);font-weight:600}
         <div class="spc-view" id="spcViewWrap" hidden>
           <canvas id="spcCv"></canvas>
           <div id="spcPop" class="spc-pop" hidden></div>
-          <div id="spcTip" class="spc-tip">Click any color on the model to change that patch, or that color everywhere</div>
+          <div id="spcTip" class="spc-tip">Click the model to pick a sculpted area (or a color patch) and change its paint</div>
           <div class="spc-tools">
             <button class="catbtn" id="spcShowFil" aria-pressed="true">Filaments</button>
             <button class="catbtn" id="spcShowRaw" aria-pressed="false">Meshy colors</button>
@@ -9422,7 +9422,7 @@ async function run(){
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80); Mx=r.M; lastErr=r.err; regM[pi]=Mx; if(r.err>0.6)flags.push(`${p.name} (${r.err.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
     const tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
-  rebuildIndex();
+  rebuildIndex();S.areaC={};
   S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r.rgb,S.offs[pi]*3);});
   const act=new Uint8Array(S.nFaces);active.forEach(pi=>act.fill(1,S.offs[pi],S.offs[pi]+S.parts[pi].m.f.length/3));
   /* faces with no matching surface on the figure (cut faces, joints, hip tops, sockets) are hidden:
@@ -9500,6 +9500,8 @@ async function run(){
     for(let i=0;i<S.nFaces;i++){const Lb=S.label[i];if(Lb<0||hid[i])continue;
       if(Math.hypot(L[i*3]-rl[Lb][0],L[i*3+1]-rl[Lb][1],L[i*3+2]-rl[Lb][2])>20)continue;const s=acc[Lb],a=S.area[i];s[0]+=S.raw[i*3]*a;s[1]+=S.raw[i*3+1]*a;s[2]+=S.raw[i*3+2]*a;s[3]+=a;}
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
+  /* the sculpted areas, ready for clicking */
+  for(const pi of active){log(`Finding the sculpted areas on ${S.parts[pi].name}…`);await tick();try{sculptAreaAt(S.offs[pi]);}catch(e){console.warn(e);}}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;
   showViewer(true);renderRegions();q("spcSave").disabled=false;q("spcGo").disabled=false;
@@ -9787,6 +9789,34 @@ async function solveLabels(active,hid,photo,Lraw){
     dbg.solve.push([p.name,nv,cand.map(L=>[L,+(100*ar[L]/tot).toFixed(2),+(100*ar2[L]/tot).toFixed(2)]),flips,Date.now()-t0,'photo%',+(100*pwN/nv).toFixed(0)]);
   }
 }
+/* ---------- areas of the sculpt ----------
+   Each piece is split into areas along its sculpted lines (ridges, valleys, seams, rims), the way a factory
+   paint mask follows a figure's paint breaks. Watershed: every face runs downhill on "how sharply the
+   surface turns" to a low spot; faces that reach the same low spot form a basin. Neighboring basins are
+   joined when the line between them is weak on average, so a line with a small gap still holds. */
+function sculptAreas(pi,geo){
+  const p=S.parts[pi],nb=S.nb[pi],n=p.m.f.length/3,o=S.offs[pi],A=S.area,b=geo.bend;
+  const T=window._spcAreaLine||0.05,minA=window._spcAreaMin||0.4;
+  /* 1. downhill to a low spot */
+  const down=new Int32Array(n);for(let t=0;t<n;t++){let m=t,mv=b[t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&(b[u]<mv||b[u]===mv&&u<m)){mv=b[u];m=u;}}down[t]=m;}
+  const bas=new Int32Array(n).fill(-1);
+  for(let t=0;t<n;t++){if(bas[t]>=0)continue;const path=[];let x=t;while(bas[x]<0&&down[x]!==x&&path.length<100000){path.push(x);x=down[x];}const id=bas[x]>=0?bas[x]:x;bas[x]=id;for(const y of path)bas[y]=id;}
+  /* 2. union-find over basins, joining across weak lines */
+  const par=new Int32Array(n);for(let i=0;i<n;i++)par[i]=i;const find=x=>{while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;};
+  const area=new Float64Array(n);for(let t=0;t<n;t++)area[bas[t]]+=A[o+t];
+  for(let pass=0;pass<6;pass++){
+    const bd=new Map(); /* boundary between two current areas: [sum of line strength, count] */
+    for(let t=0;t<n;t++){const ra=find(bas[t]);for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t)continue;const rb=find(bas[u]);if(ra===rb)continue;
+      const k=ra<rb?ra+"_"+rb:rb+"_"+ra,w=Math.max(b[t],b[u]),q=bd.get(k);if(q){q[0]+=w;q[1]++;}else bd.set(k,[w,1]);}}
+    const list=[...bd.entries()].map(([k,[sw,c]])=>{const [x,y]=k.split("_").map(Number);return [sw/c,x,y,c];}).sort((p2,q2)=>p2[0]-q2[0]);
+    let merged=0;
+    for(const [m,x,y] of list){const rx=find(x),ry=find(y);if(rx===ry)continue;
+      const small=Math.min(area[rx],area[ry]);
+      if(m<T||small<minA){par[ry]=rx;area[rx]+=area[ry];merged++;}}
+    if(!merged)break;}
+  const out=new Int32Array(n);for(let t=0;t<n;t++)out[t]=find(bas[t]);
+  return out;
+}
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
    bend how sharply it turns at all. Paint lines on a sculpt sit in its valleys. */
@@ -9865,7 +9895,13 @@ function pieceOf(face){let pi=0;while(pi+1<S.offs.length&&S.offs[pi+1]<=face)pi+
 function patchAt(face){const pi=pieceOf(face),o=S.offs[pi],nb=S.nb[pi],L=S.label[face],start=face-o,seen=new Uint8Array(S.parts[pi].m.f.length/3),out=[start];seen[start]=1;
   for(let h=0;h<out.length;h++){const t=out[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&S.label[o+u]===L){seen[u]=1;out.push(u);}}}
   return {pi,faces:out.map(t=>t+o)};}
-function pickArea(face,ev){S.selected=-1;S.areaFace=face;S.selArea=patchAt(face);
+/* the sculpted area under a face: bounded by the sculpt's own lines (worked out once per piece) */
+function sculptAreaAt(face){const pi=pieceOf(face),o=S.offs[pi],p=S.parts[pi];S.areaC=S.areaC||{};
+  if(!S.areaC[pi]){const fn=C.faceNormals(p.m,p.M),v=C.xf(p.M,p.m.v);S.areaC[pi]=sculptAreas(pi,surfaceShape(p,S.nb[pi],fn,v));}
+  const ar=S.areaC[pi],id=ar[face-o],out=[];for(let t=0;t<ar.length;t++)if(ar[t]===id)out.push(o+t);return {pi,faces:out};}
+window._spcSculptAreas=pi=>{sculptAreaAt(S.offs[pi]);return S.areaC[pi];};
+function selectAt(face){return (S.pickKind||"area")==="area"?sculptAreaAt(face):patchAt(face);}
+function pickArea(face,ev){S.selected=-1;S.areaFace=face;S.selArea=selectAt(face);
   S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop(ev);}
 function paintArea(fil){const A=S.selArea;if(!A)return;
   let ri=S.regions.findIndex(r=>r.fil===fil),newRegion=false;
@@ -9877,14 +9913,18 @@ function showAreaPop(ev){const pop=q("spcPop"),A=S.selArea;if(!A){pop.hidden=tru
   const ref=r?C.lab(...r.rgb):[50,0,0],PL=palLab();
   const opts=C.PAL.map((f,j)=>[j,C.dE(ref,PL[j])]).sort((x,y)=>(x[0]===curFil?-1:y[0]===curFil?1:x[1]-y[1])).map(([j])=>`<option value="${j}"${j===curFil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""}</option>`).join("");
   pop.innerHTML=`<div class="hd"><i style="background:${(C.PAL[curFil]||{hex:"#ccc"}).hex}"></i>${esc(S.parts[A.pi].name)} · ${a.toFixed(1)} mm²<button title="Close">×</button></div>`+
-    `<label class="spc-poplab">Change just this patch<select data-a="fil">${opts}</select></label>`+
+    `<div class="act"><button data-a="k-area" aria-pressed="${(S.pickKind||"area")==="area"}" title="Bounded by the sculpt's ridges and seams">Sculpted area</button><button data-a="k-patch" aria-pressed="${S.pickKind==="patch"}" title="The connected run of this color">Color patch</button></div>`+
+    `<label class="spc-poplab">Paint what's highlighted<select data-a="fil">${opts}</select></label>`+
     `<label class="spc-poplab">Change this color on every piece<select data-a="all">${opts}</select></label>`+
     `<div class="act"><button data-a="same">Match another region…</button></div>`;
   const wrap=q("spcViewWrap").getBoundingClientRect();
   if(ev){pop.style.left=Math.min(wrap.width-320,Math.max(6,ev.clientX-wrap.left+12))+"px";pop.style.top=Math.min(wrap.height-170,Math.max(6,ev.clientY-wrap.top+12))+"px";}
   pop.hidden=false;
   pop.querySelector(".hd button").onclick=()=>{S.selArea=null;S.selSet=null;pop.hidden=true;paint();};
-  pop.querySelector('[data-a="fil"]').onchange=e=>{paintArea(+e.target.value);S.selArea=patchAt(S.areaFace);S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop();};
+  const reselect=()=>{S.selArea=selectAt(S.areaFace);S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop();};
+  pop.querySelector('[data-a="k-area"]').onclick=()=>{S.pickKind="area";reselect();};
+  pop.querySelector('[data-a="k-patch"]').onclick=()=>{S.pickKind="patch";reselect();};
+  pop.querySelector('[data-a="fil"]').onchange=e=>{paintArea(+e.target.value);S.selArea=selectAt(S.areaFace);S.selSet=new Uint8Array(S.nFaces);S.selArea.faces.forEach(f=>S.selSet[f]=1);paint();showAreaPop();};
   pop.querySelector('[data-a="all"]').onchange=e=>{if(!r)return;pushUndo({type:"fil",i:cur,prev:r.fil});r.fil=+e.target.value;r.manual=true;paint();renderRegions();showAreaPop();};
   pop.querySelector('[data-a="same"]').onclick=()=>{S.matchFrom=cur;S.selArea=null;S.selSet=null;pop.hidden=true;paint();q("spcTip").textContent="Now click the region whose filament this one should use";};
 }
@@ -9900,7 +9940,7 @@ function onPick(dface,ev){
   if(!S.label||face<0||face>=S.nFaces||S.label[face]<0)return;
   if(S.mode==="sel"&&S.matchFrom!=null&&S.matchFrom>=0){const src=S.regions[S.label[face]],dst=S.regions[S.matchFrom];
     pushUndo({type:"fil",i:S.matchFrom,prev:dst.fil});dst.fil=src.fil;dst.manual=true;S.matchFrom=null;
-    q("spcTip").textContent="Click any color on the model to change that patch, or that color everywhere";S.selected=-1;q("spcPop").hidden=true;paint();renderRegions();return;}
+    q("spcTip").textContent="Click the model to pick a sculpted area (or a color patch) and change its paint";S.selected=-1;q("spcPop").hidden=true;paint();renderRegions();return;}
   if(S.mode==="sel"){pickArea(face,ev);return;}
   /* paint the connected patch of this face */
   let pi=0;while(pi+1<S.offs.length&&S.offs[pi+1]<=face)pi++;
@@ -9924,7 +9964,7 @@ q("spcShowRaw").onclick=()=>{if(!S.raw)return;S.showRaw=true;press("spcShowRaw",
 q("spcModeSel").onclick=()=>{S.mode="sel";press("spcModeSel","spcModePaint");};
 q("spcModePaint").onclick=()=>{S.mode="paint";press("spcModePaint","spcModeSel");S.selected=-1;S.selArea=null;S.selSet=null;q("spcPop").hidden=true;paint();
   q("spcTip").textContent="Pick a filament in the box beside Paint patch, then click a patch to repaint just that patch";};
-q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click any color on the model to change that patch, or that color everywhere";});
+q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click the model to pick a sculpted area (or a color patch) and change its paint";});
 
 /* ---------- save ---------- */
 q("spcSave").onclick=async()=>{
