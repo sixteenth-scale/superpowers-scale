@@ -9695,6 +9695,8 @@ async function run(){
   (window._spcDbg=window._spcDbg||{}).unl=fillUnlabeled(active);
   if(!window._spcNoRound)roundEdges(active,hid,+(window._spcRoundR||1.5));
   if(!window._spcNoRidge)snapMainToRidges(active,+(window._spcRidgeD||8));
+  if(window._spcInner)levelInner(active,regM);
+  if(!window._spcNoHipInner)hipCapInner(active,regM);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -9908,6 +9910,71 @@ function snapMainToRidges(active,D){D=D||8;let moved=0;const rep=[];
       for(let k=0;k<N;k++){const L=side[k]?a:b,ii=o+fr[k];if(S.label[ii]!==L){S.label[ii]=L;mv+=A[ii];}}
       moved+=mv;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+":"+mv.toFixed(0));}}
   (window._spcDbg=window._spcDbg||{}).ridges=rep;}
+/* the inner side of a leg (facing the other leg) is barely seen and photographs dark. It takes the paint the
+   leg shows at the same height on its front, back and outer side: a boot top or a hip cap starts on the inside
+   where it starts on the outside, so the inside never spends filament changes on paint nobody sees */
+function levelInner(active,regM){const rep=[];const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));
+  let mx=0,mc=0;for(const g of geo.values())for(let t=0;t<g.n;t++){mx+=g.c[t*3];mc++;}const midX=mx/Math.max(mc,1);
+  for(const pi of active){if(!/(leg|thigh|calf|shin|boot|foot)/i.test(S.parts[pi].name))continue;
+    const g=geo.get(pi),o=S.offs[pi],n=g.n,A=S.area;
+    /* the leg's long axis */
+    let cx=0,cy=0,cz=0;for(let t=0;t<n;t++){cx+=g.c[t*3];cy+=g.c[t*3+1];cz+=g.c[t*3+2];}cx/=n;cy/=n;cz/=n;
+    const Cv=[[0,0,0],[0,0,0],[0,0,0]];for(let t=0;t<n;t++){const d=[g.c[t*3]-cx,g.c[t*3+1]-cy,g.c[t*3+2]-cz];for(let i=0;i<3;i++)for(let j=0;j<3;j++)Cv[i][j]+=d[i]*d[j];}
+    let ax=[0,1,0];for(let it=0;it<30;it++){const w=[0,1,2].map(i=>Cv[i][0]*ax[0]+Cv[i][1]*ax[1]+Cv[i][2]*ax[2]);const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+    const inward=Math.sign(midX-cx)||1;
+    /* main paints only: trim keeps its place */
+    const tot=new Map();let all=0;for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];}
+    const main=new Set([...tot].filter(([L,a])=>L>=0&&a>0.1*all).map(([L])=>L));if(main.size<2)continue;
+    const h=new Float32Array(n);let h0=Infinity,h1=-Infinity;for(let t=0;t<n;t++){h[t]=(g.c[t*3]-cx)*ax[0]+(g.c[t*3+1]-cy)*ax[1]+(g.c[t*3+2]-cz)*ax[2];h0=Math.min(h0,h[t]);h1=Math.max(h1,h[t]);}
+    const SL=0.75,nb2=Math.ceil((h1-h0)/SL)+1,slab=[...Array(nb2)].map(()=>new Map());
+    /* how much a face looks at the other leg: its normal, less its part along the axis, against the inward direction */
+    const inner=new Float32Array(n);
+    for(let t=0;t<n;t++){let nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];const a=nx*ax[0]+ny*ax[1]+nz*ax[2];nx-=a*ax[0];ny-=a*ax[1];nz-=a*ax[2];
+      const l=Math.hypot(nx,ny,nz);inner[t]=l>0.3?inward*nx/l:0;
+      const L=S.label[o+t];if(inner[t]<0.2&&l>0.3&&main.has(L)){const m=slab[Math.floor((h[t]-h0)/SL)];m.set(L,(m.get(L)||0)+A[o+t]);}}
+    let ch=0;
+    for(let t=0;t<n;t++){if(inner[t]<0.6)continue;const L=S.label[o+t];if(!main.has(L))continue;
+      const k=Math.floor((h[t]-h0)/SL),m=new Map();for(let d=-1;d<=1;d++){const s2=slab[k+d];if(s2)for(const [x,y] of s2)m.set(x,(m.get(x)||0)+y);}
+      let b=-1,bv=0,sv=0;for(const [x,y] of m){sv+=y;if(y>bv){bv=y;b=x;}}
+      if(b>=0&&b!==L&&bv>0.6*sv){S.label[o+t]=b;ch++;}}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+":"+ch);}
+  (window._spcDbg=window._spcDbg||{}).inner=rep;}
+/* a hip cap on the inner side of a leg (the side facing the other leg) starts no lower than it does on the outer
+   edges. Below that height the inside stays the leg's own paint: that part is barely seen, and black there
+   would cost a filament change on every layer for nothing */
+function hipCapInner(active,regM){const rep=[];const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));
+  let mx=0,mc=0;for(const g of geo.values())for(let t=0;t<g.n;t++){mx+=g.c[t*3];mc++;}const midX=mx/Math.max(mc,1);
+  const head=active.find(pi=>/head/i.test(S.parts[pi].name));let hc=null;
+  if(head!=null){const g=geo.get(head);hc=[0,0,0];for(let t=0;t<g.n;t++)for(let k=0;k<3;k++)hc[k]+=g.c[t*3+k]/g.n;}
+  for(const pi of active){if(!/leg/i.test(S.parts[pi].name)||/thigh|calf/i.test(S.parts[pi].name))continue;
+    const g=geo.get(pi),o=S.offs[pi],n=g.n,A=S.area,nb=S.nb[pi];
+    let cx=0,cy=0,cz=0;for(let t=0;t<n;t++){cx+=g.c[t*3];cy+=g.c[t*3+1];cz+=g.c[t*3+2];}cx/=n;cy/=n;cz/=n;
+    const Cv=[[0,0,0],[0,0,0],[0,0,0]];for(let t=0;t<n;t++){const d=[g.c[t*3]-cx,g.c[t*3+1]-cy,g.c[t*3+2]-cz];for(let i=0;i<3;i++)for(let j=0;j<3;j++)Cv[i][j]+=d[i]*d[j];}
+    let ax=[0,1,0];for(let it=0;it<30;it++){const w=[0,1,2].map(i=>Cv[i][0]*ax[0]+Cv[i][1]*ax[1]+Cv[i][2]*ax[2]);const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+    /* the axis points up, toward the head */
+    const up=hc?[hc[0]-cx,hc[1]-cy,hc[2]-cz]:[0,0,1];if(ax[0]*up[0]+ax[1]*up[1]+ax[2]*up[2]<0)ax=ax.map(x=>-x);
+    const inward=Math.sign(midX-cx)||1,h=new Float32Array(n),inner=new Float32Array(n);let h1=-Infinity,h0=Infinity;
+    for(let t=0;t<n;t++){h[t]=(g.c[t*3]-cx)*ax[0]+(g.c[t*3+1]-cy)*ax[1]+(g.c[t*3+2]-cz)*ax[2];h1=Math.max(h1,h[t]);h0=Math.min(h0,h[t]);
+      let nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];const a=nx*ax[0]+ny*ax[1]+nz*ax[2];nx-=a*ax[0];ny-=a*ax[1];nz-=a*ax[2];
+      const l=Math.hypot(nx,ny,nz);inner[t]=l>0.25?inward*nx/l:0;}
+    /* inner or outer half by position: across the leg at each height, which side of its middle a face is on */
+    {const SL=1,nS=Math.ceil((h1-h0)/SL)+1,sx=new Float64Array(nS),sn=new Float64Array(nS),smin=new Float64Array(nS).fill(Infinity),smax=new Float64Array(nS).fill(-Infinity);
+     for(let t=0;t<n;t++){const k=Math.floor((h[t]-h0)/SL),x=g.c[t*3];sx[k]+=x;sn[k]++;smin[k]=Math.min(smin[k],x);smax[k]=Math.max(smax[k],x);}
+     for(let t=0;t<n;t++){const k=Math.floor((h[t]-h0)/SL),mid=sx[k]/sn[k],half=Math.max(0.5,(smax[k]-smin[k])/2);inner[t]=inward*(g.c[t*3]-mid)/half;}}
+    /* the cap: the paint at the top end, and its patch joined to the top */
+    const top=new Map();for(let t=0;t<n;t++)if(h[t]>h1-0.06*(h1-h0)){const L=S.label[o+t];top.set(L,(top.get(L)||0)+A[o+t]);}
+    let cap=-1,cv=0;for(const [L,v] of top)if(v>cv){cv=v;cap=L;}if(cap<0)continue;
+    const inCap=new Uint8Array(n),q=[];for(let t=0;t<n;t++)if(h[t]>h1-0.06*(h1-h0)&&S.label[o+t]===cap){inCap[t]=1;q.push(t);}
+    for(let k=0;k<q.length;k++){const t=q[k];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!inCap[u]&&S.label[o+u]===cap){inCap[u]=1;q.push(u);}}}
+    /* the leg's own paint: what borders the cap most */
+    const bord=new Map(),hs=[];
+    for(let t=0;t<n;t++){if(!inCap[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||inCap[u])continue;const M=S.label[o+u];bord.set(M,(bord.get(M)||0)+1);
+      if(inner[t]<-0.75)hs.push(h[t]);}}
+    let body=-1,bv=0;for(const [L,v] of bord)if(v>bv){bv=v;body=L;}if(body<0||hs.length<5)continue;
+    hs.sort((a,b)=>a-b);const hOut=hs[Math.floor(hs.length*0.05)];
+    let ch=0;for(let t=0;t<n;t++)if(inCap[t]&&inner[t]>-0.75&&h[t]<hOut&&h[t]>h1-16){S.label[o+t]=body;ch++;}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+":"+ch+" cap"+cap+" body"+body+" hOut"+hOut.toFixed(1)+" h"+h0.toFixed(1)+".."+h1.toFixed(1)+" ax"+ax.map(x=>x.toFixed(2))+" hc"+(hc?hc.map(x=>x.toFixed(0)):"none")+" c"+[cx,cy,cz].map(x=>x.toFixed(0))+" in"+inward);}
+  (window._spcDbg=window._spcDbg||{}).hipInner=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
