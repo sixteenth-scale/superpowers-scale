@@ -608,7 +608,12 @@ function hipCapInner(active,regM){const rep=[];const geo=new Map(active.map(pi=>
     /* only the side that faces the other leg: front and back keep their cap down to their own ridge */
     let ch=0;for(let t=0;t<n;t++){if(!(inCap[t]&&inner[t]>0&&h[t]<hOut&&h[t]>h1-16))continue;
       let nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];const a=nx*ax[0]+ny*ax[1]+nz*ax[2];nx-=a*ax[0];ny-=a*ax[1];nz-=a*ax[2];const l=Math.hypot(nx,ny,nz);
-      if(l>0.3&&inward*nx/l>0.7){S.label[o+t]=body;ch++;}}
+      if(l>0.3&&(inward*nx/l>0.7||(inner[t]>0.3&&Math.abs(ny/l)<0.5))){S.label[o+t]=body;ch++;}}
+    /* the cap is one piece: black in the upper leg that isn't joined to the cap at the top (a patch in the crotch
+       notch under the peg, a blotch below the red band) is the leg's own paint */
+    {const keep=new Uint8Array(n),q=[];for(let t=0;t<n;t++)if(h[t]>h1-0.03*(h1-h0)&&S.label[o+t]===cap){keep[t]=1;q.push(t);}
+     for(let k2=0;k2<q.length;k2++){const t=q[k2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!keep[u]&&S.label[o+u]===cap){keep[u]=1;q.push(u);}}}
+     for(let t=0;t<n;t++)if(S.label[o+t]===cap&&!keep[t]&&h[t]>h1-0.4*(h1-h0)){S.label[o+t]=body;ch++;}}
     rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+":"+ch+" cap"+cap+" body"+body+" hOut"+hOut.toFixed(1)+" h"+h0.toFixed(1)+".."+h1.toFixed(1)+" ax"+ax.map(x=>x.toFixed(2))+" hc"+(hc?hc.map(x=>x.toFixed(0)):"none")+" c"+[cx,cy,cz].map(x=>x.toFixed(0))+" in"+inward);}
   (window._spcDbg=window._spcDbg||{}).hipInner=rep;}
 /* the hip cap of a leg is everything above the hip ridge, the sculpted line that runs right round the top of
@@ -809,7 +814,7 @@ function trimStrips(active,regM){const rep=[];
        const tot2=new Map(),cl=new Map();for(let t=0;t<n;t++){const c2=comp[t];if(c2<0||P.has(c2))continue;tot2.set(c2,(tot2.get(c2)||0)+1);if(dn[t]<Infinity)cl.set(c2,(cl.get(c2)||0)+1);}
        for(const [c2,x] of tot2)if(x>100&&(cl.get(c2)||0)>0.6*x)P.add(c2);}
       const dd=new Float32Array(n).fill(Infinity),H2=heap();for(let t=0;t<n;t++)if(comp[t]>=0&&P.has(comp[t])){dd[t]=0;H2.push(0,t);}
-      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=1.5){dd[u]=nd;H2.push(nd,u);}}}
+      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=3){dd[u]=nd;H2.push(nd,u);}}}
       const inS=new Uint8Array(n);for(let t=0;t<n;t++)if(dd[t]<Infinity)inS[t]=1;
       /* close the strip: a groove down the middle of a stripe, or a gap between two edge ridges, is part of it */
       {const CR=1.6,dil=new Float32Array(n).fill(Infinity),H3=heap();for(let t=0;t<n;t++)if(inS[t]){dil[t]=0;H3.push(0,t);}
@@ -818,9 +823,12 @@ function trimStrips(active,regM){const rep=[];
        while(H4.size){const [d0,t]=H4.pop();if(d0>ero[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||dil[u]===Infinity)continue;const nd=d0+dc(t,u);if(nd<ero[u]&&nd<=CR){ero[u]=nd;H4.push(nd,u);}}}
        for(let t=0;t<n;t++)if(!inS[t]&&dil[t]<Infinity&&ero[t]===Infinity)inS[t]=1;}
       let ch=0;for(let t=0;t<n;t++)if(inS[t]&&S.label[o+t]!==T){S.label[o+t]=T;ch++;}
-      /* spill: trim on flat surface right next to a strip goes back */
+      /* spill: trim on flat surface (or on a speck of raised noise) next to a strip goes back */
+      const bigRaw=new Uint8Array(n);{const seen=new Uint8Array(n);for(let s0=0;s0<n;s0++){if(!raw[s0]||seen[s0])continue;const q=[s0];seen[s0]=1;
+        for(let h2=0;h2<q.length;h2++){const t=q[h2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&raw[u]&&!seen[u]){seen[u]=1;q.push(u);}}}
+        if(q.length>=300)for(const t of q)bigRaw[t]=1;}}
       let sp=0;for(let pass=0;pass<30;pass++){let any=false;
-        for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||raw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
+        for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||bigRaw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
           let b=-1,bv=0;for(const [L,x] of m)if(x>bv){bv=x;b=L;}if(b>=0){S.label[o+t]=b;sp++;any=true;}}
         if(!any)break;}
       rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp);}}
