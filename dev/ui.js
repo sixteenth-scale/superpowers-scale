@@ -815,7 +815,7 @@ function trimStrips(active,regM){const rep=[];
        const tot2=new Map(),cl=new Map();for(let t=0;t<n;t++){const c2=comp[t];if(c2<0||P.has(c2))continue;tot2.set(c2,(tot2.get(c2)||0)+1);if(dn[t]<Infinity)cl.set(c2,(cl.get(c2)||0)+1);}
        for(const [c2,x] of tot2)if(x>100&&(cl.get(c2)||0)>0.6*x)P.add(c2);}
       const dd=new Float32Array(n).fill(Infinity),H2=heap();for(let t=0;t<n;t++)if(comp[t]>=0&&P.has(comp[t])){dd[t]=0;H2.push(0,t);}
-      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=3){dd[u]=nd;H2.push(nd,u);}}}
+      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=6){dd[u]=nd;H2.push(nd,u);}}}
       const inS=new Uint8Array(n);for(let t=0;t<n;t++)if(dd[t]<Infinity)inS[t]=1;
       /* close the strip: a groove down the middle of a stripe, or a gap between two edge ridges, is part of it */
       {const CR=1.6,dil=new Float32Array(n).fill(Infinity),H3=heap();for(let t=0;t<n;t++)if(inS[t]){dil[t]=0;H3.push(0,t);}
@@ -832,7 +832,18 @@ function trimStrips(active,regM){const rep=[];
         for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||bigRaw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
           let b=-1,bv=0;for(const [L,x] of m)if(x>bv){bv=x;b=L;}if(b>=0){S.label[o+t]=b;sp++;any=true;}}
         if(!any)break;}
-      rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp);}}
+      /* a patch of other paint closed in by the trim on every side (the middle of a toe cap) is trim; a loose
+         patch of trim not joined to any strip (a blotch on the side of the toe) is not */
+      let holes=0,isl=0;{const seen=new Uint8Array(n);
+        /* the sole rim counts as a closing edge too: a toe cap is closed by its trim and the sole */
+        const sole=new Uint8Array(n);for(let t=0;t<n;t++)if(gf.c[t*3+2]<zmin+0.8)sole[t]=1;
+        for(let s0=0;s0<n;s0++){if(seen[s0]||sole[s0])continue;const L0=S.label[o+s0];const q=[s0];seen[s0]=1;let a=0,onlyT=true,touchS=false;
+          for(let h2=0;h2<q.length;h2++){const t=q[h2];a+=A[o+t];if(inS[t])touchS=true;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0){onlyT=false;continue;}
+            if(sole[u]&&L0!==T)continue;const Lu=S.label[o+u];if(Lu===L0){if(!seen[u]){seen[u]=1;q.push(u);}}else if(Lu!==T)onlyT=false;}}
+          if(L0!==T&&onlyT&&a<40){for(const t of q)S.label[o+t]=T;holes++;}
+          else if(L0===T&&!touchS&&a<15){const m=new Map();for(const t of q)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
+            let b=-1,bv=0;for(const [k3,x] of m)if(x>bv){bv=x;b=k3;}if(b>=0){for(const t of q)S.label[o+t]=b;isl++;}}}}
+      rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp+" holes"+holes+" isl"+isl);}}
   (window._spcDbg=window._spcDbg||{}).trim=rep;}
 /* left and right boots are mirror images, and so is their trim. The cleaner side (the trim with the shortest
    border for its area) is copied across to the other, face by face, wherever the mirrored surfaces meet */
