@@ -9717,6 +9717,7 @@ async function run(){
   if(window._spcThighCut)thighCap(active,regM);
   if(!window._spcNoThighPlane)thighPlanes(active,regM);
   if(!window._spcNoTrim){const t0=Date.now();trimStrips(active,regM);(window._spcDbg=window._spcDbg||{}).trimMs=Date.now()-t0;}
+  if(!window._spcNoMirrorTrim)mirrorTrim(active,regM);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -10221,6 +10222,40 @@ function trimStrips(active,regM){const rep=[];
         if(!any)break;}
       rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp);}}
   (window._spcDbg=window._spcDbg||{}).trim=rep;}
+/* left and right boots are mirror images, and so is their trim. The cleaner side (the trim with the shortest
+   border for its area) is copied across to the other, face by face, wherever the mirrored surfaces meet */
+function mirrorTrim(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLowerCase().replace(/\d+/g,"#");
+  let mx=0,mc=0;const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));for(const g of geo.values())for(let t=0;t<g.n;t++){mx+=g.c[t*3];mc++;}const midX=mx/Math.max(mc,1);
+  for(const L of active){if(!/left/.test(nm(L))||!/(leg|calf|shin|boot)/.test(nm(L))||/thigh/.test(nm(L)))continue;
+    const R=active.find(q=>q!==L&&nm(q)===nm(L).replace(/left/g,"right"));if(R==null)continue;
+    const info=pi=>{const g=geo.get(pi),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,F=g.f,v=g.v;const tot=new Map(),per=new Map();let all=0;
+      for(let t=0;t<n;t++){const Lb=S.label[o+t];tot.set(Lb,(tot.get(Lb)||0)+A[o+t]);all+=A[o+t];
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===Lb)continue;const a=F[t*3+e],b=F[t*3+(e+1)%3];per.set(Lb,(per.get(Lb)||0)+Math.hypot(v[a*3]-v[b*3],v[a*3+1]-v[b*3+1],v[a*3+2]-v[b*3+2]));}}
+      return {tot,per,all};};
+    const iL=info(L),iR=info(R);
+    /* trim: a narrow paint present on both */
+    const trims=[...iL.tot].filter(([Lb,a])=>Lb>=0&&a>0.01*iL.all&&a<0.3*iL.all&&iR.tot.has(Lb)&&2*a/Math.max(iL.per.get(Lb)||0,1e-6)<2.5).map(([Lb])=>Lb);
+    for(const T of trims){const rag=i=>(i.per.get(T)||0)**2/Math.max(i.tot.get(T)||0,1e-6);
+      const [src,dst]=rag(iL)<=rag(iR)?[L,R]:[R,L];const gs=geo.get(src),gd=geo.get(dst),os=S.offs[src],od=S.offs[dst];
+      let xs=0,xd=0;for(let t=0;t<gs.n;t++)xs+=gs.c[t*3];for(let t=0;t<gd.n;t++)xd+=gd.c[t*3];const pm=(xs/gs.n+xd/gd.n)/2;
+      const mcoord=new Float32Array(gs.c.length);for(let t=0;t<gs.n;t++){mcoord[t*3]=2*pm-gs.c[t*3];mcoord[t*3+1]=gs.c[t*3+1];mcoord[t*3+2]=gs.c[t*3+2];}
+      const G=C.grid(mcoord,0.5);let add=0,rem=0,hit=0;
+      /* the paint the trim sits on (boot black): only those two trade faces */
+      const host=new Map();for(let t=0;t<gd.n;t++){if(S.label[od+t]!==T)continue;for(let e=0;e<3;e++){const u=S.nb[dst][t*3+e];if(u>=0&&S.label[od+u]!==T)host.set(S.label[od+u],(host.get(S.label[od+u])||0)+1);}}
+      let hb=-1,hv=0;for(const [k2,x] of host)if(x>hv){hv=x;hb=k2;}const hosts=new Set([hb]);
+      /* the cuff edge is left as the strip rule made it: no copying within 3 mm of the paint above the boot */
+      const nearTop=new Uint8Array(gd.n);{const q=[],dist=new Float32Array(gd.n).fill(Infinity),nbD=S.nb[dst];
+        for(let t=0;t<gd.n;t++){const c2=S.label[od+t];if(c2!==T&&!hosts.has(c2)){dist[t]=0;q.push(t);}}
+        for(let h2=0;h2<q.length;h2++){const t=q[h2];for(let e=0;e<3;e++){const u=nbD[t*3+e];if(u<0)continue;const nd=dist[t]+Math.hypot(gd.c[t*3]-gd.c[u*3],gd.c[t*3+1]-gd.c[u*3+1],gd.c[t*3+2]-gd.c[u*3+2]);if(nd<dist[u]&&nd<=3){dist[u]=nd;q.push(u);}}}
+        for(let t=0;t<gd.n;t++)if(dist[t]<=3)nearTop[t]=1;}
+      for(let t=0;t<gd.n;t++){const cur=S.label[od+t];if(cur!==T&&!hosts.has(cur))continue;if(nearTop[t])continue;
+        const [j,d]=G.near(gd.c[t*3],gd.c[t*3+1],gd.c[t*3+2],4);if(j<0||d>1.5)continue;
+        const dot=-gd.fn[t*3]*gs.fn[j*3]+gd.fn[t*3+1]*gs.fn[j*3+1]+gd.fn[t*3+2]*gs.fn[j*3+2];if(dot<0.5)continue;hit++;
+        const sl=S.label[os+j];
+        if(sl===T&&cur!==T){S.label[od+t]=T;add++;}
+        else if(sl!==T&&cur===T){S.label[od+t]=hosts.has(sl)?sl:[...hosts][0];rem++;}}
+      rep.push(S.parts[dst].name.replace(/^.*?_\d+_/,"")+"<"+S.parts[src].name.replace(/^.*?_\d+_/,"")+" T"+T+" hit"+hit+" +"+add+" -"+rem);}}
+  (window._spcDbg=window._spcDbg||{}).mirrorTrim=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
