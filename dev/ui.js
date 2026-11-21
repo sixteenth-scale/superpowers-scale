@@ -309,6 +309,7 @@ async function run(){
   window._spcHid=hid;
   fillHidden(hid);
   groundFill(active,gnd);
+  if(!window._spcNoHidAreas)hiddenToAreas(active,hid);
   if(!window._spcNoHidUni)hiddenUniform(active,hid);
   {const before=S.label.slice();
   if(!window._spcNoTwin)twinCopy(active,regM,hid);
@@ -319,6 +320,7 @@ async function run(){
    (window._spcDbg=window._spcDbg||{}).resnap=ch.map(pi=>S.parts[pi].name);}
   if(!window._spcNoHidUni)hiddenUniform(active,hid); /* again: a twin copy can leave a hidden patch in two paints */
   (window._spcDbg=window._spcDbg||{}).unl=fillUnlabeled(active);
+  if(!window._spcNoRound)roundEdges(active,hid,+(window._spcRoundR||1.5));
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -458,6 +460,43 @@ function fillUnlabeled(pis){let n2=0;
         let b=-1,bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}if(b>=0){S.label[o+t]=b;n2++;}else left++;}
       if(!left)break;}}
   return n2;}
+/* where two main paints of a piece meet away from any sculpted edge, the border is rounded off: each face near
+   it takes the paint that covers most of a small disc around it (not crossing a crease), so saw teeth and spikes
+   narrower than the disc go. Only the piece's main paints trade faces: thin trim is never touched */
+function roundEdges(active,hid,R){R=R||1.2;let ch=0;
+  for(const pi of active){const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    const tot=new Map();let all=0;for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];}
+    /* a paint counts as main when it is broad: twice its area over its border length (its typical width) is
+       over 2.5 mm. A stripe or a piping is narrower, and keeps its shape */
+    const per=new Map(),vv=g.v,F=g.f;
+    for(let t=0;t<n;t++){const L=S.label[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===L)continue;
+      const a=F[t*3+e],b=F[t*3+(e+1)%3];per.set(L,(per.get(L)||0)+Math.hypot(vv[a*3]-vv[b*3],vv[a*3+1]-vv[b*3+1],vv[a*3+2]-vv[b*3+2]));}}
+    const main=new Set([...tot].filter(([L,a])=>L>=0&&a>0.03*all&&2*a/Math.max(per.get(L)||0,1e-6)>2.5).map(([L])=>L));if(main.size<2)continue;
+    const crease=(t,u)=>g.fn[t*3]*g.fn[u*3]+g.fn[t*3+1]*g.fn[u*3+1]+g.fn[t*3+2]*g.fn[u*3+2]<0.82;  /* ~35 degrees */
+    const R2=R*R;
+    for(let it=0;it<3;it++){const band=[];
+      for(let t=0;t<n;t++){const L=S.label[o+t];if(!main.has(L))continue;
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==L&&main.has(S.label[o+u])){band.push(t);break;}}}
+      const want=new Map(),mark=new Int32Array(n).fill(-1);
+      for(const t0 of band){const q=[t0];mark[t0]=t0;const vote=new Map();const cx=g.c[t0*3],cy=g.c[t0*3+1],cz=g.c[t0*3+2];
+        for(let h=0;h<q.length&&q.length<600;h++){const t=q[h],L=S.label[o+t];if(main.has(L))vote.set(L,(vote.get(L)||0)+A[o+t]);
+          for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||mark[u]===t0||crease(t,u))continue;
+            const dx=g.c[u*3]-cx,dy=g.c[u*3+1]-cy,dz=g.c[u*3+2]-cz;if(dx*dx+dy*dy+dz*dz>R2)continue;mark[u]=t0;q.push(u);}}
+        let b=-1,bv=0,sv=0;for(const [L,v] of vote){sv+=v;if(v>bv){bv=v;b=L;}}
+        if(b>=0&&b!==S.label[o+t0]&&bv>0.6*sv)want.set(t0,b);}
+      for(const [t,b] of want){S.label[o+t]=b;ch++;}
+      if(!want.size)break;}}
+  (window._spcDbg=window._spcDbg||{}).round=ch;}
+/* the hidden mask comes from ray tests and contact checks, so its edge is ragged. A sculpted area that is mostly
+   hidden is hidden all the way to its sculpted edge, and one that is mostly visible is visible, so a hidden
+   paint (a hip cap, a socket) stops at the ridge instead of in saw teeth */
+function hiddenToAreas(active,hid){let on=0,off=0;
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,A=S.area;
+    const fn0=C.faceNormals(p.m,p.M),v0=C.xf(p.M,p.m.v),ar=sculptAreas(pi,surfaceShape(p,S.nb[pi],fn0,v0));
+    let tot=0;const per=new Map();for(let t=0;t<n;t++){tot+=A[o+t];let P=per.get(ar[t]);if(!P){P={a:0,h:0};per.set(ar[t],P);}P.a+=A[o+t];if(hid[o+t])P.h+=A[o+t];}
+    for(let t=0;t<n;t++){const P=per.get(ar[t]);if(P.a>0.3*tot||P.h===0)continue;const f=P.h/P.a;
+      if(f>0.6&&!hid[o+t]){hid[o+t]=1;on++;}else if(f<0.25&&hid[o+t]){hid[o+t]=0;off++;}}}
+  (window._spcDbg=window._spcDbg||{}).hidAreas=[on,off];}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}

@@ -691,41 +691,71 @@ function minimalSettings(fils){
 function paintStrings(p,states,M){
   const base=p.m0||p.m, lv=p.m0?(p.lv||0):0, W=p.m, wv=M?xf(M,W.v):W.v, bv=M?xf(M,base.v):base.v;
   const nW=W.f.length/3, V=W.v.length/3;
+  /* weld corners that sit at the same point, so neighbours are found even in a mesh saved one triangle at a time */
+  const WF=new Uint32Array(W.f.length);{const seen=new Map(),canon=new Uint32Array(V);
+    for(let i=0;i<V;i++){const k=Math.round(W.v[i*3]*1e4)+","+Math.round(W.v[i*3+1]*1e4)+","+Math.round(W.v[i*3+2]*1e4);const c=seen.get(k);canon[i]=c===undefined?(seen.set(k,i),i):c;}
+    for(let i=0;i<W.f.length;i++)WF[i]=canon[W.f[i]];}
   /* the paint around each vertex of the working mesh, by corner angle: lets a paint edge run straight
      across a long thin triangle instead of zig-zagging along its neighbours */
-  const vs=new Int32Array(V+1);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vs[W.f[t*3+k]+1]++;for(let i=0;i<V;i++)vs[i+1]+=vs[i];
-  const vf=new Int32Array(vs[V]),fill=vs.slice(0,V);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vf[fill[W.f[t*3+k]]++]=t;
+  const vs=new Int32Array(V+1);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vs[WF[t*3+k]+1]++;for(let i=0;i<V;i++)vs[i+1]+=vs[i];
+  const vf=new Int32Array(vs[V]),fill=vs.slice(0,V);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vf[fill[WF[t*3+k]]++]=t;
   const P=(i)=>[wv[i*3],wv[i*3+1],wv[i*3+2]],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],len=a=>Math.hypot(a[0],a[1],a[2]);
-  const ang=(t,k)=>{const a=P(W.f[t*3+k]),b=P(W.f[t*3+(k+1)%3]),c=P(W.f[t*3+(k+2)%3]),u=sub(b,a),w=sub(c,a),lu=len(u),lw=len(w);if(!lu||!lw)return 0;
+  const ang=(t,k)=>{const a=P(WF[t*3+k]),b=P(WF[t*3+(k+1)%3]),c=P(WF[t*3+(k+2)%3]),u=sub(b,a),w=sub(c,a),lu=len(u),lw=len(w);if(!lu||!lw)return 0;
     return Math.acos(Math.max(-1,Math.min(1,(u[0]*w[0]+u[1]*w[1]+u[2]*w[2])/(lu*lw))));};
   const vvote=new Map(),vote=v=>{let m=vvote.get(v);if(m)return m;m=new Map();let s=0;
-    for(let q=vs[v];q<vs[v+1];q++){const t=vf[q],k=W.f[t*3]===v?0:W.f[t*3+1]===v?1:2,a=ang(t,k),st=states[t];m.set(st,(m.get(st)||0)+a);s+=a;}
+    for(let q=vs[v];q<vs[v+1];q++){const t=vf[q],k=WF[t*3]===v?0:WF[t*3+1]===v?1:2,a=ang(t,k),st=states[t];m.set(st,(m.get(st)||0)+a);s+=a;}
     if(s>0)for(const [k2,x] of m)m.set(k2,x/s);vvote.set(v,m);return m;};
-  const R=0.6,FINE=0.25,MAXD=5;
-  const maxEdge=t=>{const a=P(W.f[t*3]),b=P(W.f[t*3+1]),c=P(W.f[t*3+2]);return Math.max(len(sub(a,b)),len(sub(b,c)),len(sub(c,a)));};
-  const needs=t=>{if(maxEdge(t)<=R)return false;const s0=states[t];for(let k=0;k<3;k++){const m=vote(W.f[t*3+k]);if(m.size>1||!m.has(s0))return true;}return false;};
+  const R=0.6,FINE=0.3,MAXD=5,DISC=1.5;
+  const maxEdge=t=>{const a=P(WF[t*3]),b=P(WF[t*3+1]),c=P(WF[t*3+2]);return Math.max(len(sub(a,b)),len(sub(b,c)),len(sub(c,a)));};
   const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
   const kidsOurs=([a,b,c])=>{const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);return [[a,ab,ca],[ab,b,bc],[ca,bc,c],[ab,bc,ca]];};
   const kidsPrusa=([a,b,c])=>{const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);return [[a,ab,ca],[ab,b,bc],[bc,c,ca],[ab,bc,ca]];};
   const cen=t=>[(t[0][0]+t[1][0]+t[2][0])/3,(t[0][1]+t[1][1]+t[2][1])/3,(t[0][2]+t[1][2]+t[2][2])/3];
   const d2=(a,b)=>(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;
-  /* inside one working face (corner positions wt): a sub-triangle takes the paint the corners vote for at its middle */
+  const triA=t=>{const u=sub(t[1],t[0]),w=sub(t[2],t[0]);return 0.5*Math.hypot(u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]);};
+  /* broad paints (typical width over 2.5 mm) may move their shared border; stripes and piping never do */
+  const area=new Map(),perim=new Map();
+  for(let t=0;t<nW;t++){const st=states[t],T=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];area.set(st,(area.get(st)||0)+triA(T));
+    for(let e=0;e<3;e++){const a=WF[t*3+e],b=WF[t*3+(e+1)%3];let u=-1;
+      for(let q=vs[a];q<vs[a+1];q++){const tt=vf[q];if(tt!==t&&(WF[tt*3]===b||WF[tt*3+1]===b||WF[tt*3+2]===b)){u=tt;break;}}
+      if(u>=0&&states[u]===st)continue;perim.set(st,(perim.get(st)||0)+len(sub(P(a),P(b))));}}
+  let allA=0;for(const a of area.values())allA+=a;
+  const broad=new Set([...area].filter(([st,a])=>a>0.15*allA||2*a/Math.max(perim.get(st)||0,1e-6)>2.5).map(([st])=>st));
+  /* paint samples spread over the surface (big triangles get many), for a disc vote at any point */
+  const cell=DISC,grid=new Map(),gk=(x,y,z)=>((Math.floor(x/cell)+512)*1024+(Math.floor(y/cell)+512))*1024+(Math.floor(z/cell)+512);
+  const addS=(p,w,st)=>{const k=gk(p[0],p[1],p[2]);let g=grid.get(k);if(!g){g=[];grid.set(k,g);}g.push(p[0],p[1],p[2],w,st);};
+  const spread=(T,st,d)=>{const e=Math.max(len(sub(T[0],T[1])),len(sub(T[1],T[2])),len(sub(T[2],T[0])));
+    if(e<=1.0||d>=3){addS(cen(T),triA(T),st);return;}for(const k of kidsPrusa(T))spread(k,st,d+1);};
+  /* samples gather into 0.4 mm boxes first (one point per box and paint), so a disc vote reads a few hundred points */
+  const box=new Map(),bk=(p)=>((Math.floor(p[0]/0.4)+4096)*8192+(Math.floor(p[1]/0.4)+4096))*8192+(Math.floor(p[2]/0.4)+4096);
+  const addS0=addS;
+  const addB=(p,w,st)=>{const k=bk(p)*32+st;let b=box.get(k);if(!b){b=[0,0,0,0,st];box.set(k,b);}b[0]+=p[0]*w;b[1]+=p[1]*w;b[2]+=p[2]*w;b[3]+=w;};
+  const spreadB=(T,st,d)=>{const e=Math.max(len(sub(T[0],T[1])),len(sub(T[1],T[2])),len(sub(T[2],T[0])));
+    if(e<=0.4||d>=4){addB(cen(T),triA(T),st);return;}for(const k of kidsPrusa(T))spreadB(k,st,d+1);};
+  for(let t=0;t<nW;t++)if(broad.has(states[t]))spreadB([P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])],states[t],0);
+  for(const b of box.values())if(b[3]>0)addS0([b[0]/b[3],b[1]/b[3],b[2]/b[3]],b[3],b[4]);
+  const disc=p=>{const m=new Map(),cx=Math.floor(p[0]/cell),cy=Math.floor(p[1]/cell),cz=Math.floor(p[2]/cell),r2=DISC*DISC;
+    for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const g=grid.get(((cx+i+512)*1024+(cy+j+512))*1024+(cz+k+512));if(!g)continue;
+      for(let q=0;q<g.length;q+=5){const dx=g[q]-p[0],dy=g[q+1]-p[1],dz=g[q+2]-p[2];if(dx*dx+dy*dy+dz*dz<=r2)m.set(g[q+4],(m.get(g[q+4])||0)+g[q+3]);}}
+    return m;};
+  const top=m=>{let b=-1,bv=-1,s2=0;for(const [k,v] of m){s2+=v;if(v>bv){bv=v;b=k;}}return [b,s2?bv/s2:0];};
+  const needs=t=>{if(!broad.has(states[t])||maxEdge(t)<=R)return false;
+    for(const p of [P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2]),cen([P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])])]){const m=disc(p);if(m.size>1)return true;}return false;};
+  /* inside one big working face: a sub-triangle takes the broad paint that covers most of a 1.5 mm disc round
+     its middle, so the border runs smooth through long thin triangles instead of in saw teeth */
+  const memo=new Map(),at=p=>{const k=p[0].toFixed(3)+","+p[1].toFixed(3)+","+p[2].toFixed(3);let v=memo.get(k);if(v===undefined){v=top(disc(p))[0];memo.set(k,v);}return v;};
   function refine(tri,wt,wf,depth){
-    const c=cen(tri);const T=[wt[0],wt[1],wt[2]];
-    const v0=sub(T[1],T[0]),v1=sub(T[2],T[0]),v2=sub(c,T[0]);
-    const d00=v0[0]*v0[0]+v0[1]*v0[1]+v0[2]*v0[2],d01=v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2],d11=v1[0]*v1[0]+v1[1]*v1[1]+v1[2]*v1[2];
-    const d20=v2[0]*v0[0]+v2[1]*v0[1]+v2[2]*v0[2],d21=v2[0]*v1[0]+v2[1]*v1[1]+v2[2]*v1[2],den=d00*d11-d01*d01||1;
-    const bb=(d11*d20-d01*d21)/den,cc=(d00*d21-d01*d20)/den,aa=1-bb-cc,wts=[aa,bb,cc];
-    const sc=new Map();for(let k=0;k<3;k++)for(const [st,x] of vote(W.f[wf*3+k]))sc.set(st,(sc.get(st)||0)+x*wts[k]);
-    let best=states[wf],bv=-1;for(const [st,x] of sc)if(x>bv){bv=x;best=st;}
+    const best=at(cen(tri)),st=best>=0?best:states[wf];
     const e=Math.max(len(sub(tri[0],tri[1])),len(sub(tri[1],tri[2])),len(sub(tri[2],tri[0])));
-    if(depth>=MAXD||e<=FINE)return {leaf:best};
+    if(depth>=MAXD||e<=FINE)return {leaf:st};
+    /* the same paint at all three corners and the middle of a triangle smaller than the disc: one paint */
+    if(e<DISC&&at(tri[0])===best&&at(tri[1])===best&&at(tri[2])===best)return {leaf:st};
     const kids=kidsPrusa(tri).map(k=>refine(k,wt,wf,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};
     return {kids};}
   /* node of the original triangle: down through the working-mesh subdivision, then refinement */
   function node(triP,triO,level,idx,depth){
-    if(level===lv){const t=idx;const wt=[P(W.f[t*3]),P(W.f[t*3+1]),P(W.f[t*3+2])];
+    if(level===lv){const t=idx;const wt=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];
       if(!needs(t))return {leaf:states[t]};
       /* the working face's corners in its own order; triP covers the same triangle */
       return refine(triP,wt,t,depth);}
