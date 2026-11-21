@@ -330,6 +330,7 @@ async function run(){
   if(!window._spcNoThighPlane)thighPlanes(active,regM);
   if(!window._spcNoTrim){const t0=Date.now();trimStrips(active,regM);(window._spcDbg=window._spcDbg||{}).trimMs=Date.now()-t0;}
   if(!window._spcNoMirrorTrim)mirrorTrim(active,regM);
+  if(!window._spcNoBootRigid)bootFromRigid(active,regM);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -832,6 +833,13 @@ function trimStrips(active,regM){const rep=[];
         for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||bigRaw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
           let b=-1,bv=0;for(const [L,x] of m)if(x>bv){bv=x;b=L;}if(b>=0){S.label[o+t]=b;sp++;any=true;}}
         if(!any)break;}
+      /* low on the foot (a toe cap), close small gaps in the trim first, so a black patch inside the cap is closed in */
+      {const CR=1.6,zone=t=>gf.c[t*3+2]<zmin+6,isT=new Uint8Array(n);for(let t=0;t<n;t++)isT[t]=S.label[o+t]===T?1:0;
+       const dil=new Float32Array(n).fill(Infinity),H6=heap();for(let t=0;t<n;t++)if(isT[t]&&zone(t)){dil[t]=0;H6.push(0,t);}
+       while(H6.size){const [d0,t]=H6.pop();if(d0>dil[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!zone(u))continue;const nd=d0+dc(t,u);if(nd<dil[u]&&nd<=CR){dil[u]=nd;H6.push(nd,u);}}}
+       const ero=new Float32Array(n).fill(Infinity),H7=heap();for(let t=0;t<n;t++)if(dil[t]===Infinity&&zone(t)){for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&dil[u]<Infinity&&ero[u]>0){ero[u]=0;H7.push(0,u);}}}
+       while(H7.size){const [d0,t]=H7.pop();if(d0>ero[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||dil[u]===Infinity)continue;const nd=d0+dc(t,u);if(nd<ero[u]&&nd<=CR){ero[u]=nd;H7.push(nd,u);}}}
+       for(let t=0;t<n;t++)if(!isT[t]&&zone(t)&&dil[t]<Infinity&&ero[t]===Infinity)S.label[o+t]=T;}
       /* a patch of other paint closed in by the trim on every side (the middle of a toe cap) is trim; a loose
          patch of trim not joined to any strip (a blotch on the side of the toe) is not */
       let holes=0,isl=0;{const seen=new Uint8Array(n);
@@ -871,7 +879,8 @@ function mirrorTrim(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLo
         for(let t=0;t<gd.n;t++){const c2=S.label[od+t];if(c2!==T&&!hosts.has(c2)){dist[t]=0;q.push(t);}}
         for(let h2=0;h2<q.length;h2++){const t=q[h2];for(let e=0;e<3;e++){const u=nbD[t*3+e];if(u<0)continue;const nd=dist[t]+Math.hypot(gd.c[t*3]-gd.c[u*3],gd.c[t*3+1]-gd.c[u*3+1],gd.c[t*3+2]-gd.c[u*3+2]);if(nd<dist[u]&&nd<=3){dist[u]=nd;q.push(u);}}}
         for(let t=0;t<gd.n;t++)if(dist[t]<=3)nearTop[t]=1;}
-      for(let t=0;t<gd.n;t++){const cur=S.label[od+t];if(cur!==T&&!hosts.has(cur))continue;if(nearTop[t])continue;
+      let zd=Infinity;for(let t=0;t<gd.n;t++)zd=Math.min(zd,gd.c[t*3+2]);
+      for(let t=0;t<gd.n;t++){const cur=S.label[od+t];if(cur!==T&&!hosts.has(cur))continue;if(nearTop[t]||gd.c[t*3+2]<zd+6)continue; /* the toe is left to the strip rule */
         const [j,d]=G.near(gd.c[t*3],gd.c[t*3+1],gd.c[t*3+2],4);if(j<0||d>1.5)continue;
         const dot=-gd.fn[t*3]*gs.fn[j*3]+gd.fn[t*3+1]*gs.fn[j*3+1]+gd.fn[t*3+2]*gs.fn[j*3+2];if(dot<0.5)continue;hit++;
         const sl=S.label[os+j];
@@ -879,6 +888,26 @@ function mirrorTrim(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLo
         else if(sl!==T&&cur===T){S.label[od+t]=hosts.has(sl)?sl:[...hosts][0];rem++;}}
       rep.push(S.parts[dst].name.replace(/^.*?_\d+_/,"")+"<"+S.parts[src].name.replace(/^.*?_\d+_/,"")+" T"+T+" hit"+hit+" +"+add+" -"+rem);}}
   (window._spcDbg=window._spcDbg||{}).mirrorTrim=rep;}
+/* a jointed lower leg and the rigid leg are the same sculpt below the knee: the lower leg takes the rigid leg's
+   boot paint (black and its trim) wherever the two surfaces sit on each other */
+function bootFromRigid(active,regM){const rep=[];const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));const nm=pi=>S.parts[pi].name.toLowerCase();
+  for(const Cf of active){if(!/(calf|shin)/.test(nm(Cf)))continue;const side=/left/.test(nm(Cf))?"left":/right/.test(nm(Cf))?"right":"";
+    const R=active.find(q=>/leg/.test(nm(q))&&!/thigh|calf/.test(nm(q))&&nm(q).includes(side));if(R==null)continue;
+    const gC=geo.get(Cf),gR=geo.get(R),G=C.grid(gR.c,0.5),oC=S.offs[Cf],oR=S.offs[R];
+    /* boot paints: what the calf's lower half is mostly painted, plus narrow paints there */
+    let zmin=Infinity,zmax=-Infinity;for(let t=0;t<gC.n;t++){zmin=Math.min(zmin,gC.c[t*3+2]);zmax=Math.max(zmax,gC.c[t*3+2]);}
+    const cnt=new Map();for(let t=0;t<gC.n;t++)if(gC.c[t*3+2]<(zmin+zmax)/2){const L=S.label[oC+t];cnt.set(L,(cnt.get(L)||0)+1);}
+    const boot=new Set([...cnt].filter(([,x])=>x>0.02*gC.n).map(([L])=>L));let ch=0,hit=0;
+    /* the cuff stays as the strip rule made it: no copying within 3 mm of the paint above the boot */
+    const nearTop=new Uint8Array(gC.n);{const dist=new Float32Array(gC.n).fill(Infinity),q=[],nbC=S.nb[Cf];
+      for(let t=0;t<gC.n;t++)if(!boot.has(S.label[oC+t])){dist[t]=0;q.push(t);}
+      for(let h2=0;h2<q.length;h2++){const t=q[h2];for(let e=0;e<3;e++){const u=nbC[t*3+e];if(u<0)continue;const nd=dist[t]+Math.hypot(gC.c[t*3]-gC.c[u*3],gC.c[t*3+1]-gC.c[u*3+1],gC.c[t*3+2]-gC.c[u*3+2]);if(nd<dist[u]&&nd<=3){dist[u]=nd;q.push(u);}}}
+      for(let t=0;t<gC.n;t++)if(dist[t]<=3)nearTop[t]=1;}
+    for(let t=0;t<gC.n;t++){const cur=S.label[oC+t];if(!boot.has(cur)||nearTop[t])continue;const [j,d]=G.near(gC.c[t*3],gC.c[t*3+1],gC.c[t*3+2],3);if(j<0||d>0.6)continue;
+      if(gC.fn[t*3]*gR.fn[j*3]+gC.fn[t*3+1]*gR.fn[j*3+1]+gC.fn[t*3+2]*gR.fn[j*3+2]<0.7)continue;hit++;
+      const L=S.label[oR+j];if(boot.has(L)&&L!==cur){S.label[oC+t]=L;ch++;}}
+    rep.push(S.parts[Cf].name.replace(/^.*?_\d+_/,"")+"<"+S.parts[R].name.replace(/^.*?_\d+_/,"")+" hit"+hit+" ch"+ch);}
+  (window._spcDbg=window._spcDbg||{}).bootRigid=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
