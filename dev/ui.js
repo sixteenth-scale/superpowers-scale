@@ -215,7 +215,7 @@ async function run(){
   const errs=[];
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi))continue;
-    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
+    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){if(!p.m0){p.m0=p.m;p.lv=0;}p.m=C.subdivide(p.m);p.lv++;p.subdivided=true;p.paint=null;}}
     if(window._spcSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,2*detail,2e6);if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80);regM[pi]=r.M;errs[pi]=r.err;}}
@@ -318,6 +318,7 @@ async function run(){
    if(ch.length&&!window._spcNoCrease)try{snapToCreases(ch,hid,photo);}catch(e){console.warn(e);}
    (window._spcDbg=window._spcDbg||{}).resnap=ch.map(pi=>S.parts[pi].name);}
   if(!window._spcNoHidUni)hiddenUniform(active,hid); /* again: a twin copy can leave a hidden patch in two paints */
+  (window._spcDbg=window._spcDbg||{}).unl=fillUnlabeled(active);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -448,6 +449,15 @@ function mirrorAreas(active,regM,hid){const rep=[];
       rep.push(S.parts[A.pi].name+" "+JSON.stringify(out));};
     pass(gL,gR);pass(gR,gL);}
   (window._spcDbg=window._spcDbg||{}).mirror=rep;}
+/* no face is left without paint: one gap would keep the whole piece out of the saved file */
+function fillUnlabeled(pis){let n2=0;
+  for(const pi of pis){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
+    for(let pass=0;pass<50;pass++){let left=0;
+      for(let t=0;t<n;t++){if(S.label[o+t]>=0)continue;const m=new Map();
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]>=0)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
+        let b=-1,bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}if(b>=0){S.label[o+t]=b;n2++;}else left++;}
+      if(!left)break;}}
+  return n2;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
@@ -1095,7 +1105,8 @@ q("spcSave").onclick=async()=>{
     /* only pieces colored here are rewritten; everything else in the file is left as it was */
     const list=[],states=[];
     S.parts.forEach((p,pi)=>{const n=p.m.f.length/3,o=S.offs[pi];
-      for(let i=0;i<n;i++)if(S.label[o+i]<0)return;
+      let any=false,miss=0;for(let i=0;i<n;i++){if(S.label[o+i]>=0)any=true;else miss++;}if(!any)return;
+      if(miss){fillUnlabeled([pi]);const cnt=new Map();for(let i=0;i<n;i++){const L=S.label[o+i];if(L>=0)cnt.set(L,(cnt.get(L)||0)+1);}let top=0,tv=-1;for(const [L,v] of cnt)if(v>tv){tv=v;top=L;}for(let i=0;i<n;i++)if(S.label[o+i]<0)S.label[o+i]=top;}
       const st=new Uint8Array(n);for(let i=0;i<n;i++)st[i]=slot.get(S.regions[S.label[o+i]].fil);list.push(p);states.push(st);});
     if(!list.length)throw new Error("Nothing colored to save yet.");
     const blob=await C.save3MF({project:S.project,parts:list},fils,states);

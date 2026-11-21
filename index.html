@@ -9213,8 +9213,75 @@ function minimalSettings(fils){
     printer_model:"Bambu Lab P1S",print_settings_id:"0.20mm Standard @BBL X1C"},fils);
 }
 
+/* ---------- fine paint inside a triangle (Bambu / PrusaSlicer TriangleSelector) ----------
+   A painted triangle can carry a tree of sub-triangles, each split into 4 at its edge midpoints, so a paint
+   edge can run through the middle of a big triangle instead of following its edges. The model's shape and
+   triangle list stay exactly as they were.
+   Encoding (TriangleSelector::serialize): per node 2 bits split count; split nodes add 2 bits special side and
+   their children last-to-first; leaves add 2 bits state (or 0b11 + 4 bits state-3). Bits are read 4 at a time
+   (first bit lowest) into hex digits, written last digit first. */
+function paintStrings(p,states,M){
+  const base=p.m0||p.m, lv=p.m0?(p.lv||0):0, W=p.m, wv=M?xf(M,W.v):W.v, bv=M?xf(M,base.v):base.v;
+  const nW=W.f.length/3, V=W.v.length/3;
+  /* the paint around each vertex of the working mesh, by corner angle: lets a paint edge run straight
+     across a long thin triangle instead of zig-zagging along its neighbours */
+  const vs=new Int32Array(V+1);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vs[W.f[t*3+k]+1]++;for(let i=0;i<V;i++)vs[i+1]+=vs[i];
+  const vf=new Int32Array(vs[V]),fill=vs.slice(0,V);for(let t=0;t<nW;t++)for(let k=0;k<3;k++)vf[fill[W.f[t*3+k]]++]=t;
+  const P=(i)=>[wv[i*3],wv[i*3+1],wv[i*3+2]],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],len=a=>Math.hypot(a[0],a[1],a[2]);
+  const ang=(t,k)=>{const a=P(W.f[t*3+k]),b=P(W.f[t*3+(k+1)%3]),c=P(W.f[t*3+(k+2)%3]),u=sub(b,a),w=sub(c,a),lu=len(u),lw=len(w);if(!lu||!lw)return 0;
+    return Math.acos(Math.max(-1,Math.min(1,(u[0]*w[0]+u[1]*w[1]+u[2]*w[2])/(lu*lw))));};
+  const vvote=new Map(),vote=v=>{let m=vvote.get(v);if(m)return m;m=new Map();let s=0;
+    for(let q=vs[v];q<vs[v+1];q++){const t=vf[q],k=W.f[t*3]===v?0:W.f[t*3+1]===v?1:2,a=ang(t,k),st=states[t];m.set(st,(m.get(st)||0)+a);s+=a;}
+    if(s>0)for(const [k2,x] of m)m.set(k2,x/s);vvote.set(v,m);return m;};
+  const R=0.6,FINE=0.25,MAXD=5;
+  const maxEdge=t=>{const a=P(W.f[t*3]),b=P(W.f[t*3+1]),c=P(W.f[t*3+2]);return Math.max(len(sub(a,b)),len(sub(b,c)),len(sub(c,a)));};
+  const needs=t=>{if(maxEdge(t)<=R)return false;const s0=states[t];for(let k=0;k<3;k++){const m=vote(W.f[t*3+k]);if(m.size>1||!m.has(s0))return true;}return false;};
+  const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
+  const kidsOurs=([a,b,c])=>{const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);return [[a,ab,ca],[ab,b,bc],[ca,bc,c],[ab,bc,ca]];};
+  const kidsPrusa=([a,b,c])=>{const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);return [[a,ab,ca],[ab,b,bc],[bc,c,ca],[ab,bc,ca]];};
+  const cen=t=>[(t[0][0]+t[1][0]+t[2][0])/3,(t[0][1]+t[1][1]+t[2][1])/3,(t[0][2]+t[1][2]+t[2][2])/3];
+  const d2=(a,b)=>(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;
+  /* inside one working face (corner positions wt): a sub-triangle takes the paint the corners vote for at its middle */
+  function refine(tri,wt,wf,depth){
+    const c=cen(tri);const T=[wt[0],wt[1],wt[2]];
+    const v0=sub(T[1],T[0]),v1=sub(T[2],T[0]),v2=sub(c,T[0]);
+    const d00=v0[0]*v0[0]+v0[1]*v0[1]+v0[2]*v0[2],d01=v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2],d11=v1[0]*v1[0]+v1[1]*v1[1]+v1[2]*v1[2];
+    const d20=v2[0]*v0[0]+v2[1]*v0[1]+v2[2]*v0[2],d21=v2[0]*v1[0]+v2[1]*v1[1]+v2[2]*v1[2],den=d00*d11-d01*d01||1;
+    const bb=(d11*d20-d01*d21)/den,cc=(d00*d21-d01*d20)/den,aa=1-bb-cc,wts=[aa,bb,cc];
+    const sc=new Map();for(let k=0;k<3;k++)for(const [st,x] of vote(W.f[wf*3+k]))sc.set(st,(sc.get(st)||0)+x*wts[k]);
+    let best=states[wf],bv=-1;for(const [st,x] of sc)if(x>bv){bv=x;best=st;}
+    const e=Math.max(len(sub(tri[0],tri[1])),len(sub(tri[1],tri[2])),len(sub(tri[2],tri[0])));
+    if(depth>=MAXD||e<=FINE)return {leaf:best};
+    const kids=kidsPrusa(tri).map(k=>refine(k,wt,wf,depth+1));
+    if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};
+    return {kids};}
+  /* node of the original triangle: down through the working-mesh subdivision, then refinement */
+  function node(triP,triO,level,idx,depth){
+    if(level===lv){const t=idx;const wt=[P(W.f[t*3]),P(W.f[t*3+1]),P(W.f[t*3+2])];
+      if(!needs(t))return {leaf:states[t]};
+      /* the working face's corners in its own order; triP covers the same triangle */
+      return refine(triP,wt,t,depth);}
+    const ko=kidsOurs(triO),kp=kidsPrusa(triP);
+    const kids=kp.map(k=>{const c=cen(k);let j=0,bd=Infinity;for(let i=0;i<4;i++){const dd=d2(c,cen(ko[i]));if(dd<bd){bd=dd;j=i;}}
+      return node(k,ko[j],level+1,idx*4+j,depth+1);});
+    if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};
+    return {kids};}
+  function bits(nd,out){
+    if(nd.leaf!==undefined){out.push(0,0);const n=nd.leaf;if(n<3){out.push(n&1,(n>>1)&1);}else{out.push(1,1);const m=n-3;for(let b=0;b<4;b++)out.push((m>>b)&1);}return;}
+    out.push(1,1,0,0);for(let i=3;i>=0;i--)bits(nd.kids[i],out);}
+  const nB=base.f.length/3,res=new Array(nB);let fine=0;
+  const BP=i=>[bv[i*3],bv[i*3+1],bv[i*3+2]];
+  for(let t=0;t<nB;t++){const tri=[BP(base.f[t*3]),BP(base.f[t*3+1]),BP(base.f[t*3+2])];
+    const nd=node(tri,tri,0,t,0);
+    if(nd.leaf!==undefined){res[t]=PAINT(nd.leaf);continue;}
+    fine++;const b=[];bits(nd,b);while(b.length%4)b.push(0);let str="";
+    for(let i=0;i<b.length;i+=4){const v=b[i]|(b[i+1]<<1)|(b[i+2]<<2)|(b[i+3]<<3);str=v.toString(16).toUpperCase()+str;}
+    res[t]=str;}
+  paintStrings.last={fine,total:nB};
+  return res;
+}
 /* ---------- writing the 3MF ---------- */
-function meshXML(m,states,keepVerts,oldXml,sp){
+function meshXML(m,codes,keepVerts,oldXml,sp){
   const out=[];
   if(keepVerts){const s=oldXml.slice(sp.from,sp.to),a=s.indexOf("<vertices"),b=s.indexOf("</vertices>")+11;out.push("\n    ",s.slice(a,b));}
   else{out.push("\n    <vertices>\n");const v=m.v;const chunk=[];
@@ -9222,7 +9289,7 @@ function meshXML(m,states,keepVerts,oldXml,sp){
       if(chunk.length>50000){out.push(chunk.join(""));chunk.length=0;}}
     out.push(chunk.join(""),"    </vertices>");}
   out.push("\n    <triangles>\n");const f=m.f,chunk=[];
-  for(let t=0;t<f.length/3;t++){const c=PAINT(states[t]);
+  for(let t=0;t<f.length/3;t++){const c=codes[t];
     chunk.push(`     <triangle v1="${f[t*3]}" v2="${f[t*3+1]}" v3="${f[t*3+2]}"${c?` paint_color="${c}"`:""}/>\n`);
     if(chunk.length>50000){out.push(chunk.join(""));chunk.length=0;}}
   out.push(chunk.join(""),"    </triangles>\n   ");
@@ -9239,7 +9306,7 @@ async function save3MF(S,fils,faceState){
       const spans=meshSpans(xml);
       list.sort((a,b)=>spans.get(b.p.src.id).from-spans.get(a.p.src.id).from);
       for(const {p,pi} of list){const sp=spans.get(p.src.id);
-        xml=xml.slice(0,sp.from)+meshXML(p.m,faceState[pi],!p.subdivided,xml,sp)+xml.slice(sp.to);}
+        xml=xml.slice(0,sp.from)+meshXML(p.m0||p.m,paintStrings(p,faceState[pi],p.M),!p.subdivided||!!p.m0,xml,sp)+xml.slice(sp.to);}
       files.set(path,xml);}
     const msb=pr.files.get("Metadata/model_settings.config");
     if(msb){let t=new TextDecoder().decode(msb);
@@ -9253,7 +9320,7 @@ async function save3MF(S,fils,faceState){
   /* new project around the figure */
   const objs=[],items=[],cfg=[];
   S.parts.forEach((p,pi)=>{const id=pi+1;
-    objs.push(`  <object id="${id}" name="${esc(p.name)}" type="model">\n   <mesh>${meshXML(p.m,faceState[pi],false)}</mesh>\n  </object>\n`);
+    objs.push(`  <object id="${id}" name="${esc(p.name)}" type="model">\n   <mesh>${meshXML(p.m0||p.m,paintStrings(p,faceState[pi],p.M),false)}</mesh>\n  </object>\n`);
     const M=p.M, t=`${M[0]} ${M[1]} ${M[2]} ${M[4]} ${M[5]} ${M[6]} ${M[8]} ${M[9]} ${M[10]} ${M[12]} ${M[13]} ${M[14]}`;
     items.push(`  <item objectid="${id}" transform="${t}" printable="1"/>\n`);
     cfg.push(`  <object id="${id}">\n    <metadata key="name" value="${esc(p.name)}"/>\n    <metadata key="extruder" value="1"/>\n    <part id="1" subtype="normal_part">\n      <metadata key="name" value="${esc(p.name)}"/>\n      <metadata key="extruder" value="1"/>\n    </part>\n  </object>\n`);});
@@ -9267,7 +9334,7 @@ async function save3MF(S,fils,faceState){
 }
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
-return {faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
+return {paintStrings,faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
   hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,splitLong,meanEdge,stlOf,stlBytes,read3MF,readGLB,
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
@@ -9491,7 +9558,7 @@ async function run(){
   const errs=[];
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi))continue;
-    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
+    if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){if(!p.m0){p.m0=p.m;p.lv=0;}p.m=C.subdivide(p.m);p.lv++;p.subdivided=true;p.paint=null;}}
     if(window._spcSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,2*detail,2e6);if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80);regM[pi]=r.M;errs[pi]=r.err;}}
@@ -9594,6 +9661,7 @@ async function run(){
    if(ch.length&&!window._spcNoCrease)try{snapToCreases(ch,hid,photo);}catch(e){console.warn(e);}
    (window._spcDbg=window._spcDbg||{}).resnap=ch.map(pi=>S.parts[pi].name);}
   if(!window._spcNoHidUni)hiddenUniform(active,hid); /* again: a twin copy can leave a hidden patch in two paints */
+  (window._spcDbg=window._spcDbg||{}).unl=fillUnlabeled(active);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -9724,6 +9792,15 @@ function mirrorAreas(active,regM,hid){const rep=[];
       rep.push(S.parts[A.pi].name+" "+JSON.stringify(out));};
     pass(gL,gR);pass(gR,gL);}
   (window._spcDbg=window._spcDbg||{}).mirror=rep;}
+/* no face is left without paint: one gap would keep the whole piece out of the saved file */
+function fillUnlabeled(pis){let n2=0;
+  for(const pi of pis){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
+    for(let pass=0;pass<50;pass++){let left=0;
+      for(let t=0;t<n;t++){if(S.label[o+t]>=0)continue;const m=new Map();
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]>=0)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
+        let b=-1,bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}if(b>=0){S.label[o+t]=b;n2++;}else left++;}
+      if(!left)break;}}
+  return n2;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
@@ -10371,7 +10448,8 @@ q("spcSave").onclick=async()=>{
     /* only pieces colored here are rewritten; everything else in the file is left as it was */
     const list=[],states=[];
     S.parts.forEach((p,pi)=>{const n=p.m.f.length/3,o=S.offs[pi];
-      for(let i=0;i<n;i++)if(S.label[o+i]<0)return;
+      let any=false,miss=0;for(let i=0;i<n;i++){if(S.label[o+i]>=0)any=true;else miss++;}if(!any)return;
+      if(miss){fillUnlabeled([pi]);const cnt=new Map();for(let i=0;i<n;i++){const L=S.label[o+i];if(L>=0)cnt.set(L,(cnt.get(L)||0)+1);}let top=0,tv=-1;for(const [L,v] of cnt)if(v>tv){tv=v;top=L;}for(let i=0;i<n;i++)if(S.label[o+i]<0)S.label[o+i]=top;}
       const st=new Uint8Array(n);for(let i=0;i<n;i++)st[i]=slot.get(S.regions[S.label[o+i]].fil);list.push(p);states.push(st);});
     if(!list.length)throw new Error("Nothing colored to save yet.");
     const blob=await C.save3MF({project:S.project,parts:list},fils,states);
