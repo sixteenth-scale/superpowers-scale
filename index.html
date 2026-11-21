@@ -9716,6 +9716,7 @@ async function run(){
   if(window._spcCapThigh)capToThighs(active,regM);
   if(window._spcThighCut)thighCap(active,regM);
   if(!window._spcNoThighPlane)thighPlanes(active,regM);
+  if(!window._spcNoTrim){const t0=Date.now();trimStrips(active,regM);(window._spcDbg=window._spcDbg||{}).trimMs=Date.now()-t0;}
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -10146,6 +10147,72 @@ function thighPlanes(active,regM){const rep=[];const fits=[];
     p.capPlane={n:n2,m:m2,band:3};
     rep.push(p.name.replace(/^.*?_\d+_/,"")+":"+ch+(F2.mirrored?" (mirrored)":"")+" inl"+F2.inl+" capA"+F2.capA.toFixed(0));}
   (window._spcDbg=window._spcDbg||{}).thighPlanes=rep;}
+/* trim (gold piping, a boot stripe, a cuff) is sculpted as raised strips. Each face's height above its
+   surroundings (1.2 mm around) finds them; a thin raised strip that the trim paint already touches is painted
+   trim from edge to edge, the rest of a wide raised part joined to it within 1.5 mm too (a cuff band, a toe cap),
+   and trim that spilled onto flat surface goes back to the paint around it. The sole edge is left alone */
+function trimStrips(active,regM){const rep=[];
+  const heap=()=>{const a=[];return {push(d,t){a.push([d,t]);let i=a.length-1;while(i>0){const p=(i-1)>>1;if(a[p][0]<=a[i][0])break;[a[p],a[i]]=[a[i],a[p]];i=p;}},
+    pop(){const top=a[0],last=a.pop();if(a.length){a[0]=last;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<a.length&&a[l][0]<a[m][0])m=l;if(r<a.length&&a[r][0]<a[m][0])m=r;if(m===i)break;[a[m],a[i]]=[a[i],a[m]];i=m;}}return top;},get size(){return a.length;}};};
+  for(const pi of active){if(!/(leg|calf|shin|boot)/i.test(S.parts[pi].name)||/thigh/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,null),gf=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,v=g.v,F=g.f;
+    /* trim paints on this piece: narrow ones */
+    const tot=new Map(),per=new Map();let all=0;
+    for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===L)continue;const a=F[t*3+e],b=F[t*3+(e+1)%3];per.set(L,(per.get(L)||0)+Math.hypot(v[a*3]-v[b*3],v[a*3+1]-v[b*3+1],v[a*3+2]-v[b*3+2]));}}
+    const trims=[...tot].filter(([L,a])=>L>=0&&a>0.01*all&&a<0.4*all&&2*a/Math.max(per.get(L)||0,1e-6)<2.5).map(([L])=>L);
+    if(!trims.length)continue;
+    /* only the surface within 3 mm of trim is looked at */
+    const dc=(t,u)=>Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2]);
+    const near=new Float32Array(n).fill(Infinity);{const H0=heap(),TS=new Set(trims);for(let t=0;t<n;t++)if(TS.has(S.label[o+t])){near[t]=0;H0.push(0,t);}
+      while(H0.size){const [d0,t]=H0.pop();if(d0>near[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const nd=d0+dc(t,u);if(nd<near[u]&&nd<=3){near[u]=nd;H0.push(nd,u);}}}}
+    /* raise */
+    const cell=1.2,grid=new Map(),key=(x,y,z)=>((Math.floor(x/cell)+512)*1024+(Math.floor(y/cell)+512))*1024+(Math.floor(z/cell)+512);
+    for(let t=0;t<n;t+=3){if(near[t]>4.5&&near[t]!==Infinity)continue;if(near[t]===Infinity)continue;const k=key(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+    const ras=new Float32Array(n),r2=1.44;
+    for(let t=0;t<n;t++){if(near[t]===Infinity)continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+      for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(((cx+i+512)*1024+(cy+j+512))*1024+(cz+k+512));if(!b)continue;
+        for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>r2)continue;
+          if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+      if(sw>0)ras[t]=(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2];}
+    let rs=ras;for(let it=0;it<2;it++){const nx=new Float32Array(n);for(let t=0;t<n;t++){let s2=rs[t],c=1;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0){s2+=rs[u];c++;}}nx[t]=s2/c;}rs=nx;}
+    let zmin=Infinity;for(let t=0;t<n;t++)zmin=Math.min(zmin,gf.c[t*3+2]);
+    const raw=new Uint8Array(n),above=new Uint8Array(n);for(let t=0;t<n;t++){raw[t]=rs[t]>0.05?1:0;above[t]=gf.c[t*3+2]>zmin+2.5?1:0;}
+    /* depth inside the raised area */
+    const dist=new Float32Array(n).fill(Infinity),H=heap();
+    for(let t=0;t<n;t++){if(!raw[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!raw[u]){dist[t]=0;H.push(0,t);break;}}}
+    while(H.size){const [d0,t]=H.pop();if(d0>dist[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u])continue;const nd=d0+dc(t,u);if(nd<dist[u]&&nd<=1.6){dist[u]=nd;H.push(nd,u);}}}
+    const thin=new Uint8Array(n);for(let t=0;t<n;t++)thin[t]=raw[t]&&above[t]&&dist[t]<=1.0?1:0;
+    for(const T of trims){
+      /* a trim paint sits mostly on raised surface; a paint that doesn't is no trim */
+      let ta=0,tr=0;for(let t=0;t<n;t++)if(S.label[o+t]===T){ta+=A[o+t];if(raw[t])tr+=A[o+t];}if(tr<0.35*ta)continue;
+      const comp=new Int32Array(n).fill(-1),pick=[];let k=0;
+      for(let s0=0;s0<n;s0++){if(!thin[s0]||comp[s0]>=0)continue;const q=[s0];comp[s0]=k;let gc=0;
+        for(let h=0;h<q.length;h++){const t=q[h];if(S.label[o+t]===T)gc++;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&thin[u]&&comp[u]<0){comp[u]=k;q.push(u);}}}
+        if(q.length>200&&gc>0.15*q.length)pick.push(k);k++;}
+      if(!pick.length)continue;const P=new Set(pick);
+      /* the other edge of the same stripe: a raised line running alongside a picked strip, within 2.5 mm */
+      {const dn=new Float32Array(n).fill(Infinity),H5=heap();for(let t=0;t<n;t++)if(comp[t]>=0&&P.has(comp[t])){dn[t]=0;H5.push(0,t);}
+       while(H5.size){const [d0,t]=H5.pop();if(d0>dn[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const nd=d0+dc(t,u);if(nd<dn[u]&&nd<=2.5){dn[u]=nd;H5.push(nd,u);}}}
+       const tot2=new Map(),cl=new Map();for(let t=0;t<n;t++){const c2=comp[t];if(c2<0||P.has(c2))continue;tot2.set(c2,(tot2.get(c2)||0)+1);if(dn[t]<Infinity)cl.set(c2,(cl.get(c2)||0)+1);}
+       for(const [c2,x] of tot2)if(x>100&&(cl.get(c2)||0)>0.6*x)P.add(c2);}
+      const dd=new Float32Array(n).fill(Infinity),H2=heap();for(let t=0;t<n;t++)if(comp[t]>=0&&P.has(comp[t])){dd[t]=0;H2.push(0,t);}
+      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=1.5){dd[u]=nd;H2.push(nd,u);}}}
+      const inS=new Uint8Array(n);for(let t=0;t<n;t++)if(dd[t]<Infinity)inS[t]=1;
+      /* close the strip: a groove down the middle of a stripe, or a gap between two edge ridges, is part of it */
+      {const CR=1.6,dil=new Float32Array(n).fill(Infinity),H3=heap();for(let t=0;t<n;t++)if(inS[t]){dil[t]=0;H3.push(0,t);}
+       while(H3.size){const [d0,t]=H3.pop();if(d0>dil[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!above[u])continue;const nd=d0+dc(t,u);if(nd<dil[u]&&nd<=CR){dil[u]=nd;H3.push(nd,u);}}}
+       const ero=new Float32Array(n).fill(Infinity),H4=heap();for(let t=0;t<n;t++)if(dil[t]===Infinity){for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&dil[u]<Infinity&&ero[u]>0){ero[u]=0;H4.push(0,u);}}}
+       while(H4.size){const [d0,t]=H4.pop();if(d0>ero[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||dil[u]===Infinity)continue;const nd=d0+dc(t,u);if(nd<ero[u]&&nd<=CR){ero[u]=nd;H4.push(nd,u);}}}
+       for(let t=0;t<n;t++)if(!inS[t]&&dil[t]<Infinity&&ero[t]===Infinity)inS[t]=1;}
+      let ch=0;for(let t=0;t<n;t++)if(inS[t]&&S.label[o+t]!==T){S.label[o+t]=T;ch++;}
+      /* spill: trim on flat surface right next to a strip goes back */
+      let sp=0;for(let pass=0;pass<30;pass++){let any=false;
+        for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||raw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
+          let b=-1,bv=0;for(const [L,x] of m)if(x>bv){bv=x;b=L;}if(b>=0){S.label[o+t]=b;sp++;any=true;}}
+        if(!any)break;}
+      rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp);}}
+  (window._spcDbg=window._spcDbg||{}).trim=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
