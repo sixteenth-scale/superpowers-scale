@@ -307,6 +307,15 @@ async function run(){
   window._spcHid=hid;
   fillHidden(hid);
   groundFill(active,gnd);
+  if(!window._spcNoHidUni)hiddenUniform(active,hid);
+  {const before=S.label.slice();
+  if(!window._spcNoTwin)twinCopy(active,regM,hid);
+  if(!window._spcNoMirror)mirrorAreas(active,regM,hid);
+   /* pieces repainted from a twin get their new edges set onto the sculpt too */
+   const ch=active.filter(pi=>{const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let t=0;t<n;t++)if(S.label[o+t]!==before[o+t])return true;return false;});
+   if(ch.length&&!window._spcNoCrease)try{snapToCreases(ch,hid,photo);}catch(e){console.warn(e);}
+   (window._spcDbg=window._spcDbg||{}).resnap=ch.map(pi=>S.parts[pi].name);}
+  if(!window._spcNoHidUni)hiddenUniform(active,hid); /* again: a twin copy can leave a hidden patch in two paints */
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -382,6 +391,61 @@ function shadeOf(A,B){const a=C.lab(...A.rgb),b=C.lab(...B.rgb),ca=Math.hypot(a[
   if(Math.min(ca,cb)<15||Math.max(ca,cb)<25)return false;let dh=Math.abs(Math.atan2(a[2],a[1])-Math.atan2(b[2],b[1]))*180/Math.PI;if(dh>180)dh=360-dh;
   const [big,small,lb,ls]=A.area>=B.area?[A,B,a[0],b[0]]:[B,A,b[0],a[0]];
   return dh<14&&small.area<0.35*big.area&&ls<lb-10; /* only a darker, smaller twin: a shadow */}
+/* a jointed piece and the rigid piece it stands in for are the same sculpt: the jointed one takes the rigid
+   one's paint wherever their surfaces coincide, so a hip cap or a stripe lands the same on both */
+function twinCopy(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)),dup=samePlace(geo);let nc=0;const pairs=[];
+  const area=g=>{let a=0;const o=S.offs[g.pi];for(let t=0;t<g.n;t++)a+=S.area[o+t];return a;};
+  for(const A of geo)for(const B of geo){if(A===B||!dup.has(A.pi+"|"+B.pi))continue;if(area(A)>=area(B))continue; /* A small (jointed), B big (rigid) */
+    if(!B.Gc)B.Gc=C.grid(B.c,0.5);const oA=S.offs[A.pi],oB=S.offs[B.pi],got=new Int32Array(A.n).fill(-1);
+    for(let t=0;t<A.n;t++){const [j,d]=B.Gc.near(A.c[t*3],A.c[t*3+1],A.c[t*3+2],3);if(j<0||d>0.6)continue;
+      const dot=A.fn[t*3]*B.fn[j*3]+A.fn[t*3+1]*B.fn[j*3+1]+A.fn[t*3+2]*B.fn[j*3+2];if(dot<0.7)continue;got[t]=S.label[oB+j];}
+    /* settle the copied border on this piece's own mesh: three passes of a one-ring majority */
+    const nb=S.nb[A.pi];for(let it=0;it<3;it++){const nx=got.slice();
+      for(let t=0;t<A.n;t++){if(got[t]<0)continue;const m=new Map();m.set(got[t],S.area[oA+t]);
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&got[u]>=0)m.set(got[u],(m.get(got[u])||0)+S.area[oA+u]);}
+        let b=got[t],bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}nx[t]=b;}got.set(nx);}
+    let k=0;for(let t=0;t<A.n;t++)if(got[t]>=0&&S.label[oA+t]!==got[t]){S.label[oA+t]=got[t];k++;}nc+=k;
+    /* whole sculpted areas: where the two sculpts differ a little (a hip dome against a hip ball) the face
+       match misses, so a small sculpted area takes the paint its twin shows across most of it */
+    {const p=S.parts[A.pi],fn0=C.faceNormals(p.m,p.M),v0=C.xf(p.M,p.m.v),ar=sculptAreas(A.pi,surfaceShape(p,S.nb[A.pi],fn0,v0));
+     let tot=0;for(let t=0;t<A.n;t++)tot+=S.area[oA+t];const per=new Map();
+     for(let t=0;t<A.n;t++){const id=ar[t];if(!per.has(id))per.set(id,{a:0,cov:0,v:new Map(),f:[]});const P=per.get(id);P.a+=S.area[oA+t];P.f.push(t);
+       const [j,d]=B.Gc.near(A.c[t*3],A.c[t*3+1],A.c[t*3+2],6);if(j<0||d>2.5)continue;
+       const dot=A.fn[t*3]*B.fn[j*3]+A.fn[t*3+1]*B.fn[j*3+1]+A.fn[t*3+2]*B.fn[j*3+2];if(dot<0.3)continue;
+       const L=S.label[oB+j];P.cov+=S.area[oA+t];P.v.set(L,(P.v.get(L)||0)+S.area[oA+t]);}
+     const rep=[];for(const [id,P] of per){if(P.a<0.02*tot)continue;let b=-1,bv=0;for(const [L,v] of P.v)if(v>bv){bv=v;b=L;}
+       rep.push([+(P.a/tot).toFixed(2),+(P.cov/P.a).toFixed(2),b,+(bv/Math.max(P.cov,1e-9)).toFixed(2)]);
+       if(P.a<0.3*tot&&P.cov>0.6*P.a&&bv>0.7*P.cov)for(const t of P.f)if(!hid[oA+t]||true){if(S.label[oA+t]!==b){S.label[oA+t]=b;k++;}}}
+     (window._spcDbg.twinAreas=window._spcDbg.twinAreas||{})[p.name]=rep;}pairs.push(S.parts[A.pi].name+"<"+S.parts[B.pi].name+":"+k);}
+  (window._spcDbg=window._spcDbg||{}).twins2=pairs;}
+/* left and right pieces are mirror images. Over each sculpted area the two should carry the same paint; when
+   one side shows a feature paint (a hip cap, a cuff) across most of an area and the other side missed it, the
+   missed side takes it, and each area is made one clean paint up to its sculpted edge */
+function mirrorAreas(active,regM,hid){const rep=[];
+  const nm=pi=>S.parts[pi].name.toLowerCase().replace(/\d+/g,"#");
+  const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));
+  const areasOf=pi=>{const p=S.parts[pi],fn0=C.faceNormals(p.m,p.M),v0=C.xf(p.M,p.m.v);return sculptAreas(pi,surfaceShape(p,S.nb[pi],fn0,v0));};
+  const dom=pi=>{const o=S.offs[pi],n=S.parts[pi].m.f.length/3,m=new Map();for(let t=0;t<n;t++){const L=S.label[o+t];m.set(L,(m.get(L)||0)+S.area[o+t]);}let b=-1,bv=0;for(const [L,v] of m)if(v>bv){bv=v;b=L;}return b;};
+  for(const L of active){if(!/left/.test(nm(L)))continue;const R=active.find(q=>q!==L&&nm(q)===nm(L).replace(/left/g,"right"));if(R==null)continue;
+    const gL=geo.get(L),gR=geo.get(R);let xl=0,xr=0;for(let t=0;t<gL.n;t++)xl+=gL.c[t*3];for(let t=0;t<gR.n;t++)xr+=gR.c[t*3];const mid=(xl/gL.n+xr/gR.n)/2;
+    const pass=(A,B)=>{const oA=S.offs[A.pi],oB=S.offs[B.pi],ar=areasOf(A.pi),dA=dom(A.pi);if(!B.Gm){const mc=new Float32Array(B.c.length);for(let i=0;i<B.n;i++){mc[i*3]=2*mid-B.c[i*3];mc[i*3+1]=B.c[i*3+1];mc[i*3+2]=B.c[i*3+2];}B.Gm=C.grid(mc,0.5);}
+      let tot=0;for(let t=0;t<A.n;t++)tot+=S.area[oA+t];const per=new Map();
+      for(let t=0;t<A.n;t++){const id=ar[t];if(!per.has(id))per.set(id,{a:0,cov:0,own:new Map(),v:new Map(),f:[]});const P=per.get(id);const a=S.area[oA+t];P.a+=a;P.f.push(t);
+        P.own.set(S.label[oA+t],(P.own.get(S.label[oA+t])||0)+a);
+        const [j,d]=B.Gm.near(A.c[t*3],A.c[t*3+1],A.c[t*3+2],6);if(j<0||d>2)continue;
+        const dot=-A.fn[t*3]*B.fn[j*3]+A.fn[t*3+1]*B.fn[j*3+1]+A.fn[t*3+2]*B.fn[j*3+2];if(dot<0.3)continue;
+        const Lb=S.label[oB+j];P.cov+=a;P.v.set(Lb,(P.v.get(Lb)||0)+a);}
+      const top=m=>{let b=-1,bv=0,s=0;for(const [k,v] of m){s+=v;if(v>bv){bv=v;b=k;}}return [b,bv/Math.max(s,1e-9)];};
+      const out=[];
+      for(const [,P] of per){if(P.a<0.03*tot||P.a>0.35*tot)continue;const [own,ownF]=top(P.own),[mir,mirF]=top(P.v);
+        let want=-1;let fm=-1,fv=0,vs=0;for(const [k,v] of P.v){vs+=v;if(k!==dA&&v>fv){fv=v;fm=k;}}
+        if(P.cov>0.3*P.a&&fm>=0&&fv>0.4*vs&&own===dA)want=fm;              /* the other side has a feature here */
+        else if(own!==dA&&ownF>0.55)want=own;                              /* this side has it: make it clean */
+        out.push([+(P.a/tot).toFixed(2),own,+ownF.toFixed(2),mir,+mirF.toFixed(2),fm,+(fv/Math.max(vs,1e-9)).toFixed(2),+(P.cov/P.a).toFixed(2),want]);
+        if(want>=0)for(const t of P.f)if(S.label[oA+t]===dA)S.label[oA+t]=want;} /* only base paint gives way: trim inside stays */
+      rep.push(S.parts[A.pi].name+" "+JSON.stringify(out));};
+    pass(gL,gR);pass(gR,gL);}
+  (window._spcDbg=window._spcDbg||{}).mirror=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
@@ -852,6 +916,16 @@ function fitStrips(active,hid){const dbg=(window._spcDbg=window._spcDbg||{});dbg
       if(same===0){let b=-1,bv=0;for(const [M,c] of vote)if(c>bv){bv=c;b=M;}if(b>=0)S.label[o+t]=b;}}
     dbg.strips.push([p.name,tried,fixed]);}
 }
+/* a hidden patch (the top of a hip, a cut face, a socket wall) takes ONE paint: the one already covering most
+   of it. Filling it bit by bit left streaks of a second paint across it, each a pointless filament change */
+function hiddenUniform(active,hid){let n2=0;
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area,seen=new Uint8Array(n);
+    for(let s0=0;s0<n;s0++){if(seen[s0]||!hid[o+s0])continue;const comp=[s0];seen[s0]=1;const vote=new Map();
+      for(let h=0;h<comp.length;h++){const t=comp[h],L=S.label[o+t];if(L>=0)vote.set(L,(vote.get(L)||0)+A[o+t]);
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&hid[o+u]&&!seen[u]){seen[u]=1;comp.push(u);}}}
+      let b=-1,bv=0;for(const [L,v] of vote)if(v>bv){bv=v;b=L;}if(b<0)continue;
+      for(const t of comp)if(S.label[o+t]!==b){S.label[o+t]=b;n2++;}}}
+  (window._spcDbg=window._spcDbg||{}).hidUni=n2;}
 /* the shape of the surface round each face, looked at about half a millimetre out whatever the mesh
    density: H is how much it curves inward (a valley, groove, the foot of a raised stripe or rim) and
    bend how sharply it turns at all. Paint lines on a sculpt sit in its valleys. */
