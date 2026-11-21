@@ -60,3 +60,31 @@
 
 .spc-poplab{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:6px 0}
 .spc-pop .act{display:flex;gap:6px;flex-wrap:wrap}
+.spf-tabs{display:flex;gap:4px;padding-top:10px;padding-bottom:0}
+.spf-tabs button{font:600 13px "IBM Plex Sans",sans-serif;padding:8px 16px;border:1px solid var(--line);border-bottom:none;border-radius:4px 4px 0 0;background:var(--sunken);color:var(--text-2);cursor:pointer}
+.spf-tabs button.on{background:var(--surface);color:var(--text)}
+.spf-sec>.card{margin-bottom:16px}
+.spf-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.spf-ctl input,.spf-ctl select{font:13px "IBM Plex Sans",sans-serif;padding:4px 6px}
+.spf-ctl #spfQ{flex:1;min-width:180px}
+.spf-vend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--text-2)}
+.spf-lib{max-height:460px;overflow:auto;border:1px solid var(--line-soft);border-radius:4px}
+.spf-row{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:13px;border-bottom:1px solid var(--line-soft)}
+.spf-row span{flex:1}
+.spf-row .catbtn{padding:2px 8px;font-size:11px}
+.spf-sw{display:inline-block;width:18px;height:18px;border-radius:3px;border:1px solid rgba(0,0,0,.25);flex:none}
+.spf-none{background:repeating-linear-gradient(45deg,#ddd 0 3px,#fff 3px 6px)}
+.spf-own,.spf-not,.spf-fit{font-style:normal;font-size:11px;white-space:nowrap}
+.spf-own{color:#1d7a3a}.spf-not{color:var(--text-3)}
+.spf-count,.spf-none-t{font-size:12px;color:var(--text-3);padding:6px 8px}
+.spf-paint{border:1px solid var(--line);border-radius:4px;margin-top:12px;overflow:hidden}
+.spf-ph{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--sunken);font-size:13px}
+.spf-ph .spf-sw{width:34px;height:34px}
+.spf-ph span{color:var(--text-3);font-size:12px}
+.spf-cols{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.spf-cols>div{padding:6px 0}
+.spf-cols .lbl{padding:4px 8px;display:block}
+@media(max-width:820px){.spf-cols{grid-template-columns:1fr}}
+.spf-match{color:#1d7a3a}.spf-close{color:#5f7a1d}.spf-rough{color:#a8641a}.spf-far{color:var(--accent)}
+.spf-ctl select,.spf-ctl input{width:auto!important;max-width:100%}
+.spf-ctl #spfQ{flex:1 1 220px;width:auto!important}

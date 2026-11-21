@@ -184,6 +184,29 @@ function subdivide(m){ /* 1->4, crack free */
     nf.set([a,ab,ca, ab,b,bc, ca,bc,c, ab,bc,ca],t*12);}
   return {v:new Float32Array(v),f:nf};
 }
+/* long thin triangles (a flat cut face, a plain dome) take one paint each, so a paint edge across them comes out
+   as saw teeth. Split every edge longer than L at its midpoint (crack free: both triangles on the edge split
+   the same way). Points land on the existing flat triangles, so the shape does not change */
+function splitLong(m,M,L,maxF){let cur=m;
+  for(let round=0;round<8;round++){const f=cur.f,n=f.length/3,V=cur.v.length/3,w=M?xf(M,cur.v):cur.v,L2=L*L,mid=new Map(),v=Array.from(cur.v);
+    const len2=(a,b)=>{const dx=w[a*3]-w[b*3],dy=w[a*3+1]-w[b*3+1],dz=w[a*3+2]-w[b*3+2];return dx*dx+dy*dy+dz*dz;};
+    const key=(a,b)=>a<b?a*V+b:b*V+a;
+    for(let t=0;t<n;t++)for(let e=0;e<3;e++){const a=f[t*3+e],b=f[t*3+(e+1)%3];if(len2(a,b)>L2){const k=key(a,b);if(!mid.has(k)){mid.set(k,v.length/3);v.push((v[a*3]+v[b*3])/2,(v[a*3+1]+v[b*3+1])/2,(v[a*3+2]+v[b*3+2])/2);}}}
+    if(!mid.size||n+mid.size*2>maxF)break;
+    const nf=[];const M_=(a,b)=>mid.get(key(a,b));
+    for(let t=0;t<n;t++){const a=f[t*3],b=f[t*3+1],c=f[t*3+2],ab=M_(a,b),bc=M_(b,c),ca=M_(c,a),k=(ab!==undefined)+(bc!==undefined)+(ca!==undefined);
+      if(k===0){nf.push(a,b,c);continue;}
+      if(k===3){nf.push(a,ab,ca, ab,b,bc, ca,bc,c, ab,bc,ca);continue;}
+      /* rotate so the corners read x,y,z with the split edges first */
+      let x=a,y=b,z=c,xy=ab,yz=bc,zx=ca;
+      const rot=()=>{[x,y,z]=[y,z,x];[xy,yz,zx]=[yz,zx,xy];};
+      if(k===1){while(xy===undefined)rot();nf.push(x,xy,z, xy,y,z);continue;}
+      while(zx!==undefined)rot(); /* now xy and yz are split, zx is not */
+      nf.push(xy,y,yz);
+      if(len2(x,yz)<len2(z,xy))nf.push(x,xy,yz, x,yz,z);else nf.push(x,xy,z, xy,yz,z);}
+    cur={v:new Float32Array(v),f:new Uint32Array(nf)};}
+  return cur;
+}
 function meanEdge(m,M){let s=0;const v=M?xf(M,m.v):m.v,f=m.f,n=Math.min(f.length/3,20000);
   for(let t=0;t<n;t++){const i=f[t*3]*3,j=f[t*3+1]*3;s+=Math.hypot(v[j]-v[i],v[j+1]-v[i+1],v[j+2]-v[i+2]);}return s/n;}
 
@@ -713,7 +736,7 @@ async function save3MF(S,fils,faceState){
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
 return {faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
-  hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,meanEdge,stlOf,stlBytes,read3MF,readGLB,
+  hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,splitLong,meanEdge,stlOf,stlBytes,read3MF,readGLB,
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
 })();

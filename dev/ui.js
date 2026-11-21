@@ -17,6 +17,7 @@ const saveSet=()=>{try{localStorage.setItem("spcMeshyKey",q("spcKey").value.trim
 
 /* ---------- palette panel ---------- */
 const palLab=()=>C.PAL.map(f=>C.labHex(f.hex));
+window._spcRenderPal=()=>renderPal();
 function renderPal(){
   q("spcPalN").textContent=`(${C.PAL.length})`;
   q("spcPal").innerHTML=C.PAL.map((f,i)=>`<div class="spc-pf"><i style="background:${f.hex}"></i><span>${esc(C.fname(f))}${f.owned===false?" <em>not owned</em>":""}</span><button data-i="${i}" title="Remove">×</button></div>`).join("");
@@ -215,6 +216,7 @@ async function run(){
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi))continue;
     if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){p.m=C.subdivide(p.m);p.subdivided=true;p.paint=null;}}
+    if(window._spcSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,2*detail,2e6);if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80);regM[pi]=r.M;errs[pi]=r.err;}}
   /* a piece named left or right belongs on that side of the figure: the side the other left pieces landed on.

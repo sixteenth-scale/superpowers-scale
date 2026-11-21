@@ -94,3 +94,24 @@
     </div>
   </div>
 </div>
+<div class="card measure" id="spfFinder">
+  <div class="card-h"><span class="lbl">Filament finder</span><span class="lbl">from photos</span></div>
+  <div class="card-b">
+    <div id="spfDrop" class="drop" tabindex="0" role="button" aria-label="Add photos of the figure">
+      <b>Photos of the figure</b>
+      <span>One or more — front, back, sides. Each paint on the figure gets the closest filaments you own, and closer ones you could buy.</span>
+      <input id="spfFile" type="file" accept="image/*" multiple hidden>
+    </div>
+    <div class="spc-files" id="spfFiles"></div>
+    <div class="spf-ctl"><label class="lbl" for="spfFType">Filament type</label><select id="spfFType"></select><div id="spfVend" class="spf-vend"></div></div>
+    <div id="spfOut"></div>
+  </div>
+</div>
+<div class="card measure" id="spfCard">
+  <div class="card-h"><span class="lbl">Filament library</span><span class="lbl">Bambu Lab · Sunlu · eSun · Polymaker · Amolen</span></div>
+  <div class="card-b">
+    <div class="spf-ctl"><input id="spfQ" placeholder="Search — e.g. red matte"><select id="spfType"></select><select id="spfVendor"></select>
+      <select id="spfMine"><option value="">Owned and not</option><option value="own">In your library</option><option value="not">Not in your library</option></select></div>
+    <div id="spfLib" class="spf-lib"></div>
+  </div>
+</div>
