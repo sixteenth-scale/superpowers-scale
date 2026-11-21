@@ -326,7 +326,8 @@ async function run(){
   if(!window._spcNoHipInner)hipCapInner(active,regM);
   if(window._spcRidgeCap)ridgeCap(active,regM);
   if(window._spcCapThigh)capToThighs(active,regM);
-  if(!window._spcNoThighCap)thighCap(active,regM);
+  if(window._spcThighCut)thighCap(active,regM);
+  if(!window._spcNoThighPlane)thighPlanes(active,regM);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -700,6 +701,63 @@ function dropIslands(active,maxA){maxA=maxA||2;let k=0;
       if(!main.has(L)||a>maxA||bord.size!==1)continue;const [M]=bord.keys();if(!main.has(M))continue;
       for(const t of comp)S.label[o+t]=M;k++;}}
   (window._spcDbg=window._spcDbg||{}).islands=k;}
+/* the hip crease of a jointed upper leg is close to a flat slanted ring. It is fitted as a plane through the
+   strongly bent faces of the hip band (angle over distance, fine triangles only, so a fan of long triangles
+   can't fake it); the cap is everything on the hip side of that plane. Left and right upper legs are mirror
+   images: the one with less black sets the plane for both. The plane is kept with the piece so the saved
+   paint cuts exactly along it, straight through big triangles */
+function thighPlanes(active,regM){const rep=[];const fits=[];
+  let mx=0,mc=0;for(const pi of active){const g=pieceGeo(pi,regM);for(let t=0;t<g.n;t++){mx+=g.c[t*3];mc++;}}const midX=mx/Math.max(mc,1);
+  for(const pi of active){const nm=S.parts[pi].name;if(!/thigh/i.test(nm))continue;
+    const g=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,A=S.area,nb=S.nb[pi],v=g.v,F=g.f;
+    let cx=0,cy=0,cz=0;for(let t=0;t<n;t++){cx+=g.c[t*3];cy+=g.c[t*3+1];cz+=g.c[t*3+2];}cx/=n;cy/=n;cz/=n;
+    const Cv=[[0,0,0],[0,0,0],[0,0,0]];for(let t=0;t<n;t++){const d=[g.c[t*3]-cx,g.c[t*3+1]-cy,g.c[t*3+2]-cz];for(let i=0;i<3;i++)for(let j=0;j<3;j++)Cv[i][j]+=d[i]*d[j];}
+    let ax=[0,1,0];for(let it=0;it<40;it++){const w=[0,1,2].map(i=>Cv[i][0]*ax[0]+Cv[i][1]*ax[1]+Cv[i][2]*ax[2]);const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+    const h=new Float32Array(n);let h1=-Infinity,h0=Infinity;for(let t=0;t<n;t++){h[t]=(g.c[t*3]-cx)*ax[0]+(g.c[t*3+1]-cy)*ax[1]+(g.c[t*3+2]-cz)*ax[2];if(h[t]>h1)h1=h[t];if(h[t]<h0)h0=h[t];}
+    const L=h1-h0,cnt=(lo,hi)=>{const m=new Map();for(let t=0;t<n;t++)if(h[t]>=lo&&h[t]<=hi){const x=S.label[o+t];m.set(x,(m.get(x)||0)+A[o+t]);}return m;};
+    const top=m=>{let b=-1,bv=0;for(const [x,y] of m)if(y>bv){bv=y;b=x;}return b;};
+    const body=top(cnt(h0+0.4*L,h1-0.4*L));
+    const off=(lo,hi)=>[...cnt(lo,hi)].reduce((s2,[x,y])=>s2+(x!==body?y:0),0);
+    if(off(h0,h0+0.03*L)>off(h1-0.03*L,h1)){for(let t=0;t<n;t++)h[t]=-h[t];const a=h1;h1=-h0;h0=-a;ax=ax.map(x=>-x);}
+    const cap=top(cnt(h1-0.03*L,h1));if(cap<0||cap===body)continue;
+    /* crease candidates */
+    const P=[];
+    for(let t=0;t<n;t++){if(h[t]<h1-0.3*L||h[t]>h1-0.02*L)continue;const na=Math.abs(g.fn[t*3]*ax[0]+g.fn[t*3+1]*ax[1]+g.fn[t*3+2]*ax[2]);if(na>0.8)continue;
+      let el=0;for(let e=0;e<3;e++){const a=F[t*3+e],b=F[t*3+(e+1)%3];el=Math.max(el,Math.hypot(v[a*3]-v[b*3],v[a*3+1]-v[b*3+1],v[a*3+2]-v[b*3+2]));}if(el>1.2)continue;
+      let k=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const dd=Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2])+1e-6;
+        const dot=Math.max(-1,Math.min(1,g.fn[t*3]*g.fn[u*3]+g.fn[t*3+1]*g.fn[u*3+1]+g.fn[t*3+2]*g.fn[u*3+2]));k=Math.max(k,Math.acos(dot)/dd);}
+      if(k>0.4)P.push([g.c[t*3],g.c[t*3+1],g.c[t*3+2]]);}
+    if(P.length<30)continue;
+    /* RANSAC, then least squares on the inliers */
+    let seed=12345;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
+    let best=0,bn=null,bp=null;
+    for(let it=0;it<2500;it++){const a=P[Math.floor(rnd()*P.length)],b=P[Math.floor(rnd()*P.length)],c=P[Math.floor(rnd()*P.length)];
+      const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],w=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];let nn=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];const l=Math.hypot(...nn);if(l<1e-9)continue;nn=nn.map(x=>x/l);
+      if(Math.abs(nn[0]*ax[0]+nn[1]*ax[1]+nn[2]*ax[2])<0.6)continue;let inl=0;for(const p of P)if(Math.abs((p[0]-a[0])*nn[0]+(p[1]-a[1])*nn[1]+(p[2]-a[2])*nn[2])<0.35)inl++;
+      if(inl>best){best=inl;bn=nn;bp=a;}}
+    if(!bn)continue;
+    const inl=P.filter(p=>Math.abs((p[0]-bp[0])*bn[0]+(p[1]-bp[1])*bn[1]+(p[2]-bp[2])*bn[2])<0.35);
+    const m=[0,1,2].map(k=>inl.reduce((s2,p)=>s2+p[k],0)/inl.length);
+    const Cq=[[0,0,0],[0,0,0],[0,0,0]];for(const p of inl){const d=[p[0]-m[0],p[1]-m[1],p[2]-m[2]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)Cq[i][j]+=d[i]*d[j];}
+    /* smallest eigenvector: power iteration on (tr*I - C) */
+    const tr=Cq[0][0]+Cq[1][1]+Cq[2][2];let nn=bn.slice();for(let it=0;it<60;it++){const w=[0,1,2].map(i=>tr*nn[i]-(Cq[i][0]*nn[0]+Cq[i][1]*nn[1]+Cq[i][2]*nn[2]));const l=Math.hypot(...w)||1;nn=w.map(x=>x/l);}
+    if(nn[0]*ax[0]+nn[1]*ax[1]+nn[2]*ax[2]<0)nn=nn.map(x=>-x);
+    const sdOf=(p,n2,m2)=>(p[0]-m2[0])*n2[0]+(p[1]-m2[1])*n2[1]+(p[2]-m2[2])*n2[2];
+    let capA=0;for(let t=0;t<n;t++)if(h[t]>h1-0.35*L&&sdOf([g.c[t*3],g.c[t*3+1],g.c[t*3+2]],nn,m)>0)capA+=A[o+t];
+    fits.push({pi,g,h,h1,L,cap,body,n:nn,m,capA,inl:inl.length});}
+  /* mirror the one with less black onto the other */
+  if(fits.length===2){const [a,b]=fits[0].capA<=fits[1].capA?fits:[fits[1],fits[0]];
+    b.n=[-a.n[0],a.n[1],a.n[2]];b.m=[2*midX-a.m[0],a.m[1],a.m[2]];b.mirrored=true;}
+  for(const F2 of fits){const {pi,g,h,h1,L,cap,body}=F2,o=S.offs[pi];let ch=0;
+    for(let t=0;t<g.n;t++){if(h[t]<h1-0.35*L)continue;const Lb=S.label[o+t];if(Lb!==cap&&Lb!==body)continue;
+      const sd=(g.c[t*3]-F2.m[0])*F2.n[0]+(g.c[t*3+1]-F2.m[1])*F2.n[1]+(g.c[t*3+2]-F2.m[2])*F2.n[2],want=sd>0?cap:body;if(Lb!==want){S.label[o+t]=want;ch++;}}
+    /* keep the plane in the piece's own frame for the saved paint */
+    const p=S.parts[pi],R=regM&&regM[pi]?C.inv4(regM[pi]):null;
+    const tp=x=>R?[R[0]*x[0]+R[4]*x[1]+R[8]*x[2]+R[12],R[1]*x[0]+R[5]*x[1]+R[9]*x[2]+R[13],R[2]*x[0]+R[6]*x[1]+R[10]*x[2]+R[14]]:x;
+    const m2=tp(F2.m),q2=tp([F2.m[0]+F2.n[0],F2.m[1]+F2.n[1],F2.m[2]+F2.n[2]]);let n2=[q2[0]-m2[0],q2[1]-m2[1],q2[2]-m2[2]];const l2=Math.hypot(...n2);n2=n2.map(x=>x/l2);
+    p.capPlane={n:n2,m:m2,band:3};
+    rep.push(p.name.replace(/^.*?_\d+_/,"")+":"+ch+(F2.mirrored?" (mirrored)":"")+" inl"+F2.inl+" capA"+F2.capA.toFixed(0));}
+  (window._spcDbg=window._spcDbg||{}).thighPlanes=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}

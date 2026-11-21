@@ -739,6 +739,20 @@ function paintStrings(p,states,M){
       for(let q=0;q<g.length;q+=5){const dx=g[q]-p[0],dy=g[q+1]-p[1],dz=g[q+2]-p[2];if(dx*dx+dy*dy+dz*dz<=r2)m.set(g[q+4],(m.get(g[q+4])||0)+g[q+3]);}}
     return m;};
   const top=m=>{let b=-1,bv=-1,s2=0;for(const [k,v] of m){s2+=v;if(v>bv){bv=v;b=k;}}return [b,s2?bv/s2:0];};
+  /* a fitted crease plane (hip of an upper leg): faces near it are cut exactly along it */
+  const PL=p.capPlane,sdP=q=>(q[0]-PL.m[0])*PL.n[0]+(q[1]-PL.m[1])*PL.n[1]+(q[2]-PL.m[2])*PL.n[2];
+  let capS=-1,bodyS=-1;
+  if(PL){const mc=new Map(),mb=new Map();for(let t=0;t<nW;t++){const T=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])],d=sdP(cen(T));
+      if(d>0.5&&d<6)mc.set(states[t],(mc.get(states[t])||0)+1);else if(d<-0.5&&d>-6)mb.set(states[t],(mb.get(states[t])||0)+1);}
+    capS=top(mc)[0];bodyS=top(mb)[0];if(capS===bodyS)capS=-1;}
+  const onPlane=t=>{if(capS<0)return false;const st=states[t];if(st!==capS&&st!==bodyS)return false;
+    const T=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])],d=[sdP(T[0]),sdP(T[1]),sdP(T[2])];return Math.min(...d)<0&&Math.max(...d)>0;};
+  function refinePlane(tri,depth){const d=[sdP(tri[0]),sdP(tri[1]),sdP(tri[2])];
+    if(Math.min(...d)>=0)return {leaf:capS};if(Math.max(...d)<=0)return {leaf:bodyS};
+    const e=Math.max(len(sub(tri[0],tri[1])),len(sub(tri[1],tri[2])),len(sub(tri[2],tri[0])));
+    if(depth>=7||e<=0.12)return {leaf:sdP(cen(tri))>0?capS:bodyS};
+    const kids=kidsPrusa(tri).map(k=>refinePlane(k,depth+1));
+    if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};return {kids};}
   const needs=t=>{if(!broad.has(states[t])||maxEdge(t)<=R)return false;
     for(const p of [P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2]),cen([P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])])]){const m=disc(p);if(m.size>1)return true;}return false;};
   /* inside one big working face: a sub-triangle takes the broad paint that covers most of a 1.5 mm disc round
@@ -756,6 +770,7 @@ function paintStrings(p,states,M){
   /* node of the original triangle: down through the working-mesh subdivision, then refinement */
   function node(triP,triO,level,idx,depth){
     if(level===lv){const t=idx;const wt=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];
+      if(onPlane(t))return refinePlane(triP,depth);
       if(!needs(t))return {leaf:states[t]};
       /* the working face's corners in its own order; triP covers the same triangle */
       return refine(triP,wt,t,depth);}
@@ -832,7 +847,7 @@ async function save3MF(S,fils,faceState){
 }
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
-return {paintStrings,faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
+return {paintStrings,inv4,faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
   hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,splitLong,meanEdge,stlOf,stlBytes,read3MF,readGLB,
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
