@@ -321,6 +321,7 @@ async function run(){
   if(!window._spcNoHidUni)hiddenUniform(active,hid); /* again: a twin copy can leave a hidden patch in two paints */
   (window._spcDbg=window._spcDbg||{}).unl=fillUnlabeled(active);
   if(!window._spcNoRound)roundEdges(active,hid,+(window._spcRoundR||1.5));
+  if(!window._spcNoRidge)snapMainToRidges(active,+(window._spcRidgeD||8));
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -497,6 +498,43 @@ function hiddenToAreas(active,hid){let on=0,off=0;
     for(let t=0;t<n;t++){const P=per.get(ar[t]);if(P.a>0.3*tot||P.h===0)continue;const f=P.h/P.a;
       if(f>0.6&&!hid[o+t]){hid[o+t]=1;on++;}else if(f<0.25&&hid[o+t]){hid[o+t]=0;off++;}}}
   (window._spcDbg=window._spcDbg||{}).hidAreas=[on,off];}
+/* a border between two main paints moves onto the sculpted ridge near it. The ridge (the line between a hip and
+   the leg, the top of a boot, a sleeve edge) is a ring of strongly bent faces; a minimum cut through a wide band
+   around the current border, where cutting along bent faces is almost free and cutting smooth surface is dear,
+   lands the border on that ring if there is one, or on the shortest smooth line if there isn't */
+function snapMainToRidges(active,D){D=D||8;let moved=0;const rep=[];
+  for(const pi of active){const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,v=g.v,F=g.f;
+    /* bend: how far the normals turn within two rings of a face */
+    const bend=new Float32Array(n);
+    for(let t=0;t<n;t++){let mx=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;
+        const d=1-(g.fn[t*3]*g.fn[u*3]+g.fn[t*3+1]*g.fn[u*3+1]+g.fn[t*3+2]*g.fn[u*3+2]);if(d>mx)mx=d;
+        for(let e2=0;e2<3;e2++){const w=nb[u*3+e2];if(w<0||w===t)continue;const d2=1-(g.fn[t*3]*g.fn[w*3]+g.fn[t*3+1]*g.fn[w*3+1]+g.fn[t*3+2]*g.fn[w*3+2]);if(d2>mx)mx=d2;}}
+      bend[t]=mx;}
+    const tot=new Map(),per=new Map();let all=0;
+    for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===L)continue;const a=F[t*3+e],b=F[t*3+(e+1)%3];
+        per.set(L,(per.get(L)||0)+Math.hypot(v[a*3]-v[b*3],v[a*3+1]-v[b*3+1],v[a*3+2]-v[b*3+2]));}}
+    const main=[...tot].filter(([L,a])=>L>=0&&(a>0.15*all||2*a/Math.max(per.get(L)||0,1e-6)>2.5)).map(([L])=>L);
+    for(let i=0;i<main.length;i++)for(let j=i+1;j<main.length;j++){const a=main[i],b=main[j];
+      /* the band: faces of a or b within D of their shared border */
+      const dist=new Float32Array(n).fill(Infinity),q=[];
+      for(let t=0;t<n;t++){const L=S.label[o+t];if(L!==a&&L!==b)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0){const M=S.label[o+u];if(M!==L&&(M===a||M===b)){dist[t]=0;q.push(t);break;}}}}
+      if(!q.length)continue;
+      for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M!==a&&M!==b)continue;
+          const dd=dist[t]+Math.hypot(g.c[u*3]-g.c[t*3],g.c[u*3+1]-g.c[t*3+1],g.c[u*3+2]-g.c[t*3+2]);if(dd<dist[u]&&dd<=D){dist[u]=dd;q.push(u);}}}
+      const fr=[],idx=new Int32Array(n).fill(-1);for(let t=0;t<n;t++)if(dist[t]<=D){idx[t]=fr.length;fr.push(t);}
+      const N=fr.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
+      const cheap=t=>bend[t]>0.03;
+      for(let k=0;k<N;k++){const t=fr[k],cur=S.label[o+t];let ca=cur===a?0:0.02*A[o+t],cb=cur===b?0:0.02*A[o+t];
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const x=F[t*3+e],y=F[t*3+(e+1)%3],len=Math.hypot(v[x*3]-v[y*3],v[x*3+1]-v[y*3+1],v[x*3+2]-v[y*3+2]);
+          const w=len*((cheap(t)&&cheap(u))?0.03:1);
+          if(idx[u]<0){const M=S.label[o+u];if(M===a)cb+=1e6;else if(M===b)ca+=1e6;}   /* band edge: keeps the paint outside */
+          else if(u>t){eu.push(k);ev.push(idx[u]);ew.push(w);}}
+        const m=Math.min(ca,cb);sc[k]=cb-m;tc[k]=ca-m;}
+      const side=minCut(N,sc,tc,eu,ev,ew);let mv=0;
+      for(let k=0;k<N;k++){const L=side[k]?a:b,ii=o+fr[k];if(S.label[ii]!==L){S.label[ii]=L;mv+=A[ii];}}
+      moved+=mv;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+":"+mv.toFixed(0));}}
+  (window._spcDbg=window._spcDbg||{}).ridges=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
