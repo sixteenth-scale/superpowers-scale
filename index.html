@@ -9699,6 +9699,8 @@ async function run(){
   if(!window._spcNoHipInner)hipCapInner(active,regM);
   if(window._spcRidgeCap)ridgeCap(active,regM);
   if(window._spcCapThigh)capToThighs(active,regM);
+  if(!window._spcNoThighCap)thighCap(active,regM);
+  if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -10029,6 +10031,48 @@ function capToThighs(active,regM){const rep=[];const geo=new Map(active.map(pi=>
      for(let k=0;k<q.length;k++){const t=q[k];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||got[u])continue;got[u]=1;if(S.label[oT+u]!==S.label[oT+t]){S.label[oT+u]=S.label[oT+t];ch++;}q.push(u);}}}
     rep.push(S.parts[T].name.replace(/^.*?_\d+_/,"")+"<"+S.parts[R].name.replace(/^.*?_\d+_/,"")+":"+ch);}
   (window._spcDbg=window._spcDbg||{}).capThigh=rep;}
+/* the hip cap of a jointed upper leg: the cheapest cut between its hip end (the end face and the very tip) and the
+   thigh below, where an edge costs its length divided by how sharply the surface bends across it (angle over
+   distance, so long thin triangles don't fake a ridge). The cut runs along the hip crease */
+function thighCap(active,regM){const rep=[];
+  for(const pi of active){const nm=S.parts[pi].name;if(!/thigh/i.test(nm))continue;
+    const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,A=S.area,nb=S.nb[pi],v=g.v,F=g.f;
+    let cx=0,cy=0,cz=0;for(let t=0;t<n;t++){cx+=g.c[t*3];cy+=g.c[t*3+1];cz+=g.c[t*3+2];}cx/=n;cy/=n;cz/=n;
+    const Cv=[[0,0,0],[0,0,0],[0,0,0]];for(let t=0;t<n;t++){const d=[g.c[t*3]-cx,g.c[t*3+1]-cy,g.c[t*3+2]-cz];for(let i=0;i<3;i++)for(let j=0;j<3;j++)Cv[i][j]+=d[i]*d[j];}
+    let ax=[0,1,0];for(let it=0;it<40;it++){const w=[0,1,2].map(i=>Cv[i][0]*ax[0]+Cv[i][1]*ax[1]+Cv[i][2]*ax[2]);const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+    const h=new Float32Array(n);let h1=-Infinity,h0=Infinity;for(let t=0;t<n;t++){h[t]=(g.c[t*3]-cx)*ax[0]+(g.c[t*3+1]-cy)*ax[1]+(g.c[t*3+2]-cz)*ax[2];if(h[t]>h1)h1=h[t];if(h[t]<h0)h0=h[t];}
+    const L=h1-h0;
+    const cnt=(lo,hi)=>{const m=new Map();for(let t=0;t<n;t++)if(h[t]>=lo&&h[t]<=hi){const x=S.label[o+t];m.set(x,(m.get(x)||0)+A[o+t]);}return m;};
+    const top=(m)=>{let b=-1,bv=0;for(const [x,y] of m)if(y>bv){bv=y;b=x;}return b;};
+    const body=top(cnt(h0+0.4*L,h1-0.4*L));
+    /* the hip end is the end that is not the body paint */
+    const offT=[...cnt(h1-0.03*L,h1)].reduce((s,[x,y])=>s+(x!==body?y:0),0),offB=[...cnt(h0,h0+0.03*L)].reduce((s,[x,y])=>s+(x!==body?y:0),0);
+    if(offB>offT){for(let t=0;t<n;t++)h[t]=-h[t];const a=h1;h1=-h0;h0=-a;ax=ax.map(x=>-x);}
+    const cap=top(cnt(h1-0.03*L,h1));if(cap<0||cap===body)continue;
+    const lo=h1-0.3*L,idx=new Int32Array(n).fill(-1),fr=[];for(let t=0;t<n;t++)if(h[t]>=lo){idx[t]=fr.length;fr.push(t);}
+    const N=fr.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[],K0=0.35;
+    for(let k=0;k<N;k++){const t=fr[k];const na=Math.abs(g.fn[t*3]*ax[0]+g.fn[t*3+1]*ax[1]+g.fn[t*3+2]*ax[2]);
+      if(h[t]>h1-0.03*L||(na>0.9&&h[t]>h1-0.15*L))sc[k]=1e9;else if(h[t]<lo+0.02*L)tc[k]=1e9;
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t||idx[u]<0)continue;const x=F[t*3+e],y=F[t*3+(e+1)%3];
+        const l=Math.hypot(v[x*3]-v[y*3],v[x*3+1]-v[y*3+1],v[x*3+2]-v[y*3+2]);
+        const dd=Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2])+1e-6;
+        const dot=Math.max(-1,Math.min(1,g.fn[t*3]*g.fn[u*3]+g.fn[t*3+1]*g.fn[u*3+1]+g.fn[t*3+2]*g.fn[u*3+2])),kk=Math.acos(dot)/dd;
+        eu.push(k);ev.push(idx[u]);ew.push(l/(1+(kk/K0)**2));}}
+    const side=minCut(N,sc,tc,eu,ev,ew);let ch=0;
+    for(let k=0;k<N;k++){const ii=o+fr[k],Lb=S.label[ii];if(Lb!==cap&&Lb!==body)continue;const want=side[k]?cap:body;if(Lb!==want){S.label[ii]=want;ch++;}}
+    rep.push(nm.replace(/^.*?_\d+_/,"")+":"+ch);}
+  (window._spcDbg=window._spcDbg||{}).thighCap=rep;}
+/* small islands of one main paint inside another (a fleck of black in the red) go: each one a pointless change */
+function dropIslands(active,maxA){maxA=maxA||2;let k=0;
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area,seen=new Uint8Array(n);
+    let all=0;const tot=new Map();for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];}
+    const main=new Set([...tot].filter(([L,a])=>a>0.1*all).map(([L])=>L));
+    for(let s0=0;s0<n;s0++){if(seen[s0])continue;const L=S.label[o+s0];const comp=[s0];seen[s0]=1;let a=0;const bord=new Map();
+      for(let q=0;q<comp.length;q++){const t=comp[q];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];
+        if(M===L){if(!seen[u]){seen[u]=1;comp.push(u);}}else bord.set(M,(bord.get(M)||0)+1);}}
+      if(!main.has(L)||a>maxA||bord.size!==1)continue;const [M]=bord.keys();if(!main.has(M))continue;
+      for(const t of comp)S.label[o+t]=M;k++;}}
+  (window._spcDbg=window._spcDbg||{}).islands=k;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
