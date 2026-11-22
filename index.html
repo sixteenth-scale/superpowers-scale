@@ -359,7 +359,7 @@ tr.crown td{color:var(--accent);font-weight:600}
         body to make room for the topper, which is how a custom ends up short.</p>
         <div class="field">
           <label class="lbl" for="fcrown">Crown at <span class="mono" id="fcrownv">100</span>% of the model</label>
-          <input id="fcrown" type="range" min="70" max="100" step="0.5" value="100" disabled>
+          <input id="fcrown" type="range" min="70" max="100" step="0.1" value="100" disabled>
         </div>
         <p class="mhelp" id="fwhy"></p>
         <div class="mbtns">
@@ -8256,22 +8256,38 @@ function fitDetect(){
   FT.detectedFor=curKey;
   const c=crownOf(FT.tri);
   const gear=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:null;
-  const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
-  const expect=gear&&onFile>1.0;
-  const use=(expect&&c.narrowing)?c.narrowing.frac:1;
-  $("fcrown").value=(use*100).toFixed(1);
-  $("fcrownv").textContent=(use*100).toFixed(1);
-  let msg=c.why+". ";
-  if(!c.narrowing){
-    msg+="The head runs to the top of the model with no narrowing, so the top is the crown.";
-  }else if(expect){
+  const hair=parseFloat($("hair").value)||0;
+  const topper=parseFloat($("topper").value)||0;
+  const crownMM=(parseFloat($("hin").value)||0)*K+(parseFloat($("heel").value)||0);
+  const expect=gear&&topper>1.0;
+  let use, msg=c.why+". ";
+  if(expect&&c.narrowing){
+    use=c.narrowing.frac;
     msg+=`${c.narrowing.why}, and ${cur.n} wears ${gear} on file, so that is taken as the crown.`;
   }else{
-    msg+=`${c.narrowing.why}. Taken as the top of the skull, because ${cur.n} has no `+
-         `headgear on file — a cranium and a close-fitting helmet are the same shape, `+
-         `so the mesh cannot tell them apart. If this sculpt does wear something, `+
-         `drag the crown to ${Math.round(c.narrowing.frac*100)}%.`;
+    /* No separate topper, so the top of the mesh is the top of whatever grows
+       out of the skull -- the hair. The crown sits below it by the hair
+       offset, which is the only read we have on how much. Putting the crown
+       at 100% would treat the hair tip AS the skull and print short, and it
+       would disagree with the build sheet above, which already counts hair as
+       sitting above the crown. */
+    use=hair>0?crownMM/(crownMM+hair):1;
+    msg+=hair>0
+      ? `No separate headgear on file, so the top of the model is the top of ${cur.n}'s `+
+        `hair, not the skull. The crown sits ${hair.toFixed(1)} mm below it, which puts `+
+        `it at ${(use*100).toFixed(1)}%.`
+      : `${cur.n} has nothing above the crown on file, so the top of the model is the crown.`;
+    if(c.narrowing)
+      msg+=` The mesh does narrow at ${Math.round(c.narrowing.frac*100)}% — a cranium and a `+
+           `close-fitting helmet are the same shape, so that may be the skull or may be `+
+           `headgear. If this sculpt wears something, drag the crown there.`;
   }
+  /* keep the exact fraction: the slider quantises, and rounding the crown
+     makes the fitter disagree with the build sheet by a few hundredths. The
+     slider shows it and takes over the moment it is dragged. */
+  FT.autoFrac=use; FT.manual=false;
+  $("fcrown").value=(use*100).toFixed(1);
+  $("fcrownv").textContent=(use*100).toFixed(1);
   $("fwhy").textContent=msg;
 }
 
@@ -8280,7 +8296,7 @@ function fitRender(){
   /* floor to crown, so the heel counts: the model stands on its heels too */
   const listed=parseFloat($("hin").value)||0, heel=parseFloat($("heel").value)||0;
   const crownTarget=listed*K+heel;
-  const frac=parseFloat($("fcrown").value)/100;
+  const frac=FT.manual?parseFloat($("fcrown").value)/100:FT.autoFrac;
   const meshCrown=FT.H*frac;
   const factor=meshCrown>0?crownTarget/meshCrown:0;
   const newTotal=FT.H*factor, aboveMM=newTotal-crownTarget;
@@ -8325,7 +8341,7 @@ $("ffile").addEventListener("change",e=>fitLoad(e.target.files[0]));
 ["dragenter","dragover"].forEach(t=>$("fdrop").addEventListener(t,e=>{e.preventDefault();$("fdrop").classList.add("over");}));
 ["dragleave","drop"].forEach(t=>$("fdrop").addEventListener(t,e=>{e.preventDefault();$("fdrop").classList.remove("over");}));
 $("fdrop").addEventListener("drop",e=>fitLoad(e.dataTransfer.files[0]));
-$("fcrown").addEventListener("input",()=>{$("fcrownv").textContent=(+$("fcrown").value).toFixed(1);fitRender();});
+$("fcrown").addEventListener("input",()=>{if(FT)FT.manual=true;$("fcrownv").textContent=(+$("fcrown").value).toFixed(1);fitRender();});
 $("fclear").addEventListener("click",()=>{
   FT=null;$("fdrop").hidden=false;$("ffile").value="";$("fout").innerHTML="";
   $("fcrown").disabled=true;$("fdl").disabled=true;$("fclear").disabled=true;
