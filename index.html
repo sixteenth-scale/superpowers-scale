@@ -220,6 +220,12 @@ tr.crown td{color:var(--accent);font-weight:600}
 .fout{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);
   border-radius:3px;overflow:hidden;margin-top:14px}
 .fout:empty{display:none}
+.frow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:6px 11px;background:var(--sunken)}
+.fl{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--text-3)}
+.fn{font-size:11.5px;color:var(--text-3);font-family:"IBM Plex Mono",monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fdl:not(:disabled){background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* ---- converter ---- */
@@ -8285,7 +8291,7 @@ function fitDetect(){
   /* keep the exact fraction: the slider quantises, and rounding the crown
      makes the fitter disagree with the build sheet by a few hundredths. The
      slider shows it and takes over the moment it is dragged. */
-  FT.autoFrac=use; FT.manual=false;
+  FT.autoFrac=use; FT.manual=false; FT.measured=!!(expect&&c.narrowing);
   $("fcrown").value=(use*100).toFixed(1);
   $("fcrownv").textContent=(use*100).toFixed(1);
   $("fwhy").textContent=msg;
@@ -8303,13 +8309,23 @@ function fitRender(){
   FT.factor=factor;
   const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
   const differs=onFile&&Math.abs(aboveMM-onFile)>1;
+  /* The story the file tells: where the crown sits in the model now, and
+     where the same point lands after scaling. Both in mm, side by side, so
+     the before and the after read as one measurement rather than a percentage
+     in one row and a height three rows later. */
   $("fout").innerHTML=
-    `<div class="srow body"><span>Model as supplied<i>${FT.name} · ${FT.n.toLocaleString()} triangles</i></span><b>${f2(FT.H)} mm</b></div>`+
-    `<div class="srow"><span>Crown found at<i>${f2(meshCrown)} mm into the model</i></span><b>${(frac*100).toFixed(1)}%</b></div>`+
-    `<div class="srow silo"><span>Scale factor<i>type this into your slicer, or download below</i></span><b>${(factor*100).toFixed(1)}%</b></div>`+
-    `<div class="srow heel"><span>New crown height<i>floor to crown of the skull</i></span><b>${f2(crownTarget)} mm</b></div>`+
-    (aboveMM>0.05?`<div class="srow top"><span>Above the crown<i>what THIS model measures${differs?` — ${f2(onFile)} mm is on file`:""}</i></span><b>${f2(aboveMM)} mm</b></div>`:"")+
-    `<div class="srow"><span>New total height<i>floor to tip</i></span><b>${f2(newTotal)} mm</b></div>`;
+    `<div class="frow"><span class="fl">AS SUPPLIED</span><span class="fn">${FT.name} &middot; ${FT.n.toLocaleString()} triangles</span></div>`+
+    `<div class="srow body"><span>Model height<i>floor to the highest point</i></span><b>${f2(FT.H)} mm</b></div>`+
+    `<div class="srow"><span>Crown sits at<i>${(frac*100).toFixed(1)}% of the model</i></span><b>${f2(meshCrown)} mm</b></div>`+
+    `<div class="srow silo"><span>Scale by<i>type this into your slicer, or download below</i></span><b>${(factor*100).toFixed(1)}%</b></div>`+
+    `<div class="frow"><span class="fl">AFTER SCALING</span><span class="fn">${f2(meshCrown)} &rarr; ${f2(crownTarget)} mm at the crown</span></div>`+
+    `<div class="srow heel"><span>Crown sits at<i>floor to crown of the skull &mdash; build to this</i></span><b>${f2(crownTarget)} mm</b></div>`+
+    (aboveMM>0.05?`<div class="srow top"><span>Above the crown<i>${
+      (FT.measured||FT.manual)
+        ? `measured off this model${differs?` &mdash; ${f2(onFile)} mm is on file`:""}`
+        : `assumed from the ${f2(onFile)} mm on file, NOT measured &mdash; a sculpt has no seam between hair and skull`
+    }</i></span><b>${f2(aboveMM)} mm</b></div>`:"")+
+    `<div class="srow body"><span>Model height<i>floor to the highest point</i></span><b>${f2(newTotal)} mm</b></div>`;
   $("fdl").disabled=false;
 }
 
