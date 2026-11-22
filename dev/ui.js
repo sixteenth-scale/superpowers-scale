@@ -333,8 +333,9 @@ async function run(){
   if(!window._spcNoMirrorTrim)mirrorTrim(active,regM);
   if(!window._spcNoBootRigid)bootFromRigid(active,regM);
   if(!window._spcNoMirrorCap)mirrorCap(active,regM);
-  if(!window._spcNoSpecks)legSpecks(active,hid);
+  if(!window._spcNoTorsoEdges)torsoEdges(active,regM);
   if(!window._spcNoTorso)torsoTrim(active,regM);
+  if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -516,7 +517,7 @@ function hiddenToAreas(active,hid){let on=0,off=0;
    the leg, the top of a boot, a sleeve edge) is a ring of strongly bent faces; a minimum cut through a wide band
    around the current border, where cutting along bent faces is almost free and cutting smooth surface is dear,
    lands the border on that ring if there is one, or on the shortest smooth line if there isn't */
-function snapMainToRidges(active,D){D=D||8;let moved=0;const rep=[];
+function snapMainToRidges(active,D,opt){D=D||8;opt=opt||{};let moved=0;const rep=[];
   for(const pi of active){const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,v=g.v,F=g.f;
     /* bend: how far the normals turn within two rings of a face */
     const bend=new Float32Array(n);
@@ -529,7 +530,7 @@ function snapMainToRidges(active,D){D=D||8;let moved=0;const rep=[];
       for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===L)continue;const a=F[t*3+e],b=F[t*3+(e+1)%3];
         per.set(L,(per.get(L)||0)+Math.hypot(v[a*3]-v[b*3],v[a*3+1]-v[b*3+1],v[a*3+2]-v[b*3+2]));}}
     const main=[...tot].filter(([L,a])=>L>=0&&(a>0.15*all||2*a/Math.max(per.get(L)||0,1e-6)>2.5)).map(([L])=>L);
-    for(let i=0;i<main.length;i++)for(let j=i+1;j<main.length;j++){const a=main[i],b=main[j];
+    for(let i=0;i<main.length;i++)for(let j=i+1;j<main.length;j++){const a=main[i],b=main[j];if(opt.pair&&!opt.pair(a,b))continue;
       /* the band: faces of a or b within D of their shared border */
       const dist=new Float32Array(n).fill(Infinity),q=[];
       for(let t=0;t<n;t++){const L=S.label[o+t];if(L!==a&&L!==b)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0){const M=S.label[o+u];if(M!==L&&(M===a||M===b)){dist[t]=0;q.push(t);break;}}}}
@@ -539,7 +540,7 @@ function snapMainToRidges(active,D){D=D||8;let moved=0;const rep=[];
       const fr=[],idx=new Int32Array(n).fill(-1);for(let t=0;t<n;t++)if(dist[t]<=D){idx[t]=fr.length;fr.push(t);}
       const N=fr.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
       const cheap=t=>bend[t]>0.03;
-      for(let k=0;k<N;k++){const t=fr[k],cur=S.label[o+t];let ca=cur===a?0:0.02*A[o+t],cb=cur===b?0:0.02*A[o+t];
+      for(let k=0;k<N;k++){const t=fr[k],cur=S.label[o+t];let ca=cur===a?0:0.02*A[o+t],cb=cur===b?0:0.02*A[o+t];if(opt.lock&&opt.lock(pi,t)){if(cur===a)cb+=1e6;else ca+=1e6;}
         for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const x=F[t*3+e],y=F[t*3+(e+1)%3],len=Math.hypot(v[x*3]-v[y*3],v[x*3+1]-v[y*3+1],v[x*3+2]-v[y*3+2]);
           const w=len*((cheap(t)&&cheap(u))?0.03:1);
           if(idx[u]<0){const M=S.label[o+u];if(M===a)cb+=1e6;else if(M===b)ca+=1e6;}   /* band edge: keeps the paint outside */
@@ -913,7 +914,7 @@ function bootFromRigid(active,regM){const rep=[];const geo=new Map(active.map(pi
    (gold flecks beside a stripe, black flecks in red); a black patch closed in by trim on a boot toe up to 8 mm²
    becomes trim. Then the hip-cap edge on the rigid legs is rounded off */
 function legSpecks(active,hid){let n1=0;
-  for(const pi of active){const nm=S.parts[pi].name;if(!/(leg|calf|shin|thigh)/i.test(nm))continue;
+  for(const pi of active){const nm=S.parts[pi].name;if(!/(leg|calf|shin|thigh|torso|chest)/i.test(nm))continue;
     const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
     for(let rnd=0;rnd<3;rnd++){const seen=new Uint8Array(n);let ch=0;
       for(let s0=0;s0<n;s0++){if(seen[s0])continue;const L=S.label[o+s0],q=[s0];seen[s0]=1;let a=0;const bord=new Map();
@@ -982,14 +983,57 @@ function torsoTrim(active,regM){const rep=[];
     for(let it=0;it<3;it++){const ch=[];for(let t=0;t<n;t++){if(S.label[o+t]!==main||ras[t]<0.0)continue;const m=new Map();let k=0;
         for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;k++;const L=S.label[o+u];if(L!==main)m.set(L,(m.get(L)||0)+1);}
         for(const [L,x] of m)if(x>=2&&side.has(L)){ch.push([t,L]);break;}}for(const [t,L] of ch)S.label[o+t]=L;add+=ch.length;}
+    /* a paint spilled off its own raised part onto the strap (the emblem ring's green below it) goes to the strap */
+    if(strapT>=0)for(let it=0;it<6;it++){const ch=[];for(let t=0;t<n;t++){const L=S.label[o+t];if(L===main||L===strapT||ras[t]>0.02)continue;
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===strapT){ch.push(t);break;}}}if(!ch.length)break;for(const t of ch)S.label[o+t]=strapT;add+=ch.length;}
+    /* feather fringe: trim paint sunk below its surroundings right at the body paint (on the body between two
+       feather tips) is body paint; only in the upper half, so straps are untouched */
+    let fr=0;{let zm=0;for(let t=0;t<n;t++)zm+=g.c[t*3+2];zm/=n;
+      for(let it=0;it<4;it++){const ch=[];for(let t=0;t<n;t++){const L=S.label[o+t];if(L===main||g.c[t*3+2]<zm||ras[t]>-0.01)continue;
+          let k=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===main)k++;}if(k>=1)ch.push(t);}
+        if(!ch.length)break;for(const t of ch)S.label[o+t]=main;fr+=ch.length;}}
+    /* the strap again after the spill went: a notch the green left on one side is filled from the other */
+    if(strapT>=0)for(let t=0;t<n;t++){if(S.label[o+t]!==main)continue;const [j,d]=G.near(g.c[t*3],g.c[t*3+1],g.c[t*3+2],4);if(j<0||d>1.0)continue;
+      if(-g.fn[t*3]*g.fn[j*3]+g.fn[t*3+1]*g.fn[j*3+1]+g.fn[t*3+2]*g.fn[j*3+2]<0.5)continue;if(S.label[o+j]===strapT){S.label[o+t]=strapT;add++;}}
     /* bands */
     let z0=Infinity,z1=-Infinity;for(let t=0;t<n;t++){z0=Math.min(z0,g.c[t*3+2]);z1=Math.max(z1,g.c[t*3+2]);}
     const SL=0.5,nS=Math.ceil((z1-z0)/SL)+1,sl=[...Array(nS)].map(()=>new Map()),sa=new Float64Array(nS);
     for(let t=0;t<n;t++){const k=Math.floor((g.c[t*3+2]-z0)/SL),L=S.label[o+t];sl[k].set(L,(sl[k].get(L)||0)+A[o+t]);sa[k]+=A[o+t];}
     let band=0;for(let k=0;k<nS;k++){let b=-1,bv=0;for(const [L,x] of sl[k])if(x>bv){bv=x;b=L;}if(b===main||bv<0.5*sa[k])continue;
       for(let t=0;t<n;t++){if(Math.floor((g.c[t*3+2]-z0)/SL)!==k)continue;if(S.label[o+t]!==b&&S.label[o+t]!==main&&S.label[o+t]!==strapT){S.label[o+t]=b;band++;}}}
-    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" strap+"+add+" band"+band);}
+    /* a belt's top ledge (faces looking up, right next to the belt) is belt, up to the crease with the body */
+    let ledge=0;{const B=new Set();for(let k=0;k<nS;k++){let b=-1,bv=0;for(const [L,x] of sl[k])if(x>bv){bv=x;b=L;}if(b!==main&&b!==strapT&&bv>=0.5*sa[k]&&k<nS/2)B.add(b);}
+      for(const Bp of B)for(let it=0;it<6;it++){const ch=[];for(let t=0;t<n;t++){if(S.label[o+t]!==main||g.fn[t*3+2]<0.45)continue;
+          for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===Bp){ch.push(t);break;}}}if(!ch.length)break;for(const t of ch)S.label[o+t]=Bp;ledge+=ch.length;}}
+    /* the belt's top edge, round the body: in each 3 degree column the belt reaches a height (the median of
+       its highest faces, smoothed with the columns beside it); body paint below it is belt, belt above it is body */
+    let edge=0;{let cx=0,cy=0;for(let t=0;t<n;t++){cx+=g.c[t*3];cy+=g.c[t*3+1];}cx/=n;cy/=n;
+      const NB=120,ang=t=>Math.floor(((Math.atan2(g.c[t*3+1]-cy,g.c[t*3]-cx)+Math.PI)/(2*Math.PI))*NB)%NB;
+      const B=new Set();for(let k=0;k<nS;k++){let b=-1,bv=0;for(const [L,x] of sl[k])if(x>bv){bv=x;b=L;}if(b!==main&&b!==strapT&&bv>=0.5*sa[k]&&k<nS/2)B.add(b);}
+      for(const Bp of B){/* belt height range */let bz0=Infinity,bz1=-Infinity;for(let k=0;k<nS;k++){let b=-1,bv=0;for(const [L,x] of sl[k])if(x>bv){bv=x;b=L;}if(b===Bp&&bv>=0.5*sa[k]){bz0=Math.min(bz0,z0+k*SL);bz1=Math.max(bz1,z0+(k+1)*SL);}}
+        const col=[...Array(NB)].map(()=>[]);for(let t=0;t<n;t++){if(S.label[o+t]!==Bp)continue;const z=g.c[t*3+2];if(z<bz0-1||z>bz1+3)continue;col[ang(t)].push(z);}
+        const top=new Float32Array(NB).fill(NaN);for(let k=0;k<NB;k++){const a=col[k].sort((p,q)=>p-q);if(a.length<5)continue;top[k]=a[Math.floor(a.length*0.95)];}
+        const sm=new Float32Array(NB);for(let k=0;k<NB;k++){const w=[];for(let d=-2;d<=2;d++){const x=top[(k+d+NB)%NB];if(!isNaN(x))w.push(x);}w.sort((p,q)=>p-q);sm[k]=w.length?w[w.length>>1]:NaN;}
+        for(let t=0;t<n;t++){const z=g.c[t*3+2];if(z<bz0-1||z>bz1+3)continue;const tz=sm[ang(t)];if(isNaN(tz))continue;const L=S.label[o+t];
+          if(L===main&&z<tz){S.label[o+t]=Bp;edge++;}else if(L===Bp&&z>tz+0.5){S.label[o+t]=main;edge++;}}}}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" strap+"+add+" band"+band+" ledge"+ledge+" edge"+edge+" fringe"+fr);}
   (window._spcDbg=window._spcDbg||{}).torso=rep;}
+/* torso borders onto the sculpt: the belt's top edge (belt paint against the body paint) and the feather fringe
+   (above the emblem, so a harness strap below it is never cut away) */
+function torsoEdges(active,regM){
+  for(const pi of active){if(!/(torso|chest|body)/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,A=S.area;const tot=new Map();for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);}
+    const byA=[...tot].sort((x,y)=>y[1]-x[1]).map(([L])=>L);const main=byA[0];
+    /* green: emblem; its lowest point bounds the feather zone */
+    let zE=Infinity,z0=Infinity;const rgb=L=>{try{return C.PAL[S.regions[L].fil].hex;}catch(e){return "";}};
+    for(let t=0;t<n;t++)z0=Math.min(z0,g.c[t*3+2]);
+    /* emblem = the paint whose faces sit highest on the front outside the main two... use the smallest paint above mid height */
+    let mid=0;for(let t=0;t<n;t++)mid+=g.c[t*3+2];mid/=n;
+    const hi=new Map();for(let t=0;t<n;t++)if(g.c[t*3+2]>mid){const L=S.label[o+t];hi.set(L,(hi.get(L)||0)+A[o+t]);}
+    let emb=-1,ev=Infinity;for(const [L,a] of hi)if(L!==main&&a>0.002*[...tot.values()].reduce((p,q)=>p+q,0)&&(tot.get(L)||0)<ev&&byA.indexOf(L)>1){ev=tot.get(L);emb=L;}
+    if(emb>=0)for(let t=0;t<n;t++)if(S.label[o+t]===emb)zE=Math.min(zE,g.c[t*3+2]);
+    snapMainToRidges([pi],3,{pair:(a,b)=>a===main||b===main});
+    (window._spcDbg=window._spcDbg||{}).torsoEdges={emb,zE:+zE.toFixed(1),mid:+mid.toFixed(1)};}}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
