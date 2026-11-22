@@ -9712,6 +9712,7 @@ async function run(){
   if(!window._spcNoRidge)snapMainToRidges(active,+(window._spcRidgeD||8));
   if(window._spcInner)levelInner(active,regM);
   if(!window._spcNoHipInner)hipCapInner(active,regM);
+  if(!window._spcNoRigSnap){const rig=active.filter(pi=>/leg/i.test(S.parts[pi].name)&&!/(thigh|calf)/i.test(S.parts[pi].name));if(rig.length)snapMainToRidges(rig,+(window._spcRigD||3));}
   if(window._spcRidgeCap)ridgeCap(active,regM);
   if(window._spcCapThigh)capToThighs(active,regM);
   if(window._spcThighCut)thighCap(active,regM);
@@ -9719,6 +9720,8 @@ async function run(){
   if(!window._spcNoTrim){const t0=Date.now();trimStrips(active,regM);(window._spcDbg=window._spcDbg||{}).trimMs=Date.now()-t0;}
   if(!window._spcNoMirrorTrim)mirrorTrim(active,regM);
   if(!window._spcNoBootRigid)bootFromRigid(active,regM);
+  if(!window._spcNoMirrorCap)mirrorCap(active,regM);
+  if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -9999,6 +10002,10 @@ function hipCapInner(active,regM){const rep=[];const geo=new Map(active.map(pi=>
     let ch=0;for(let t=0;t<n;t++){if(!(inCap[t]&&inner[t]>0&&h[t]<hOut&&h[t]>h1-16))continue;
       let nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];const a=nx*ax[0]+ny*ax[1]+nz*ax[2];nx-=a*ax[0];ny-=a*ax[1];nz-=a*ax[2];const l=Math.hypot(nx,ny,nz);
       if(l>0.3&&(inward*nx/l>0.7||(inner[t]>0.3&&Math.abs(ny/l)<0.5))){S.label[o+t]=body;ch++;}}
+    /* and above that height the inner side is all cap: red teeth reaching up into the cap go */
+    for(let t=0;t<n;t++){if(S.label[o+t]!==body||!(inner[t]>0&&h[t]>=hOut))continue;
+      let nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];const a=nx*ax[0]+ny*ax[1]+nz*ax[2];nx-=a*ax[0];ny-=a*ax[1];nz-=a*ax[2];const l=Math.hypot(nx,ny,nz);
+      if(l>0.3&&(inward*nx/l>0.7||(inner[t]>0.3&&Math.abs(ny/l)<0.5))){S.label[o+t]=cap;ch++;}}
     /* the cap is one piece: black in the upper leg that isn't joined to the cap at the top (a patch in the crotch
        notch under the peg, a blotch below the red band) is the leg's own paint */
     {const keep=new Uint8Array(n),q=[];for(let t=0;t<n;t++)if(h[t]>h1-0.03*(h1-h0)&&S.label[o+t]===cap){keep[t]=1;q.push(t);}
@@ -10296,6 +10303,48 @@ function bootFromRigid(active,regM){const rep=[];const geo=new Map(active.map(pi
       const L=S.label[oR+j];if(boot.has(L)&&L!==cur){S.label[oC+t]=L;ch++;}}
     rep.push(S.parts[Cf].name.replace(/^.*?_\d+_/,"")+"<"+S.parts[R].name.replace(/^.*?_\d+_/,"")+" hit"+hit+" ch"+ch);}
   (window._spcDbg=window._spcDbg||{}).bootRigid=rep;}
+/* last pass on the legs: specks go. A patch of any paint under 1.2 mm² with one paint round it takes that paint
+   (gold flecks beside a stripe, black flecks in red); a black patch closed in by trim on a boot toe up to 8 mm²
+   becomes trim. Then the hip-cap edge on the rigid legs is rounded off */
+function legSpecks(active,hid){let n1=0;
+  for(const pi of active){const nm=S.parts[pi].name;if(!/(leg|calf|shin|thigh)/i.test(nm))continue;
+    const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
+    for(let rnd=0;rnd<3;rnd++){const seen=new Uint8Array(n);let ch=0;
+      for(let s0=0;s0<n;s0++){if(seen[s0])continue;const L=S.label[o+s0],q=[s0];seen[s0]=1;let a=0;const bord=new Map();
+        for(let h=0;h<q.length;h++){const t=q[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];
+          if(M===L){if(!seen[u]){seen[u]=1;q.push(u);}}else bord.set(M,(bord.get(M)||0)+1);}}
+        if(a>8||bord.size!==1)continue;const [M]=bord.keys();
+        if(a<1.2||a<8){if(a>=1.2){/* bigger: only black inside trim on a boot */const tot=new Map();let all=0;for(let t=0;t<n;t++){const x=S.label[o+t];tot.set(x,(tot.get(x)||0)+A[o+t]);all+=A[o+t];}
+            if(!((tot.get(M)||0)<0.3*all&&(tot.get(L)||0)>0.3*all))continue;}
+          for(const t of q)S.label[o+t]=M;ch++;}}
+      n1+=ch;if(!ch)break;}}
+  const rig=active.filter(pi=>/leg/i.test(S.parts[pi].name)&&!/(thigh|calf)/i.test(S.parts[pi].name));
+  if(rig.length)roundEdges(rig,hid,+(window._spcRigR||2.5));
+  (window._spcDbg=window._spcDbg||{}).specks=n1;}
+/* the two rigid legs are mirror twins: over the hip, the one whose cap edge is cleaner (shortest edge for its
+   area) is copied onto the other wherever the mirrored surfaces meet */
+function mirrorCap(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLowerCase().replace(/\d+/g,"#");
+  const geo=new Map(active.map(pi=>[pi,pieceGeo(pi,regM)]));
+  for(const L of active){if(!/left/.test(nm(L))||!/leg/.test(nm(L))||/(thigh|calf)/.test(nm(L)))continue;
+    const R=active.find(q=>q!==L&&nm(q)===nm(L).replace(/left/g,"right"));if(R==null)continue;
+    const info=pi=>{const g=geo.get(pi),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,F=g.f,v=g.v;let z1=-Infinity,z0=Infinity;for(let t=0;t<n;t++){z1=Math.max(z1,g.c[t*3+2]);z0=Math.min(z0,g.c[t*3+2]);}
+      const top=z1-0.35*(z1-z0),cm=new Map();for(let t=0;t<n;t++)if(g.c[t*3+2]>z1-0.03*(z1-z0)){const x=S.label[o+t];cm.set(x,(cm.get(x)||0)+1);}
+      let cap=-1,cv=0;for(const [x,y] of cm)if(y>cv){cv=y;cap=x;}let a=0,p=0;
+      for(let t=0;t<n;t++){if(g.c[t*3+2]<top||S.label[o+t]!==cap)continue;a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==cap&&g.c[u*3+2]>top){const x=F[t*3+e],y=F[t*3+(e+1)%3];p+=Math.hypot(v[x*3]-v[y*3],v[x*3+1]-v[y*3+1],v[x*3+2]-v[y*3+2]);}}}
+      return {g,o,top,cap,rag:p*p/Math.max(a,1e-6)};};
+    const iL=info(L),iR=info(R);if(iL.cap!==iR.cap)continue;const [S2,D]=iL.rag<=iR.rag?[iL,iR]:[iR,iL];
+    let xs=0,xd=0;for(let t=0;t<S2.g.n;t++)xs+=S2.g.c[t*3];for(let t=0;t<D.g.n;t++)xd+=D.g.c[t*3];const pm=(xs/S2.g.n+xd/D.g.n)/2;
+    const mc=new Float32Array(S2.g.c.length);for(let t=0;t<S2.g.n;t++){mc[t*3]=2*pm-S2.g.c[t*3];mc[t*3+1]=S2.g.c[t*3+1];mc[t*3+2]=S2.g.c[t*3+2];}
+    const G=C.grid(mc,0.5);
+    /* the leg paint under the cap on the destination */
+    const bm=new Map();for(let t=0;t<D.g.n;t++){const z=D.g.c[t*3+2];if(z<D.top&&z>D.top-5){const x=S.label[D.o+t];bm.set(x,(bm.get(x)||0)+1);}}let body=-1,bv=0;for(const [x,y] of bm)if(y>bv){bv=y;body=x;}
+    let ch=0,hit=0;
+    for(let t=0;t<D.g.n;t++){if(D.g.c[t*3+2]<D.top)continue;const cur=S.label[D.o+t];if(cur!==D.cap&&cur!==body)continue;
+      const [j,d]=G.near(D.g.c[t*3],D.g.c[t*3+1],D.g.c[t*3+2],4);if(j<0||d>1.0)continue;
+      if(-D.g.fn[t*3]*S2.g.fn[j*3]+D.g.fn[t*3+1]*S2.g.fn[j*3+1]+D.g.fn[t*3+2]*S2.g.fn[j*3+2]<0.5)continue;hit++;
+      const sl=S.label[S2.o+j],want=sl===S2.cap?D.cap:body;if(want!==cur){S.label[D.o+t]=want;ch++;}}
+    rep.push("hit"+hit+" ch"+ch+" rag"+iL.rag.toFixed(0)+"/"+iR.rag.toFixed(0));}
+  (window._spcDbg=window._spcDbg||{}).mirrorCap=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
