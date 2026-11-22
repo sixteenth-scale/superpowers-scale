@@ -9798,6 +9798,7 @@ async function run(){
   if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
+  if(!window._spcNoGlove)gloveTrim(active,regM);
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -9847,6 +9848,44 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* gloves: piping (raised strips) running from the cuff band down the glove onto the back of the hand is the
+   band's paint. Raised thin strips inside the glove paint that touch the band paint take it; fingers and knuckles,
+   which never touch the band, stay glove. */
+function gloveTrim(active,regM){const rep=[];
+  for(const pi of active){if(!/arm|glove/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,null),gf=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    let z0=Infinity,z1=-Infinity;for(let t=0;t<n;t++){z0=Math.min(z0,gf.c[t*3+2]);z1=Math.max(z1,gf.c[t*3+2]);}
+    const lo=new Map();for(let t=0;t<n;t++)if(gf.c[t*3+2]<z0+0.1*(z1-z0))lo.set(S.label[o+t],(lo.get(S.label[o+t])||0)+A[o+t]);
+    let B=-1,bv=0;for(const [L,x] of lo)if(x>bv){bv=x;B=L;}if(B<0)continue;
+    const ed=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const L=S.label[o+u];if(L!==B)ed.set(L,(ed.get(L)||0)+1);}}
+    let G=-1,gv=0;for(const [L,x] of ed)if(x>gv){gv=x;G=L;}if(G<0)continue;
+    /* raise over 1.2 mm, on the glove only */
+    const cell=1.2,grid=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);
+    for(let t=0;t<n;t++){if(S.label[o+t]!==B&&S.label[o+t]!==G)continue;const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+    const ras=new Float32Array(n);
+    for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+      for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(K(cx+i,cy+j,cz+k));if(!b)continue;
+        for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>1.44)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;
+          const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+      if(sw>0)ras[t]=(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2];}
+    const raw=new Uint8Array(n);for(let t=0;t<n;t++)raw[t]=S.label[o+t]===B&&ras[t]>0.06?1:0;
+    /* raised strips that touch the band (directly or through 0.6 mm of glove) */
+    let ch=0,kept=0;
+    /* passes: a prong that touches the piping's end joins once the piping is in */
+    for(let pass=0;pass<4;pass++){const k0=kept;const seen=new Int32Array(n).fill(-1);
+    for(let s0=0;s0<n;s0++){if(!raw[s0]||seen[s0]>=0||S.label[o+s0]!==B)continue;const q=[s0];seen[s0]=s0;let touch=false,ar=0;
+      for(let h=0;h<q.length;h++){const t=q[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(S.label[o+u]===G)touch=true;
+          if(raw[u]&&seen[u]<0&&S.label[o+u]===B){seen[u]=s0;q.push(u);}}}
+      if(!touch||ar<0.3)continue;kept++;for(const t of q){S.label[o+t]=G;ch++;}}
+    if(kept===k0)break;
+    /* a glove face between the strip and more raised strip bridges the gap */
+    {const add=[];for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;let gN=0,rN=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(S.label[o+u]===G)gN++;else if(raw[u])rN++;}if(gN&&rN)add.push(t);}
+     for(const t of add){S.label[o+t]=G;ch++;}}}
+    /* close the strip: glove faces held between strip faces join it; lone strip faces go back */
+    for(let it=0;it<3;it++){const add=[];for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===G)c2++;}if(c2>=2)add.push(t);}
+      for(const t of add)S.label[o+t]=G;ch+=add.length;}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" strips"+kept+" ch"+ch);}
+  (window._spcDbg=window._spcDbg||{}).glove=rep;}
 /* left/right twins (arms, wings, gloves...) are mirror images: they must wear the same colors in the same
    places. The pair is lined up as a mirror (on the figure, or piece to piece about each centre); if most of
    the surface lines up, the cleaner one (fewer color-edge faces) is copied onto the other. Legs and pins have
@@ -9889,7 +9928,7 @@ function pinColors(active,hid,regM){
     for(let i=0;i<n;i++)if(!hid[o+i])return false;return true;};
   const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi)),tal=new Map();
   for(const pi of pins){const nm=nameOf(pi),side=/left/.test(nm)?"left":/right/.test(nm)?"right":"";
-    const joint=/knee/.test(nm)?/calf|thigh|leg|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
+    const joint=/knee/.test(nm)?/calf|thigh|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
     let cand=others.filter(q=>(!joint||joint.test(nameOf(q)))&&(!side||nameOf(q).includes(side)));
     if(!cand.length)cand=others.filter(q=>!joint||joint.test(nameOf(q)));
     if(!cand.length)cand=others;
@@ -11285,14 +11324,20 @@ function renderLib(){const box=q("spfLib");if(!box)return;const s=(q("spfQ").val
 /* ---- finder: the paints in one or more photos ---- */
 async function imgPixels(file){const url=URL.createObjectURL(file);try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
   const s=Math.min(1,640/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*s)),h=Math.max(1,Math.round(im.height*s));
-  const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");cx.drawImage(im,0,0,w,h);return cx.getImageData(0,0,w,h).data;}
+  const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");cx.drawImage(im,0,0,w,h);const d=cx.getImageData(0,0,w,h).data;
+  /* the backdrop: pale grey-white connected to the photo's edge. White paint inside the figure is kept */
+  const bg=i=>{const r=d[i*4],g=d[i*4+1],b=d[i*4+2];return Math.min(r,g,b)>185&&Math.max(r,g,b)-Math.min(r,g,b)<22;};
+  const seen=new Uint8Array(w*h),q=[];const push=i=>{if(!seen[i]&&bg(i)){seen[i]=1;q.push(i);}};
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
+  while(q.length){const i=q.pop(),x=i%w,y=(i/w)|0;d[i*4+3]=0;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w);}
+  return d;}
   finally{URL.revokeObjectURL(url);}}
 const chroma=l=>Math.hypot(l[1],l[2]),hue=l=>Math.atan2(l[2],l[1])*180/Math.PI;
 function paletteOf(pixelSets){
   /* every photo counts the same however big it is; plain backdrop and glare are left out */
   const P=[],W=[];
   for(const d of pixelSets){const keep=[];for(let i=0;i<d.length;i+=4){if(d[i+3]<128)continue;const l=C.lab(d[i]/255,d[i+1]/255,d[i+2]/255);
-      if(l[0]>90&&chroma(l)<8)continue;keep.push(l);}
+      keep.push(l);}
     const w=1/Math.max(1,keep.length);for(const l of keep){P.push(l);W.push(w);}}
   if(!P.length)return [];
   /* k-means in Lab, seeded far apart */
@@ -11309,9 +11354,9 @@ function paletteOf(pixelSets){
   cl.forEach(c=>c.m=mean(c));
   const samePaint=(a,b)=>{if(C.dE(a.m,b.m)<10)return true;const ca=chroma(a.m),cb=chroma(b.m);
     let dh=Math.abs(hue(a.m)-hue(b.m));if(dh>180)dh=360-dh;
-    if(ca<15&&cb<15&&C.dE(a.m,b.m)<20)return true;                         /* a dark paint and its sheen */
+    if(ca<15&&cb<15&&C.dE(a.m,b.m)<20&&Math.max(a.m[0],b.m[0])<65)return true;                         /* a dark paint and its sheen */
     const [big,sm]=a.w>=b.w?[a,b]:[b,a],cB=chroma(big.m),cS=chroma(sm.m);   /* glare: lighter, paler, same hue */
-    if(sm.w<0.5*big.w&&sm.m[0]>big.m[0]+12&&cS<cB&&cS>2&&dh<30)return true;
+    if(sm.w<0.5*big.w&&sm.m[0]>big.m[0]+12&&cS<cB&&cB>20&&cS>Math.max(4,0.2*cB)&&dh<30)return true; /* a near-white is white paint, not glare */
     if(ca<12||cb<12)return false;return dh<12&&Math.min(ca,cb)/Math.max(ca,cb)>0.5;};
   for(let changed=true;changed;){changed=false;
     outer:for(let i=0;i<cl.length;i++)for(let j=i+1;j<cl.length;j++)if(samePaint(cl[i],cl[j])){cl[i].ids.push(...cl[j].ids);cl[i].w+=cl[j].w;cl[i].m=mean(cl[i]);cl.splice(j,1);changed=true;break outer;}}
@@ -11324,11 +11369,15 @@ function paletteOf(pixelSets){
      cl=cl.filter(c=>c.ids.length);cl.forEach(c=>{c.w=c.ids.reduce((s,i)=>s+W[i],0);});}}
   const tot=cl.reduce((s,c)=>s+c.w,0);
   /* the paint itself is its lit color: the upper middle of its lightness, not the shadow, not the glare */
-  const out=cl.map(c=>{const Ls=c.ids.map(i=>P[i][0]).sort((x,y)=>x-y),small=c.w/tot<0.02,lo=Ls[Math.floor(Ls.length*(small?0.65:0.45))],hi=Ls[Math.min(Ls.length-1,Math.floor(Ls.length*(small?0.97:0.85)))]; /* a small detail is mostly edge and shade: take its brightest part */
-      let a=[0,0,0],w=0;for(const i of c.ids){const l=P[i];if(l[0]<lo||l[0]>hi)continue;a[0]+=l[0]*W[i];a[1]+=l[1]*W[i];a[2]+=l[2]*W[i];w+=W[i];}
-      const lab=w?a.map(x=>x/w):c.m;return {lab,share:c.w/tot,acc:c.acc};})
-    .filter(c=>c.share>=0.02||c.acc||(c.share>=0.0008&&chroma(c.lab)>25))
-    .sort((a,b)=>b.share-a.share);
+  const out=cl.map(c=>{const Ls=c.ids.map(i=>P[i][0]).sort((x,y)=>x-y),small=c.w/tot<0.02,dk=c.m[0]<35&&chroma(c.m)<10,lo=Ls[Math.floor(Ls.length*(small?0.65:dk?0.1:0.3))],hi=Ls[Math.min(Ls.length-1,Math.floor(Ls.length*(small?0.97:dk?0.4:0.7)))]; /* a black is its unlit part: sheen only greys it */ /* a small detail is mostly edge and shade: take its brightest part */
+      /* a colored paint is its most saturated lit pixels: glare and haze only wash it out */
+      const band=c.ids.filter(i=>P[i][0]>=lo&&P[i][0]<=hi),cs=band.map(i=>chroma(P[i])).sort((x,y)=>x-y),cmed=cs.length?cs[cs.length>>1]:0,colored=cmed>15;
+      let a=[0,0,0],w=0;for(const i of band){const l=P[i];if(colored&&chroma(l)<cmed)continue;a[0]+=l[0]*W[i];a[1]+=l[1]*W[i];a[2]+=l[2]*W[i];w+=W[i];}
+      const lab=w?a.map(x=>x/w):c.m;if(lab[0]>80&&chroma(lab)<8)lab[0]+=(100-lab[0])*0.6; /* white in a photo is greyed by the light: lift it */
+      return {lab,share:c.w/tot,acc:c.acc};})
+    .sort((a,b)=>b.share-a.share)
+    /* a paint seen in only one photo (a chest emblem) is a small share overall: keep it if it is unlike the others */
+    .filter((c,i,arr)=>c.share>=0.02||c.acc||(c.share>=0.0008&&chroma(c.lab)>25)||(c.share>=0.003&&arr.slice(0,i).every(o=>o.share<0.02||C.dE(o.lab,c.lab)>30)));
   out.forEach(c=>c.hex=labToHex(c.lab));return out;}
 function labToHex([L,a,b]){const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200,f=t=>t**3>0.008856?t**3:(t-16/116)/7.787;
   const X=0.95047*f(fx),Y=f(fy),Z=1.08883*f(fz);
@@ -11336,7 +11385,7 @@ function labToHex([L,a,b]){const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200,f=t=>t**3
   const gm=v=>v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;return C.rgb2hex([r,g,bb].map(gm));}
 const fit=d=>d<=5?"match":d<=10?"close":d<=20?"rough":"far";
 function suggest(lab,tf,vendors){
-  const mine=C.PAL.filter(p=>p.owned!==false&&p.hex).map(p=>({f:p,name:C.fname(p),d:C.dE(lab,C.labHex(p.hex))})).sort((a,b)=>a.d-b.d).slice(0,2);
+  const mine=C.PAL.filter(p=>p.owned!==false&&p.hex).map(p=>({f:p,name:C.fname(p),d:C.dE(lab,C.labHex(p.hex))})).sort((a,b)=>a.d-b.d).slice(0,3);
   const best=mine.length?mine[0].d:Infinity;
   const buy=LIB.filter(f=>f.L&&!f.multi&&tf(f.type)&&vendors.includes(f.vendor)&&!owned(f)).map(f=>({f,name:f.name,d:C.dE(lab,f.L)})).filter(x=>x.d<best-1).sort((a,b)=>a.d-b.d);
   const seen=new Set(),pick=[];for(const x of buy){const k=x.f.vendor;if(pick.length<4&&(!seen.has(k)||pick.length>=2)){pick.push(x);seen.add(k);}}

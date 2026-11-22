@@ -337,6 +337,7 @@ async function run(){
   if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
+  if(!window._spcNoGlove)gloveTrim(active,regM);
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -386,6 +387,44 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* gloves: piping (raised strips) running from the cuff band down the glove onto the back of the hand is the
+   band's paint. Raised thin strips inside the glove paint that touch the band paint take it; fingers and knuckles,
+   which never touch the band, stay glove. */
+function gloveTrim(active,regM){const rep=[];
+  for(const pi of active){if(!/arm|glove/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,null),gf=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    let z0=Infinity,z1=-Infinity;for(let t=0;t<n;t++){z0=Math.min(z0,gf.c[t*3+2]);z1=Math.max(z1,gf.c[t*3+2]);}
+    const lo=new Map();for(let t=0;t<n;t++)if(gf.c[t*3+2]<z0+0.1*(z1-z0))lo.set(S.label[o+t],(lo.get(S.label[o+t])||0)+A[o+t]);
+    let B=-1,bv=0;for(const [L,x] of lo)if(x>bv){bv=x;B=L;}if(B<0)continue;
+    const ed=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const L=S.label[o+u];if(L!==B)ed.set(L,(ed.get(L)||0)+1);}}
+    let G=-1,gv=0;for(const [L,x] of ed)if(x>gv){gv=x;G=L;}if(G<0)continue;
+    /* raise over 1.2 mm, on the glove only */
+    const cell=1.2,grid=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);
+    for(let t=0;t<n;t++){if(S.label[o+t]!==B&&S.label[o+t]!==G)continue;const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+    const ras=new Float32Array(n);
+    for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+      for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(K(cx+i,cy+j,cz+k));if(!b)continue;
+        for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>1.44)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;
+          const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+      if(sw>0)ras[t]=(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2];}
+    const raw=new Uint8Array(n);for(let t=0;t<n;t++)raw[t]=S.label[o+t]===B&&ras[t]>0.06?1:0;
+    /* raised strips that touch the band (directly or through 0.6 mm of glove) */
+    let ch=0,kept=0;
+    /* passes: a prong that touches the piping's end joins once the piping is in */
+    for(let pass=0;pass<4;pass++){const k0=kept;const seen=new Int32Array(n).fill(-1);
+    for(let s0=0;s0<n;s0++){if(!raw[s0]||seen[s0]>=0||S.label[o+s0]!==B)continue;const q=[s0];seen[s0]=s0;let touch=false,ar=0;
+      for(let h=0;h<q.length;h++){const t=q[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(S.label[o+u]===G)touch=true;
+          if(raw[u]&&seen[u]<0&&S.label[o+u]===B){seen[u]=s0;q.push(u);}}}
+      if(!touch||ar<0.3)continue;kept++;for(const t of q){S.label[o+t]=G;ch++;}}
+    if(kept===k0)break;
+    /* a glove face between the strip and more raised strip bridges the gap */
+    {const add=[];for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;let gN=0,rN=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(S.label[o+u]===G)gN++;else if(raw[u])rN++;}if(gN&&rN)add.push(t);}
+     for(const t of add){S.label[o+t]=G;ch++;}}}
+    /* close the strip: glove faces held between strip faces join it; lone strip faces go back */
+    for(let it=0;it<3;it++){const add=[];for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===G)c2++;}if(c2>=2)add.push(t);}
+      for(const t of add)S.label[o+t]=G;ch+=add.length;}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" strips"+kept+" ch"+ch);}
+  (window._spcDbg=window._spcDbg||{}).glove=rep;}
 /* left/right twins (arms, wings, gloves...) are mirror images: they must wear the same colors in the same
    places. The pair is lined up as a mirror (on the figure, or piece to piece about each centre); if most of
    the surface lines up, the cleaner one (fewer color-edge faces) is copied onto the other. Legs and pins have
@@ -428,7 +467,7 @@ function pinColors(active,hid,regM){
     for(let i=0;i<n;i++)if(!hid[o+i])return false;return true;};
   const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi)),tal=new Map();
   for(const pi of pins){const nm=nameOf(pi),side=/left/.test(nm)?"left":/right/.test(nm)?"right":"";
-    const joint=/knee/.test(nm)?/calf|thigh|leg|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
+    const joint=/knee/.test(nm)?/calf|thigh|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
     let cand=others.filter(q=>(!joint||joint.test(nameOf(q)))&&(!side||nameOf(q).includes(side)));
     if(!cand.length)cand=others.filter(q=>!joint||joint.test(nameOf(q)));
     if(!cand.length)cand=others;

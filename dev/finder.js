@@ -41,14 +41,20 @@ function renderLib(){const box=q("spfLib");if(!box)return;const s=(q("spfQ").val
 /* ---- finder: the paints in one or more photos ---- */
 async function imgPixels(file){const url=URL.createObjectURL(file);try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
   const s=Math.min(1,640/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*s)),h=Math.max(1,Math.round(im.height*s));
-  const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");cx.drawImage(im,0,0,w,h);return cx.getImageData(0,0,w,h).data;}
+  const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");cx.drawImage(im,0,0,w,h);const d=cx.getImageData(0,0,w,h).data;
+  /* the backdrop: pale grey-white connected to the photo's edge. White paint inside the figure is kept */
+  const bg=i=>{const r=d[i*4],g=d[i*4+1],b=d[i*4+2];return Math.min(r,g,b)>185&&Math.max(r,g,b)-Math.min(r,g,b)<22;};
+  const seen=new Uint8Array(w*h),q=[];const push=i=>{if(!seen[i]&&bg(i)){seen[i]=1;q.push(i);}};
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
+  while(q.length){const i=q.pop(),x=i%w,y=(i/w)|0;d[i*4+3]=0;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w);}
+  return d;}
   finally{URL.revokeObjectURL(url);}}
 const chroma=l=>Math.hypot(l[1],l[2]),hue=l=>Math.atan2(l[2],l[1])*180/Math.PI;
 function paletteOf(pixelSets){
   /* every photo counts the same however big it is; plain backdrop and glare are left out */
   const P=[],W=[];
   for(const d of pixelSets){const keep=[];for(let i=0;i<d.length;i+=4){if(d[i+3]<128)continue;const l=C.lab(d[i]/255,d[i+1]/255,d[i+2]/255);
-      if(l[0]>90&&chroma(l)<8)continue;keep.push(l);}
+      keep.push(l);}
     const w=1/Math.max(1,keep.length);for(const l of keep){P.push(l);W.push(w);}}
   if(!P.length)return [];
   /* k-means in Lab, seeded far apart */
@@ -65,9 +71,9 @@ function paletteOf(pixelSets){
   cl.forEach(c=>c.m=mean(c));
   const samePaint=(a,b)=>{if(C.dE(a.m,b.m)<10)return true;const ca=chroma(a.m),cb=chroma(b.m);
     let dh=Math.abs(hue(a.m)-hue(b.m));if(dh>180)dh=360-dh;
-    if(ca<15&&cb<15&&C.dE(a.m,b.m)<20)return true;                         /* a dark paint and its sheen */
+    if(ca<15&&cb<15&&C.dE(a.m,b.m)<20&&Math.max(a.m[0],b.m[0])<65)return true;                         /* a dark paint and its sheen */
     const [big,sm]=a.w>=b.w?[a,b]:[b,a],cB=chroma(big.m),cS=chroma(sm.m);   /* glare: lighter, paler, same hue */
-    if(sm.w<0.5*big.w&&sm.m[0]>big.m[0]+12&&cS<cB&&cS>2&&dh<30)return true;
+    if(sm.w<0.5*big.w&&sm.m[0]>big.m[0]+12&&cS<cB&&cB>20&&cS>Math.max(4,0.2*cB)&&dh<30)return true; /* a near-white is white paint, not glare */
     if(ca<12||cb<12)return false;return dh<12&&Math.min(ca,cb)/Math.max(ca,cb)>0.5;};
   for(let changed=true;changed;){changed=false;
     outer:for(let i=0;i<cl.length;i++)for(let j=i+1;j<cl.length;j++)if(samePaint(cl[i],cl[j])){cl[i].ids.push(...cl[j].ids);cl[i].w+=cl[j].w;cl[i].m=mean(cl[i]);cl.splice(j,1);changed=true;break outer;}}
@@ -80,11 +86,15 @@ function paletteOf(pixelSets){
      cl=cl.filter(c=>c.ids.length);cl.forEach(c=>{c.w=c.ids.reduce((s,i)=>s+W[i],0);});}}
   const tot=cl.reduce((s,c)=>s+c.w,0);
   /* the paint itself is its lit color: the upper middle of its lightness, not the shadow, not the glare */
-  const out=cl.map(c=>{const Ls=c.ids.map(i=>P[i][0]).sort((x,y)=>x-y),small=c.w/tot<0.02,lo=Ls[Math.floor(Ls.length*(small?0.65:0.45))],hi=Ls[Math.min(Ls.length-1,Math.floor(Ls.length*(small?0.97:0.85)))]; /* a small detail is mostly edge and shade: take its brightest part */
-      let a=[0,0,0],w=0;for(const i of c.ids){const l=P[i];if(l[0]<lo||l[0]>hi)continue;a[0]+=l[0]*W[i];a[1]+=l[1]*W[i];a[2]+=l[2]*W[i];w+=W[i];}
-      const lab=w?a.map(x=>x/w):c.m;return {lab,share:c.w/tot,acc:c.acc};})
-    .filter(c=>c.share>=0.02||c.acc||(c.share>=0.0008&&chroma(c.lab)>25))
-    .sort((a,b)=>b.share-a.share);
+  const out=cl.map(c=>{const Ls=c.ids.map(i=>P[i][0]).sort((x,y)=>x-y),small=c.w/tot<0.02,dk=c.m[0]<35&&chroma(c.m)<10,lo=Ls[Math.floor(Ls.length*(small?0.65:dk?0.1:0.3))],hi=Ls[Math.min(Ls.length-1,Math.floor(Ls.length*(small?0.97:dk?0.4:0.7)))]; /* a black is its unlit part: sheen only greys it */ /* a small detail is mostly edge and shade: take its brightest part */
+      /* a colored paint is its most saturated lit pixels: glare and haze only wash it out */
+      const band=c.ids.filter(i=>P[i][0]>=lo&&P[i][0]<=hi),cs=band.map(i=>chroma(P[i])).sort((x,y)=>x-y),cmed=cs.length?cs[cs.length>>1]:0,colored=cmed>15;
+      let a=[0,0,0],w=0;for(const i of band){const l=P[i];if(colored&&chroma(l)<cmed)continue;a[0]+=l[0]*W[i];a[1]+=l[1]*W[i];a[2]+=l[2]*W[i];w+=W[i];}
+      const lab=w?a.map(x=>x/w):c.m;if(lab[0]>80&&chroma(lab)<8)lab[0]+=(100-lab[0])*0.6; /* white in a photo is greyed by the light: lift it */
+      return {lab,share:c.w/tot,acc:c.acc};})
+    .sort((a,b)=>b.share-a.share)
+    /* a paint seen in only one photo (a chest emblem) is a small share overall: keep it if it is unlike the others */
+    .filter((c,i,arr)=>c.share>=0.02||c.acc||(c.share>=0.0008&&chroma(c.lab)>25)||(c.share>=0.003&&arr.slice(0,i).every(o=>o.share<0.02||C.dE(o.lab,c.lab)>30)));
   out.forEach(c=>c.hex=labToHex(c.lab));return out;}
 function labToHex([L,a,b]){const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200,f=t=>t**3>0.008856?t**3:(t-16/116)/7.787;
   const X=0.95047*f(fx),Y=f(fy),Z=1.08883*f(fz);
@@ -92,7 +102,7 @@ function labToHex([L,a,b]){const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200,f=t=>t**3
   const gm=v=>v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;return C.rgb2hex([r,g,bb].map(gm));}
 const fit=d=>d<=5?"match":d<=10?"close":d<=20?"rough":"far";
 function suggest(lab,tf,vendors){
-  const mine=C.PAL.filter(p=>p.owned!==false&&p.hex).map(p=>({f:p,name:C.fname(p),d:C.dE(lab,C.labHex(p.hex))})).sort((a,b)=>a.d-b.d).slice(0,2);
+  const mine=C.PAL.filter(p=>p.owned!==false&&p.hex).map(p=>({f:p,name:C.fname(p),d:C.dE(lab,C.labHex(p.hex))})).sort((a,b)=>a.d-b.d).slice(0,3);
   const best=mine.length?mine[0].d:Infinity;
   const buy=LIB.filter(f=>f.L&&!f.multi&&tf(f.type)&&vendors.includes(f.vendor)&&!owned(f)).map(f=>({f,name:f.name,d:C.dE(lab,f.L)})).filter(x=>x.d<best-1).sort((a,b)=>a.d-b.d);
   const seen=new Set(),pick=[];for(const x of buy){const k=x.f.vendor;if(pick.length<4&&(!seen.has(k)||pick.length>=2)){pick.push(x);seen.add(k);}}
