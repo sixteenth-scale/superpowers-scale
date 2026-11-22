@@ -823,7 +823,7 @@ function trimStrips(active,regM){const rep=[];
        const tot2=new Map(),cl=new Map();for(let t=0;t<n;t++){const c2=comp[t];if(c2<0||P.has(c2))continue;tot2.set(c2,(tot2.get(c2)||0)+1);if(dn[t]<Infinity)cl.set(c2,(cl.get(c2)||0)+1);}
        for(const [c2,x] of tot2)if(x>100&&(cl.get(c2)||0)>0.6*x)P.add(c2);}
       const dd=new Float32Array(n).fill(Infinity),H2=heap();for(let t=0;t<n;t++)if(comp[t]>=0&&P.has(comp[t])){dd[t]=0;H2.push(0,t);}
-      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=6){dd[u]=nd;H2.push(nd,u);}}}
+      while(H2.size){const [d0,t]=H2.pop();if(d0>dd[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!raw[u]||!above[u])continue;const nd=d0+dc(t,u);if(nd<dd[u]&&nd<=1.5){dd[u]=nd;H2.push(nd,u);}}}
       const inS=new Uint8Array(n);for(let t=0;t<n;t++)if(dd[t]<Infinity)inS[t]=1;
       /* close the strip: a groove down the middle of a stripe, or a gap between two edge ridges, is part of it */
       {const CR=1.6,dil=new Float32Array(n).fill(Infinity),H3=heap();for(let t=0;t<n;t++)if(inS[t]){dil[t]=0;H3.push(0,t);}
@@ -840,13 +840,6 @@ function trimStrips(active,regM){const rep=[];
         for(let t=0;t<n;t++){if(S.label[o+t]!==T||inS[t]||bigRaw[t])continue;const m=new Map();for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
           let b=-1,bv=0;for(const [L,x] of m)if(x>bv){bv=x;b=L;}if(b>=0){S.label[o+t]=b;sp++;any=true;}}
         if(!any)break;}
-      /* low on the foot (a toe cap), close small gaps in the trim first, so a black patch inside the cap is closed in */
-      {const CR=1.6,zone=t=>gf.c[t*3+2]<zmin+6,isT=new Uint8Array(n);for(let t=0;t<n;t++)isT[t]=S.label[o+t]===T?1:0;
-       const dil=new Float32Array(n).fill(Infinity),H6=heap();for(let t=0;t<n;t++)if(isT[t]&&zone(t)){dil[t]=0;H6.push(0,t);}
-       while(H6.size){const [d0,t]=H6.pop();if(d0>dil[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!zone(u))continue;const nd=d0+dc(t,u);if(nd<dil[u]&&nd<=CR){dil[u]=nd;H6.push(nd,u);}}}
-       const ero=new Float32Array(n).fill(Infinity),H7=heap();for(let t=0;t<n;t++)if(dil[t]===Infinity&&zone(t)){for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&dil[u]<Infinity&&ero[u]>0){ero[u]=0;H7.push(0,u);}}}
-       while(H7.size){const [d0,t]=H7.pop();if(d0>ero[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||dil[u]===Infinity)continue;const nd=d0+dc(t,u);if(nd<ero[u]&&nd<=CR){ero[u]=nd;H7.push(nd,u);}}}
-       for(let t=0;t<n;t++)if(!isT[t]&&zone(t)&&dil[t]<Infinity&&ero[t]===Infinity)S.label[o+t]=T;}
       /* a patch of other paint closed in by the trim on every side (the middle of a toe cap) is trim; a loose
          patch of trim not joined to any strip (a blotch on the side of the toe) is not */
       let holes=0,isl=0;{const seen=new Uint8Array(n);
@@ -855,7 +848,7 @@ function trimStrips(active,regM){const rep=[];
         for(let s0=0;s0<n;s0++){if(seen[s0]||sole[s0])continue;const L0=S.label[o+s0];const q=[s0];seen[s0]=1;let a=0,onlyT=true,touchS=false;
           for(let h2=0;h2<q.length;h2++){const t=q[h2];a+=A[o+t];if(inS[t])touchS=true;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0){onlyT=false;continue;}
             if(sole[u]&&L0!==T)continue;const Lu=S.label[o+u];if(Lu===L0){if(!seen[u]){seen[u]=1;q.push(u);}}else if(Lu!==T)onlyT=false;}}
-          if(L0!==T&&onlyT&&a<40){for(const t of q)S.label[o+t]=T;holes++;}
+          if(L0!==T&&onlyT&&a<40&&!q.some(t=>gf.c[t*3+2]<zmin+6)){for(const t of q)S.label[o+t]=T;holes++;}
           else if(L0===T&&!touchS&&a<15){const m=new Map();for(const t of q)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==T)m.set(S.label[o+u],(m.get(S.label[o+u])||0)+1);}
             let b=-1,bv=0;for(const [k3,x] of m)if(x>bv){bv=x;b=k3;}if(b>=0){for(const t of q)S.label[o+t]=b;isl++;}}}}
       rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" T"+T+":+"+ch+" -"+sp+" holes"+holes+" isl"+isl);}}
@@ -887,7 +880,7 @@ function mirrorTrim(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLo
         for(let h2=0;h2<q.length;h2++){const t=q[h2];for(let e=0;e<3;e++){const u=nbD[t*3+e];if(u<0)continue;const nd=dist[t]+Math.hypot(gd.c[t*3]-gd.c[u*3],gd.c[t*3+1]-gd.c[u*3+1],gd.c[t*3+2]-gd.c[u*3+2]);if(nd<dist[u]&&nd<=3){dist[u]=nd;q.push(u);}}}
         for(let t=0;t<gd.n;t++)if(dist[t]<=3)nearTop[t]=1;}
       let zd=Infinity;for(let t=0;t<gd.n;t++)zd=Math.min(zd,gd.c[t*3+2]);
-      for(let t=0;t<gd.n;t++){const cur=S.label[od+t];if(cur!==T&&!hosts.has(cur))continue;if(nearTop[t]||gd.c[t*3+2]<zd+6)continue; /* the toe is left to the strip rule */
+      for(let t=0;t<gd.n;t++){const cur=S.label[od+t];if(cur!==T&&!hosts.has(cur))continue;if(nearTop[t])continue;
         const [j,d]=G.near(gd.c[t*3],gd.c[t*3+1],gd.c[t*3+2],4);if(j<0||d>1.5)continue;
         const dot=-gd.fn[t*3]*gs.fn[j*3]+gd.fn[t*3+1]*gs.fn[j*3+1]+gd.fn[t*3+2]*gs.fn[j*3+2];if(dot<0.5)continue;hit++;
         const sl=S.label[os+j];
@@ -926,7 +919,7 @@ function legSpecks(active,hid){let n1=0;
         for(let h=0;h<q.length;h++){const t=q[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];
           if(M===L){if(!seen[u]){seen[u]=1;q.push(u);}}else bord.set(M,(bord.get(M)||0)+1);}}
         if(a>8||bord.size!==1)continue;const [M]=bord.keys();
-        if(a<1.2||a<8){if(a>=1.2){/* bigger: only black inside trim on a boot */const tot=new Map();let all=0;for(let t=0;t<n;t++){const x=S.label[o+t];tot.set(x,(tot.get(x)||0)+A[o+t]);all+=A[o+t];}
+        if(a<1.2){if(false){/* bigger: only black inside trim on a boot */const tot=new Map();let all=0;for(let t=0;t<n;t++){const x=S.label[o+t];tot.set(x,(tot.get(x)||0)+A[o+t]);all+=A[o+t];}
             if(!((tot.get(M)||0)<0.3*all&&(tot.get(L)||0)>0.3*all))continue;}
           for(const t of q)S.label[o+t]=M;ch++;}}
       n1+=ch;if(!ch)break;}}
