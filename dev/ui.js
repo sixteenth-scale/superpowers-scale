@@ -337,7 +337,7 @@ async function run(){
   if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
-  pinColors(active,hid);
+  pinColors(active,hid,regM);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -388,11 +388,11 @@ function fillHidden(hid){
 /* pins sit inside a joint where nothing can see them, and a plain cylinder can't be placed on the
    figure. A pin (or any piece that is entirely hidden) takes the main color of the hidden joint faces
    of the pieces it joins: a left knee pin follows the left thigh and calf, an elbow pin the arm. */
-function pinColors(active,hid){
+function pinColors(active,hid,regM){
   const nameOf=pi=>S.parts[pi].name.toLowerCase();
   const isPin=pi=>{if(/pin|peg/.test(nameOf(pi)))return true;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;
     for(let i=0;i<n;i++)if(!hid[o+i])return false;return true;};
-  const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi));
+  const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi)),tal=new Map();
   for(const pi of pins){const nm=nameOf(pi),side=/left/.test(nm)?"left":/right/.test(nm)?"right":"";
     const joint=/knee/.test(nm)?/calf|thigh|leg|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
     let cand=others.filter(q=>(!joint||joint.test(nameOf(q)))&&(!side||nameOf(q).includes(side)));
@@ -400,11 +400,19 @@ function pinColors(active,hid){
     if(!cand.length)cand=others;
     const tally=new Map();
     for(const q of cand){const o=S.offs[q],n=S.parts[q].m.f.length/3;
-      for(let i=0;i<n;i++){const L=S.label[o+i];if(L<0||!hid[o+i])continue;tally.set(L,(tally.get(L)||0)+S.area[o+i]);}}
+      /* a knee pin only sees the joint: the lowest 30% of a thigh, the highest 30% of a calf */
+      let zw=null;if(/knee/.test(nm)&&regM){const g=pieceGeo(q,regM);let z0=Infinity,z1=-Infinity;for(let i=0;i<n;i++){z0=Math.min(z0,g.c[i*3+2]);z1=Math.max(z1,g.c[i*3+2]);}
+        const up=/thigh/.test(nameOf(q)),cut=up?z0+0.3*(z1-z0):z1-0.3*(z1-z0);zw=i=>up?g.c[i*3+2]<=cut:g.c[i*3+2]>=cut;}
+      for(let i=0;i<n;i++){const L=S.label[o+i];if(L<0||!hid[o+i]||(zw&&!zw(i)))continue;tally.set(L,(tally.get(L)||0)+S.area[o+i]);}}
     if(!tally.size)for(const q of cand){const o=S.offs[q],n=S.parts[q].m.f.length/3;
       for(let i=0;i<n;i++){const L=S.label[o+i];if(L>=0)tally.set(L,(tally.get(L)||0)+S.area[o+i]);}}
-    let best=-1,ba=-1;for(const [L,a] of tally)if(a>ba){ba=a;best=L;}
+    tal.set(pi,tally);}
+  /* left and right twins take one paint: their tallies are pooled */
+  const key=pi=>nameOf(pi).replace(/^.*?_\d+_/,"").replace(/left|right/,"");
+  for(const pi of pins){const pool=new Map();for(const q of pins)if(key(q)===key(pi))for(const [L,a] of tal.get(q))pool.set(L,(pool.get(L)||0)+a);
+    let best=-1,ba=-1;for(const [L,a] of pool)if(a>ba){ba=a;best=L;}
     if(best<0)continue;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let i=0;i<n;i++)S.label[o+i]=best;}
+  (window._spcDbg=window._spcDbg||{}).pins=pins.map(pi=>nameOf(pi)+":"+S.regions[S.label[S.offs[pi]]].rgb);
 }
 /* two colors that are the same paint in light and shadow (a red and its darker red): same hue, both
    clearly colored, the darker one much smaller */
