@@ -334,6 +334,7 @@ async function run(){
   if(!window._spcNoBootRigid)bootFromRigid(active,regM);
   if(!window._spcNoMirrorCap)mirrorCap(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
+  if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoIslands)dropIslands(active,2);
   pinColors(active,hid);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
@@ -950,6 +951,45 @@ function mirrorCap(active,regM){const rep=[];const nm=pi=>S.parts[pi].name.toLow
       const sl=S.label[S2.o+j],want=sl===S2.cap?D.cap:body;if(want!==cur){S.label[D.o+t]=want;ch++;}}
     rep.push("hit"+hit+" ch"+ch+" rag"+iL.rag.toFixed(0)+"/"+iR.rag.toFixed(0));}
   (window._spcDbg=window._spcDbg||{}).mirrorCap=rep;}
+/* a body piece is close to a mirror image across its own middle. Trim that runs symmetrically (a harness strap)
+   is copied from the side that shows more of it to the side that shows less, only onto raised surface, so a
+   strap the photo half-missed is painted to its sculpted edges. And a band round the piece that is nearly all
+   one paint other than the main one (a belt) is all that paint: specks of what lies below it go */
+function torsoTrim(active,regM){const rep=[];
+  for(const pi of active){if(!/(torso|chest|body)/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    const tot=new Map();let all=0;for(let t=0;t<n;t++){const L=S.label[o+t];tot.set(L,(tot.get(L)||0)+A[o+t]);all+=A[o+t];}
+    let main=-1,mv=0;for(const [L,a] of tot)if(a>mv){mv=a;main=L;}
+    /* raised */
+    const cell=1.2,grid=new Map(),key=(i,j,k)=>((i+512)*1024+(j+512))*1024+(k+512);
+    for(let t=0;t<n;t+=3){const k=key(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+    const ras=new Float32Array(n);
+    for(let t=0;t<n;t++){const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+      for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(key(cx+i,cy+j,cz+k));if(!b)continue;
+        for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>1.44)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;
+          const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+      if(sw>0)ras[t]=(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2];}
+    let xm=0;for(let t=0;t<n;t++)xm+=g.c[t*3];xm/=n;
+    /* trim paints: present on both sides, not the main paint */
+    const side=new Map();for(let t=0;t<n;t++){const L=S.label[o+t];if(L===main)continue;const k=g.c[t*3]<xm?0:1;let e=side.get(L);if(!e){e=[0,0];side.set(L,e);}e[k]+=A[o+t];}
+    const mc=new Float32Array(g.c.length);for(let t=0;t<n;t++){mc[t*3]=2*xm-g.c[t*3];mc[t*3+1]=g.c[t*3+1];mc[t*3+2]=g.c[t*3+2];}
+    const G=C.grid(mc,0.5);let add=0;
+    const addBy=new Map();for(const [T,[a0,a1]] of side){if(Math.min(a0,a1)<0.01*all)continue;const add0=add;
+      for(let t=0;t<n;t++){if(S.label[o+t]!==main||ras[t]<-0.02)continue;const [j,d]=G.near(g.c[t*3],g.c[t*3+1],g.c[t*3+2],4);if(j<0||d>1.0)continue;
+        if(-g.fn[t*3]*g.fn[j*3]+g.fn[t*3+1]*g.fn[j*3+1]+g.fn[t*3+2]*g.fn[j*3+2]<0.5)continue;if(S.label[o+j]!==T)continue;S.label[o+t]=T;add++;}addBy.set(T,add-add0);}
+    let strapT=-1,sv=0;for(const [T,x] of addBy)if(x>sv){sv=x;strapT=T;}
+    /* strap edges: main paint closed in by trim within 0.5 mm becomes trim */
+    for(let it=0;it<3;it++){const ch=[];for(let t=0;t<n;t++){if(S.label[o+t]!==main||ras[t]<0.0)continue;const m=new Map();let k=0;
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;k++;const L=S.label[o+u];if(L!==main)m.set(L,(m.get(L)||0)+1);}
+        for(const [L,x] of m)if(x>=2&&side.has(L)){ch.push([t,L]);break;}}for(const [t,L] of ch)S.label[o+t]=L;add+=ch.length;}
+    /* bands */
+    let z0=Infinity,z1=-Infinity;for(let t=0;t<n;t++){z0=Math.min(z0,g.c[t*3+2]);z1=Math.max(z1,g.c[t*3+2]);}
+    const SL=0.5,nS=Math.ceil((z1-z0)/SL)+1,sl=[...Array(nS)].map(()=>new Map()),sa=new Float64Array(nS);
+    for(let t=0;t<n;t++){const k=Math.floor((g.c[t*3+2]-z0)/SL),L=S.label[o+t];sl[k].set(L,(sl[k].get(L)||0)+A[o+t]);sa[k]+=A[o+t];}
+    let band=0;for(let k=0;k<nS;k++){let b=-1,bv=0;for(const [L,x] of sl[k])if(x>bv){bv=x;b=L;}if(b===main||bv<0.5*sa[k])continue;
+      for(let t=0;t<n;t++){if(Math.floor((g.c[t*3+2]-z0)/SL)!==k)continue;if(S.label[o+t]!==b&&S.label[o+t]!==main&&S.label[o+t]!==strapT){S.label[o+t]=b;band++;}}}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" strap+"+add+" band"+band);}
+  (window._spcDbg=window._spcDbg||{}).torso=rep;}
 /* faces in figure space for each piece */
 function pieceGeo(pi,regM){const p=S.parts[pi],M=regM&&regM[pi]?C.mul4(regM[pi],p.M):p.M,v=C.xf(M,p.m.v),f=p.m.f,n=f.length/3,fn=C.faceNormals(p.m,M),c=new Float32Array(n*3);
   for(let t=0;t<n;t++)for(let k=0;k<3;k++)c[t*3+k]=(v[f[t*3]*3+k]+v[f[t*3+1]*3+k]+v[f[t*3+2]*3+k])/3;return {pi,v,f,n,fn,c};}
