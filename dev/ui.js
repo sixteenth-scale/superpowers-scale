@@ -101,9 +101,9 @@ function chips(){
   q("spcFiles").innerHTML=c.join("");
 }
 function ready(){
-  const haveColor=S.colored||(S.images.length&&q("spcKey").value.trim());
+  const haveColor=S.colored||S.images.length; /* reference photos alone are enough */
   q("spcGo").disabled=!(S.target&&haveColor);
-  q("spcGo").title=!S.target?"Add the model to color":!haveColor?(S.images.length?"Add your Meshy API key":"Add reference art or a colored model"):"";
+  q("spcGo").title=!S.target?"Add the model to color":!haveColor?"Add reference photos or a colored model":"";
 }
 
 /* ---------- set up target: geometry, viewer, existing paint ---------- */
@@ -192,9 +192,15 @@ async function run(){
   const figPts=(()=>{const tot=fig.reduce((s,p)=>s+p.m.f.length/3,0);const rng=C.RNG(11);const all=[];
     fig.forEach(p=>{const n=Math.max(500,Math.round(60000*(p.m.f.length/3)/tot));all.push(C.samplePts(p.m,p.M,n,rng).p);});
     const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};})();
-  /* 1. colored source */
-  let sources;
+  /* 1. colored source: a colored model if one was given; otherwise the reference photos are painted straight
+     onto the figure (Meshy only when asked for) */
+  const photoOnly=!S.colored&&S.images.length>0&&!window._spcUseMeshy;
+  if(photoOnly&&!parted&&active.length>1)throw new Error("To color from photos, add the whole figure too (box 2), or mark the one-piece figure in the list with figure.");
+  let sources,al,cloud;
   if(S.colored)sources=S.colored.sources;
+  else if(photoOnly){let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity,z0=Infinity,z1=-Infinity;const P=figPts.p;
+    for(let i=0;i<P.length;i+=3){x0=Math.min(x0,P[i]);x1=Math.max(x1,P[i]);y0=Math.min(y0,P[i+1]);y1=Math.max(y1,P[i+1]);z0=Math.min(z0,P[i+2]);z1=Math.max(z1,P[i+2]);}
+    al={M:null,err:0,diag:Math.hypot(x1-x0,y1-y0,z1-z0)};}
   else{const key=q("spcKey").value.trim();
     const stl=C.stlBytes(fig.map(p=>({m:p.m,M:p.M})));
     const glb=await C.meshyTexture(key,stl,S.images,log);
@@ -202,12 +208,12 @@ async function run(){
     try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([glb],{type:"model/gltf-binary"}));
       a.download=(S.figure||S.target).name.replace(/\.\w+$/,"")+"_meshy.glb";a.click();}catch(e){}}
   /* 2. lay it over the figure */
-  log("Lining the colors up with your figure…");await tick();
+  if(!photoOnly){log("Lining the colors up with your figure…");await tick();
   const allV=new Float32Array(sources.reduce((s,x)=>s+x.m.v.length,0));{let o=0;sources.forEach(x=>{allV.set(x.m.v,o);o+=x.m.v.length;});}
-  const al=await C.alignSource(allV,figPts,tick);
+  al=await C.alignSource(allV,figPts,tick);
   if(al.err>0.03*al.diag)log(`Lined up, but the fit is loose (${al.err.toFixed(2)} mm average). Check the result.`);
   log("Sampling colors…");await tick();
-  const cloud=C.colorCloud(sources,al.M,Math.max(0.12,detail/2));
+  cloud=C.colorCloud(sources,al.M,Math.max(0.12,detail/2));}
   /* 3. pieces */
   let G=null;
   if(parted){G=C.grid(figPts.p,al.diag/80);}
@@ -236,9 +242,15 @@ async function run(){
     let Mx=null;
     if(parted){Mx=regM[pi];lastErr=errs[pi];(window._spcReg=window._spcReg||{})[p.name]={M:Mx,err:lastErr};if(lastErr>0.6)flags.push(`${p.name} (${lastErr.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
-    const tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
+    let tr;if(photoOnly){/* how far each face sits from the figure's surface: far means hidden (joints, sockets) */
+      const g=pieceGeo(pi,parted?regM:null),dist=new Float32Array(g.n);
+      if(parted)for(let t=0;t<g.n;t++)dist[t]=G.near(g.c[t*3],g.c[t*3+1],g.c[t*3+2],8)[1];
+      tr={rgb:new Float32Array(g.n*3).fill(0.5),dist};}
+    else tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
   rebuildIndex();S.areaC={};
   S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r.rgb,S.offs[pi]*3);});
+  if(photoOnly){log("Painting your photos onto the figure…");await tick();const pr=await photoProject(S.images,fig,active,parted?regM:null);
+    for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let t=0;t<n;t++)if(pr[(o+t)*3]>=0)for(let k=0;k<3;k++)S.raw[(o+t)*3+k]=pr[(o+t)*3+k];}}
   const act=new Uint8Array(S.nFaces);active.forEach(pi=>act.fill(1,S.offs[pi],S.offs[pi]+S.parts[pi].m.f.length/3));
   /* faces with no matching surface on the figure (cut faces, joints, hip tops, sockets) are hidden:
      they don't vote for colors and later take the color next to them */
@@ -285,7 +297,7 @@ async function run(){
   S.regions=ids.map((x,i)=>({id:i,rgb:regs[x].rgb,fil:-1,area:0,dE:0,patch:false}));
   /* with photos, the paints come from the photos, not from Meshy's colors (which carry its shadows and
      guesses); each face starts on the photo paint nearest its Meshy color */
-  if(S.images.length&&window._spcPhotoPalette){try{const pal=await photoPalette(S.images);
+  if(S.images.length&&(window._spcPhotoPalette||photoOnly)){try{const pal=await photoPalette(S.images);
     if(pal.length>=2){S.regions=pal.map((rgb,i)=>({id:i,rgb,fil:-1,area:0,dE:0,patch:false}));const pl=pal.map(c=>C.lab(...c));
       for(let i=0;i<S.nFaces;i++){if(S.label[i]<0)continue;let b=0,bd=Infinity;for(let c=0;c<pl.length;c++){const d=(L[i*3]-pl[c][0])**2+(L[i*3+1]-pl[c][1])**2+(L[i*3+2]-pl[c][2])**2;if(d<bd){bd=d;b=c;}}S.label[i]=b;}}
     (window._spcDbg=window._spcDbg||{}).palette=pal.map(c=>C.rgb2hex(c));}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
@@ -1208,7 +1220,12 @@ async function readPhoto(file){
   for(let x=0;x<W;x+=3){push(x,2);push(x,H-3);}for(let y=0;y<H;y+=3){push(2,y);push(W-3,y);}
   const bg=bs.map(a=>a.sort((p,q)=>p-q)[a.length>>1]);
   const fg=new Uint8Array(W*H),rows=new Int32Array(H),cols=new Int32Array(W);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const o=(y*W+x)*3;if(Math.hypot(L[o]-bg[0],L[o+1]-bg[1],L[o+2]-bg[2])>14){fg[y*W+x]=1;rows[y]++;cols[x]++;}}
+  /* background is backdrop-colored AND joined to the photo's border: white paint inside the figure is figure */
+  {const near=j=>Math.hypot(L[j*3]-bg[0],L[j*3+1]-bg[1],L[j*3+2]-bg[2])<=14,bgm=new Uint8Array(W*H),st=[];
+   const push2=j=>{if(!bgm[j]&&near(j)){bgm[j]=1;st.push(j);}};
+   for(let x=0;x<W;x++){push2(x);push2((H-1)*W+x);}for(let y=0;y<H;y++){push2(y*W);push2(y*W+W-1);}
+   while(st.length){const j=st.pop(),x=j%W,y=(j/W)|0;if(x>0)push2(j-1);if(x<W-1)push2(j+1);if(y>0)push2(j-W);if(y<H-1)push2(j+W);}
+   for(let j=0;j<W*H;j++)if(!bgm[j]){fg[j]=1;rows[(j/W)|0]++;cols[j%W]++;}}
   let x0=0,x1=W-1,y0=0,y1=H-1;while(x0<W&&cols[x0]<3)x0++;while(x1>0&&cols[x1]<3)x1--;while(y0<H&&rows[y0]<3)y0++;while(y1>0&&rows[y1]<3)y1--;
   /* distance from every pixel to the figure's outline in the photo (chamfer 3-4) */
   const dt=new Float32Array(W*H).fill(1e9);
@@ -1226,7 +1243,7 @@ async function photoPalette(files){
   const N=Ls.length/3;if(N<100)return [];const L=Float32Array.from(Ls),Wt=new Float32Array(N).fill(1),cents=C.kmeans(L,Wt,14,C.RNG(7));
   const cl=cents.map(()=>({r:0,g:0,b:0,n:0}));
   for(let i=0;i<N;i++){let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(L[i*3]-cents[c][0])**2+(L[i*3+1]-cents[c][1])**2+(L[i*3+2]-cents[c][2])**2;if(d<bd){bd=d;b=c;}}const q=cl[b];q.r+=Rs[i*3];q.g+=Rs[i*3+1];q.b+=Rs[i*3+2];q.n++;}
-  let G=cl.filter(q=>q.n>0).map(q=>({rgb:[q.r/q.n/255,q.g/q.n/255,q.b/q.n/255],area:q.n}));
+  let G=cl.map((q,k)=>({rgb:q.n?[q.r/q.n/255,q.g/q.n/255,q.b/q.n/255]:[0,0,0],area:q.n,ks:[k]})).filter(q=>q.area>0);
   const twin=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb);
     if(C.dE(a,b)<10)return true;
     const [big,small,lb,ls]=A.area>=B.area?[A,B,a,b]:[B,A,b,a],cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);
@@ -1235,10 +1252,30 @@ async function photoPalette(files){
     if(dh<14&&ls[0]<lb[0]-8)return true;          /* shadow */
     if(dh<10&&ls[0]>lb[0]+8&&cS<cB)return true;   /* shine */
     return false;};
-  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])){m=[i,j];break;}
-    if(!m)break;const A=G[m[0]],B=G[m[1]],[big,small]=A.area>=B.area?[A,B]:[B,A];big.area+=small.area;G=G.filter(x=>x!==small);}
+  /* a black and its sheen: both nearly gray, the darker one very dark */
+  const sheen=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb),ca=Math.hypot(a[1],a[2]),cb=Math.hypot(b[1],b[2]);
+    if(ca>14||cb>14)return false;const [dk,lt]=a[0]<=b[0]?[a,b]:[b,a],[DK,LT]=a[0]<=b[0]?[A,B]:[B,A];return dk[0]<32&&lt[0]<50&&LT.area<1.5*DK.area;}; /* a silver (lighter than this) is its own paint */
+  /* pale gray glare on a colored paint: lighter, much grayer, and smaller */
+  const glare=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb);const [big,sm,lb,ls]=A.area>=B.area?[A,B,a,b]:[B,A,b,a];
+    const cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);if(cB<25||sm.area>0.35*big.area||ls[0]<lb[0]+10)return false;
+    let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;return dh<35&&cS>0.2*cB;};
+  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])||sheen(G[i],G[j])||glare(G[i],G[j])){m=[i,j];break;}
+    if(!m)break;const A=G[m[0]],B=G[m[1]],[big,small]=A.area>=B.area?[A,B]:[B,A];big.area+=small.area;big.ks.push(...small.ks);G=G.filter(x=>x!==small);}
+  /* a color that lies between two others and covers less than either is where they blur together (orange
+     between red and gold): its pixels go to the nearer of the two */
+  for(let again=true;again;){again=false;const lb=G.map(g=>C.lab(...g.rgb));
+    for(let x=0;x<G.length&&!again;x++)for(let a=0;a<G.length&&!again;a++)for(let b=a+1;b<G.length;b++){if(a===x||b===x||G[x].area>=Math.min(G[a].area,G[b].area))continue;
+      const A=lb[a],B=lb[b],X=lb[x],AB=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],n2=AB[0]**2+AB[1]**2+AB[2]**2;if(n2<100)continue;
+      const t=((X[0]-A[0])*AB[0]+(X[1]-A[1])*AB[1]+(X[2]-A[2])*AB[2])/n2;if(t<0.15||t>0.85)continue;
+      if(Math.hypot(A[0]+t*AB[0]-X[0],A[1]+t*AB[1]-X[1],A[2]+t*AB[2]-X[2])>12)continue;
+      const to=t<0.5?G[a]:G[b];to.area+=G[x].area;to.ks.push(...G[x].ks);G.splice(x,1);again=true;break;}}
   const tot=G.reduce((s,q)=>s+q.area,0);
-  return G.filter(q=>q.area>=0.004*tot).sort((a,b)=>b.area-a.area).map(q=>q.rgb);
+  const keep=G.filter(q=>q.area>=0.004*tot).sort((a,b)=>b.area-a.area),out=keep.map(q=>q.rgb);
+  /* every k-means color points at the paint it ended up in: a photo pixel reads as its paint, glare and sheen included */
+  const parent=new Int32Array(cents.length).fill(-1);keep.forEach((q,i)=>q.ks.forEach(k=>parent[k]=i));
+  const kl=keep.map(q=>C.lab(...q.rgb));for(let k=0;k<cents.length;k++)if(parent[k]<0){let b=0,bd=Infinity;kl.forEach((l,i)=>{const d=C.dE(l,cents[k]);if(d<bd){bd=d;b=i;}});parent[k]=b;}
+  out.classify=(l0,l1,l2)=>{let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(l0-cents[c][0])**2+(l1-cents[c][1])**2+(l2-cents[c][2])**2;if(d<bd){bd=d;b=c;}}return parent[b];};
+  return out;
 }
 /* the figure seen from the front (d=-1) or the back (d=+1): a depth map */
 function figView(fv,d){
@@ -1254,6 +1291,39 @@ function figView(fv,d){
   let fx0=RW,fx1=0,fy0=RH,fy1=0;for(let y=0;y<RH;y++)for(let x=0;x<RW;x++)if(dep[y*RW+x]<Infinity){if(x<fx0)fx0=x;if(x>fx1)fx1=x;if(y<fy0)fy0=y;if(y>fy1)fy1=y;}
   return {d,dep,RW,RH,sx,sy,fx0,fx1,fy0,fy1};
 }
+/* photos only, no colored model: each face takes the color the front or back photo shows where it sits on the
+   figure (the figure's outline fitted to the photo's), from whichever photo faces it more squarely. Faces no
+   photo sees take the color of the nearest face that one does. photoGuide then fits each piece more closely. */
+async function photoProject(files,fig,active,regM){
+  const fv=fig.map(p=>({v:C.xf(p.M,p.m.v),f:p.m.f})),views={"-1":figView(fv,-1),"1":figView(fv,1)};
+  const photos=[];for(const f of files.slice(0,6))photos.push(await readPhoto(f));
+  const iF=photos.findIndex(ph=>/front/i.test(ph.name)),iB=photos.findIndex(ph=>/back|rear|behind/i.test(ph.name));
+  const use=[[iF>=0?iF:0,-1]];if(iB>=0&&iB!==use[0][0])use.push([iB,1]);else if(iF<0&&photos.length===2)use.push([1,1]);
+  const rgb=new Float32Array(S.nFaces*3).fill(-1),wt=new Float32Array(S.nFaces);let pal=null;try{pal=await photoPalette(files);}catch(e){}
+  /* each photo pixel read as a paint. Glare on a gloss black reads as a gray paint (silver): a gray patch that is
+     mostly ringed by black, within a few percent of the photo, is the black's glare. A silver belt is wide and stays */
+  const cmaps=photos.map(()=>null);
+  const classOf=(pIdx,j)=>{if(!cmaps[pIdx]){const ph=photos[pIdx],W=ph.W,H=ph.H,cm=new Int16Array(W*H).fill(-1);
+      for(let i=0;i<W*H;i++)if(ph.fg[i])cm[i]=pal.classify(ph.L[i*3],ph.L[i*3+1],ph.L[i*3+2]);
+      const pl=pal.map(c=>C.lab(...c)),gray=pl.map(l=>Math.hypot(l[1],l[2])<12&&l[0]>45);let blk=-1,bl=Infinity;pl.forEach((l,i)=>{if(Math.hypot(l[1],l[2])<12&&l[0]<bl){bl=l[0];blk=i;}});
+      if(blk>=0&&bl<35&&gray.some(x=>x)){const r=Math.max(4,Math.round(0.02*H)),I=(c)=>{const S2=new Int32Array((W+1)*(H+1));for(let y=0;y<H;y++){let run=0;for(let x=0;x<W;x++){run+=cm[y*W+x]===c?1:0;S2[(y+1)*(W+1)+x+1]=S2[y*(W+1)+x+1]+run;}}return S2;};
+        const box=(S2,x,y)=>{const x0=Math.max(0,x-r),y0=Math.max(0,y-r),x1=Math.min(W,x+r+1),y1=Math.min(H,y+r+1);return S2[y1*(W+1)+x1]-S2[y0*(W+1)+x1]-S2[y1*(W+1)+x0]+S2[y0*(W+1)+x0];};
+        const Sb=I(blk),Sg=new Map();const out=cm.slice();
+        for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,c=cm[i];if(c<0||!gray[c])continue;if(!Sg.has(c))Sg.set(c,I(c));const nb=box(Sb,x,y),ng=box(Sg.get(c),x,y);if(nb>1.2*ng)out[i]=blk;}
+        cmaps[pIdx]=out;}else cmaps[pIdx]=cm;}
+    return cmaps[pIdx][j];};
+  for(const [pIdx,d] of use){const ph=photos[pIdx],V=views[d],[px0,py0,px1,py1]=ph.box,s=(py1-py0)/Math.max(1,V.fy1-V.fy0),pcx=(px0+px1)/2,fcx=(V.fx0+V.fx1)/2;
+    for(const pi of active){const g=pieceGeo(pi,regM),o=S.offs[pi];
+      for(let t=0;t<g.n;t++){const cs=g.fn[t*3+1]*d;if(cs<0.15||cs<=wt[o+t])continue;const X=g.c[t*3],Y=g.c[t*3+1],Z=g.c[t*3+2],rx=Math.round(V.sx(X)),ry=Math.round(V.sy(Z));
+        if(rx<0||ry<0||rx>=V.RW||ry>=V.RH||-Y*d>V.dep[ry*V.RW+rx]+2)continue;
+        const x=Math.round(pcx+(V.sx(X)-fcx)*s),y=Math.round(py0+(V.sy(Z)-V.fy0)*s);if(x<0||y<0||x>=ph.W||y>=ph.H)continue;const j=y*ph.W+x;if(!ph.fg[j])continue;
+        wt[o+t]=cs;if(pal&&pal.classify){const c=pal[classOf(pIdx,j)];for(let k=0;k<3;k++)rgb[(o+t)*3+k]=c[k];}
+        else for(let k=0;k<3;k++)rgb[(o+t)*3+k]=ph.rgb[j*3+k]/255;}}
+    await tick();}
+  /* unseen faces: the nearest seen face's color */
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],q=[];for(let t=0;t<n;t++)if(rgb[(o+t)*3]>=0)q.push(t);
+    for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||rgb[(o+u2)*3]>=0)continue;for(let k=0;k<3;k++)rgb[(o+u2)*3+k]=rgb[(o+t)*3+k];q.push(u2);}}}
+  return rgb;}
 /* For every visible face: the photo's color there, and how much to trust it. Each piece is lined up on
    its own (shift, scale, a few degrees of turn), because a photo's pose is never exactly the model's. */
 async function photoGuide(files,fig,active,regM,hid,Lraw){
@@ -1286,7 +1356,9 @@ async function photoGuide(files,fig,active,regM,hid,Lraw){
       const i=o+t,l=regLab[S.label[i]];errs.push(Math.min(60,Math.hypot(ph.L[j*3]-l[0],ph.L[j*3+1]-l[1],ph.L[j*3+2]-l[2])));}}
     errs.sort((a,b)=>a-b);r[d]=errs.length?errs[errs.length>>1]+errs[Math.floor(errs.length*0.75)]:Infinity;}return r;});
   const use=[];const isBack=ph=>/back|rear|behind/i.test(ph.name),isFront=ph=>/front/i.test(ph.name);
-  if(photos.length>=2&&(isFront(photos[0])&&!isFront(photos[1])||isBack(photos[1])&&!isBack(photos[0]))){use.push([0,-1],[1,1]);}
+  const iF=photos.findIndex(isFront),iB=photos.findIndex(isBack);
+  if(iF>=0&&iB>=0&&iF!==iB)use.push([iF,-1],[iB,1]);
+  else if(photos.length>=2&&(isFront(photos[0])&&!isFront(photos[1])||isBack(photos[1])&&!isBack(photos[0]))){use.push([0,-1],[1,1]);}
   else if(photos.length>=2&&(isFront(photos[1])&&!isFront(photos[0])||isBack(photos[0])&&!isBack(photos[1]))){use.push([1,-1],[0,1]);}
   else if(photos.length===1)use.push([0,score[0][-1]<=score[0][1]*1.1?-1:1]);
   else{const a=score[0][-1]+score[1][1],b=score[0][1]+score[1][-1];if(a<=b)use.push([0,-1],[1,1]);else use.push([0,1],[1,-1]);}
