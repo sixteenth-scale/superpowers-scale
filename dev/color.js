@@ -43,6 +43,11 @@ const PRESET={GFA00:"Bambu PLA Basic",GFA01:"Bambu PLA Matte",GFA17:"Bambu PLA T
   GFA07:"Bambu PLA Marble",GFA08:"Bambu PLA Sparkle",GFA09:"Bambu PLA Tough",GFA11:"Bambu PLA Aero",
   GFA12:"Bambu PLA Glow",GFA13:"Bambu PLA Dynamic",GFA15:"Bambu PLA Galaxy",GFG00:"Bambu PETG Basic",
   GFG01:"Bambu PETG Translucent",GFG02:"Bambu PETG HF"};
+/* nozzle temperature per filament (first layer, other layers, low, high), so a slot carries its own
+   filament's heat and not the heat of the filament it was copied from */
+const NOZ={GFA05:[230,230,210,240],GFA06:[230,230,210,240],GFA09:[220,220,190,240],GFA11:[250,250,230,260],
+  GFG00:[255,255,230,270],GFG01:[250,250,230,270],GFG02:[245,245,230,270],GFU02:[230,230,220,240],
+  PLA:[220,220,190,240],PETG:[255,255,230,270],TPU:[230,230,220,240]};
 const CATALOG_URL="https://raw.githubusercontent.com/bambulab/BambuStudio/master/resources/profiles/BBL/filament/filaments_color_codes.json";
 const LS_PAL="spcPalette", LS_KEY="spcMeshyKey", LS_SET="spcSettings";
 const fname=f=>(f.vendor&&f.vendor!=="Bambu Lab"?f.vendor+" ":"")+(f.type?f.type+" ":"")+f.color;
@@ -671,6 +676,9 @@ function setFilaments(ps,fils){
     if(ps.filament_ids)ps.filament_ids[i]=bambu?f.fid:(/PETG/.test(f.type||"")?"GFG99":/TPU/.test(f.type||"")?"GFU99":"GFL99");
     if(ps.filament_vendor)ps.filament_vendor[i]=bambu?"Bambu Lab":"Generic";
     if(ps.filament_type)ps.filament_type[i]=/PETG/.test(f.type||"")?"PETG":/TPU/.test(f.type||"")?"TPU":"PLA";
+    {const ty=/PETG/.test(f.type||"")?"PETG":/TPU/.test(f.type||"")?"TPU":"PLA",t=(bambu&&NOZ[f.fid])||NOZ[ty];
+      const put=(k,val)=>{const v=ps[k];if(!Array.isArray(v))return;const b=v.length/N;for(let j=0;j<b;j++)v[i*b+j]=String(val);};
+      put("nozzle_temperature_initial_layer",t[0]);put("nozzle_temperature",t[1]);put("nozzle_temperature_range_low",t[2]);put("nozzle_temperature_range_high",t[3]);}
     if(ps.filament_self_index){const b=ps.filament_self_index.length/N;for(let j=0;j<b;j++)ps.filament_self_index[i*b+j]=String(i+1);}
   });
   return ps;

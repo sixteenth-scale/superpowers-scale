@@ -20,7 +20,7 @@ const palLab=()=>C.PAL.map(f=>C.labHex(f.hex));
 window._spcRenderPal=()=>renderPal();
 function renderPal(){
   q("spcPalN").textContent=`(${C.PAL.length})`;
-  q("spcPal").innerHTML=C.PAL.map((f,i)=>`<div class="spc-pf"><i style="background:${f.hex}"></i><span>${esc(C.fname(f))}${f.owned===false?" <em>not owned</em>":""}</span><button data-i="${i}" title="Remove">×</button></div>`).join("");
+  q("spcPal").innerHTML=C.PAL.map((f,i)=>`<div class="spc-pf"><i style="background:${f.hex}"></i><span>${esc(C.fname(f))}${f.owned===false?" <em>not owned</em>":f.order?" <em>on order</em>":""}</span><button data-i="${i}" title="Remove">×</button></div>`).join("");
   q("spcPal").querySelectorAll("button").forEach(b=>b.onclick=()=>{
     const i=+b.dataset.i; if(S.regions.some(r=>r.fil===i)){log("That filament is in use by a region. Change the region first.",true);return;}
     C.PAL.splice(i,1); S.regions.forEach(r=>{if(r.fil>i)r.fil--;}); C.savePalette(); renderPal(); renderRegions();});
@@ -337,6 +337,7 @@ async function run(){
   if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
+  if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
@@ -385,6 +386,39 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* left/right twins (arms, wings, gloves...) are mirror images: they must wear the same colors in the same
+   places. The pair is lined up as a mirror (on the figure, or piece to piece about each centre); if most of
+   the surface lines up, the cleaner one (fewer color-edge faces) is copied onto the other. Legs and pins have
+   their own rules and are left out. Pieces posed differently don't line up and are left alone. */
+function twinMatch(active,regM){const rep=[];
+  const base=pi=>S.parts[pi].name.toLowerCase().replace(/\.stl$/,"").replace(/^.*?_\d+_/,"").replace(/left|right|\bl\b|\br\b/g,"#");
+  const side=pi=>/left/i.test(S.parts[pi].name)?"L":/right/i.test(S.parts[pi].name)?"R":"";
+  const skip=/thigh|calf|shin|leg|boot|foot|pin|peg/i;
+  const done=new Set();
+  for(const a of active){if(done.has(a)||!side(a)||skip.test(S.parts[a].name))continue;
+    const b=active.find(q=>q!==a&&!done.has(q)&&side(q)&&side(q)!==side(a)&&base(q)===base(a));if(b==null)continue;done.add(a);done.add(b);
+    const ga=pieceGeo(a,regM),gb=pieceGeo(b,regM),la=pieceGeo(a,null),lb=pieceGeo(b,null);
+    const cen=g=>{let x=0,y=0,z=0;for(let i=0;i<g.n;i++){x+=g.c[i*3];y+=g.c[i*3+1];z+=g.c[i*3+2];}return [x/g.n,y/g.n,z/g.n];};
+    /* candidate mirrors: on the figure across the pair's middle in x; piece to piece about each centre in x, y or z */
+    const tries=[];{const ca=cen(ga),cb=cen(gb),xm=(ca[0]+cb[0])/2;tries.push({A:ga,B:gb,ax:0,ca:[xm,0,0],cb:[xm,0,0],fig:1});}
+    {const ca=cen(la),cb=cen(lb);for(let ax=0;ax<3;ax++)tries.push({A:la,B:lb,ax,ca,cb});}
+    let best=null;
+    for(const t of tries){const G=C.grid(t.A.c,0.5),map=new Int32Array(t.B.n).fill(-1);let hit=0,tot=0;
+      for(let i=0;i<t.B.n;i++){const p=[0,1,2].map(k=>t.B.c[i*3+k]-t.cb[k]);p[t.ax]=-p[t.ax];const q=[0,1,2].map(k=>p[k]+t.ca[k]);
+        const nrm=[t.B.fn[i*3],t.B.fn[i*3+1],t.B.fn[i*3+2]];nrm[t.ax]=-nrm[t.ax];
+        const [j,d]=G.near(q[0],q[1],q[2],3);const w=S.area[S.offs[b]+i];tot+=w;
+        if(j>=0&&d<0.8&&nrm[0]*t.A.fn[j*3]+nrm[1]*t.A.fn[j*3+1]+nrm[2]*t.A.fn[j*3+2]>0.6){map[i]=j;hit+=w;}}
+      const cov=hit/(tot||1);if(!best||cov>best.cov)best={cov,map,t};}
+    const tag=S.parts[a].name.replace(/^.*?_\d+_/,"")+"/"+S.parts[b].name.replace(/^.*?_\d+_/,"");
+    if(!best||best.cov<0.85){rep.push(tag+" skip "+(best?best.cov.toFixed(2):"-"));continue;}
+    const edges=pi=>{const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];let e=0;for(let t=0;t<n;t++)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u>=0&&S.label[o+u]!==S.label[o+t]){e++;break;}}return e/n;};
+    const oa=S.offs[a],ob=S.offs[b];let ch=0;
+    if(edges(a)<=edges(b)){for(let i=0;i<best.map.length;i++){const j=best.map[i];if(j<0)continue;if(S.label[ob+i]!==S.label[oa+j]){S.label[ob+i]=S.label[oa+j];ch++;}}}
+    else{/* b is cleaner: copy b onto a through the same pairs (each a face takes the b face that maps to it) */
+      const back=new Int32Array(S.parts[a].m.f.length/3).fill(-1);for(let i=0;i<best.map.length;i++)if(best.map[i]>=0)back[best.map[i]]=i;
+      for(let j=0;j<back.length;j++){const i=back[j];if(i<0)continue;if(S.label[oa+j]!==S.label[ob+i]){S.label[oa+j]=S.label[ob+i];ch++;}}}
+    rep.push(tag+" cov"+best.cov.toFixed(2)+(best.t.fig?" fig":" ax"+best.t.ax)+" ch"+ch);}
+  (window._spcDbg=window._spcDbg||{}).twinMatch=rep;}
 /* pins sit inside a joint where nothing can see them, and a plain cylinder can't be placed on the
    figure. A pin (or any piece that is entirely hidden) takes the main color of the hidden joint faces
    of the pieces it joins: a left knee pin follows the left thigh and calf, an elbow pin the arm. */
@@ -1611,7 +1645,7 @@ function renderRegions(){
   const tot=S.regions.reduce((s,r)=>s+r.area,0)||1, PL=palLab();
   box.innerHTML=S.regions.map((r,i)=>{ if(r.area<=0)return "";
     const l=C.lab(...r.rgb), order=C.PAL.map((f,j)=>[j,C.dE(l,PL[j])]).sort((a,b)=>a[1]-b[1]);
-    const opts=order.map(([j,d])=>`<option value="${j}"${j===r.fil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""} · ΔE ${d.toFixed(0)}</option>`).join("");
+    const opts=order.map(([j,d])=>`<option value="${j}"${j===r.fil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":C.PAL[j].order?" (on order)":""} · ΔE ${d.toFixed(0)}</option>`).join("");
     const cur=C.PAL[r.fil]||{hex:"#000"}, d=r.fil>=0?C.dE(l,PL[r.fil]):99;
     const warn=d>10&&!r.manual?`<span class="warn">No close match on your shelf<button data-sug="${i}">find a Bambu color</button></span>`:"";
     return `<div class="spc-reg${i===S.selected?" sel":""}" data-i="${i}"><i style="background:${C.rgb2hex(r.rgb)}" title="color found"></i><i style="background:${cur.hex}" title="filament"></i>`+
@@ -1652,7 +1686,7 @@ function paintArea(fil){const A=S.selArea;if(!A)return;
 function showAreaPop(ev){const pop=q("spcPop"),A=S.selArea;if(!A){pop.hidden=true;return;}
   let a=0;A.faces.forEach(f=>a+=S.area[f]);const cur=S.label[A.faces[0]],r=S.regions[cur],curFil=r?r.fil:-1;
   const ref=r?C.lab(...r.rgb):[50,0,0],PL=palLab();
-  const opts=C.PAL.map((f,j)=>[j,C.dE(ref,PL[j])]).sort((x,y)=>(x[0]===curFil?-1:y[0]===curFil?1:x[1]-y[1])).map(([j])=>`<option value="${j}"${j===curFil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":""}</option>`).join("");
+  const opts=C.PAL.map((f,j)=>[j,C.dE(ref,PL[j])]).sort((x,y)=>(x[0]===curFil?-1:y[0]===curFil?1:x[1]-y[1])).map(([j])=>`<option value="${j}"${j===curFil?" selected":""}>${esc(C.fname(C.PAL[j]))}${C.PAL[j].owned===false?" (not owned)":C.PAL[j].order?" (on order)":""}</option>`).join("");
   pop.innerHTML=`<div class="hd"><i style="background:${(C.PAL[curFil]||{hex:"#ccc"}).hex}"></i>${esc(S.parts[A.pi].name)} · ${a.toFixed(1)} mm²<button title="Close">×</button></div>`+
     `<div class="act"><button data-a="k-area" aria-pressed="${(S.pickKind||"area")==="area"}" title="Bounded by the sculpt's ridges and seams">Sculpted area</button><button data-a="k-patch" aria-pressed="${S.pickKind==="patch"}" title="The connected run of this color">Color patch</button></div>`+
     `<label class="spc-poplab">Paint what's highlighted<select data-a="fil">${opts}</select></label>`+
@@ -1734,6 +1768,9 @@ q("spcSave").onclick=async()=>{
     a.download=S.targetName.replace(/\.\w+$/,"").replace(/_color$/,"")+"_color.3mf";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.\n`+
       fils.map((f,i)=>`Filament ${i+1}: ${f.keep?"(already in project) "+f.hex:C.fname(f)+" "+f.hex}`).join("\n"));
+    /* pieces that got no paint print whole in the filament the project gives them (often filament 1): say so */
+    const bare=[...new Set(S.parts.filter((p,pi)=>pi!==S.figPart&&!list.includes(p)).map(p=>p.name.replace(/\.stl$/i,"")))];
+    if(bare.length)q("spcLog").innerHTML+="\n"+`<span class="err">${esc(`Not painted — ${bare.length} piece${bare.length>1?"s":""} will print in one filament each, as set in the project (often filament 1):\n  `+[...new Set(bare)].join("\n  ")+`\nTick them and color again if they should be painted.`)}</span>`;
   }catch(e){log(e.message,true);}finally{q("spcSave").disabled=false;}
 };
 q("spcClear").onclick=()=>{Object.assign(S,{target:null,figure:null,images:[],colored:null,parts:[],project:null,raw:null,label:null,regions:[],undo:[],selected:-1});

@@ -17,15 +17,18 @@ LIB.forEach(f=>{f.name=libName(f);f.multi=MULTI.test(f.type+" "+f.line+" "+f.col
 const same=(a,b)=>a.hex&&b.hex&&a.hex.toUpperCase()===b.hex.toUpperCase()&&(a.vendor||"Bambu Lab")===(b.vendor||"Bambu Lab")&&
   (a.code&&b.code?a.code===b.code:String(a.color).toLowerCase()===String(b.color).toLowerCase());
 const owned=f=>C.PAL.some(p=>p.owned!==false&&same(p,f));
-function addOwned(f){if(owned(f))return;const i=C.PAL.findIndex(p=>same(p,f));
-  if(i>=0)C.PAL[i].owned=true;else C.PAL.push({code:f.code,type:f.type+(f.line&&f.vendor!=="Bambu Lab"?" "+f.line:""),color:f.color,hex:f.hex.toUpperCase(),fid:f.fid,vendor:f.vendor,owned:true});
+const onOrder=f=>C.PAL.some(p=>p.owned!==false&&p.order&&same(p,f));
+/* order: bought and on its way. It is usable like an owned filament and marked "on order" until it arrives */
+function addOwned(f,order){const i=C.PAL.findIndex(p=>same(p,f));
+  if(i>=0){C.PAL[i].owned=true;if(order)C.PAL[i].order=true;else delete C.PAL[i].order;}
+  else C.PAL.push({code:f.code,type:f.type+(f.line&&f.vendor!=="Bambu Lab"?" "+f.line:""),color:f.color,hex:f.hex.toUpperCase(),fid:f.fid,vendor:f.vendor,owned:true,...(order?{order:true}:{})});
   C.savePalette();if(window._spcRenderPal)window._spcRenderPal();}
 const TYPES=[["plabm","PLA Basic or Matte",t=>/^PLA(\+| Basic)?( Matte)?$/.test(t)||/^PLA\+? ?Matte$/.test(t)],["pla","Any PLA",t=>/^PLA/.test(t)],["plab","PLA Basic / PLA / PLA+",t=>/^PLA(\+| Basic)?$/.test(t)],["plam","PLA Matte",t=>/^PLA\+? ?Matte/.test(t)],
   ["plas","PLA Silk",t=>/^PLA\+? ?Silk/.test(t)],["plat","PLA Translucent",t=>/^PLA.*Translucent/.test(t)],["petg","PETG (any)",t=>/^PETG/.test(t)],
   ["tpu","TPU (any)",t=>/^TPU/.test(t)],["all","Everything",()=>true]];
 const VENDORS=["Bambu Lab","Sunlu","eSun","Polymaker","Amolen"];
 const sw=h=>h?`<i class="spf-sw" style="background:${h}"></i>`:`<i class="spf-sw spf-none" title="The maker publishes no color code for this one"></i>`;
-const badge=f=>owned(f)?`<em class="spf-own">in your library</em>`:`<em class="spf-not">not in your library</em>`;
+const badge=f=>onOrder(f)?`<em class="spf-own">on order</em>`:owned(f)?`<em class="spf-own">in your library</em>`:`<em class="spf-not">not in your library</em>`;
 
 function renderLib(){const box=q("spfLib");if(!box)return;const s=(q("spfQ").value||"").toLowerCase().split(/\s+/).filter(Boolean);
   const tf=(TYPES.find(t=>t[0]===q("spfType").value)||TYPES[8])[2],vd=q("spfVendor").value,mine=q("spfMine").value;
@@ -33,7 +36,7 @@ function renderLib(){const box=q("spfLib");if(!box)return;const s=(q("spfQ").val
   if(mine==="own")rows=rows.filter(owned);else if(mine==="not")rows=rows.filter(f=>!owned(f));
   const n=rows.length;rows=rows.slice(0,300);
   box.innerHTML=`<div class="spf-count">${n} filament${n===1?"":"s"}${n>300?" — showing 300, narrow the search":""}</div>`+
-    rows.map(f=>`<div class="spf-row">${sw(f.hex)}<span>${esc(f.name)}</span>${badge(f)}${owned(f)?"":`<button class="catbtn" data-add="${LIB.indexOf(f)}">I own this</button>`}</div>`).join("");}
+    rows.map(f=>`<div class="spf-row">${sw(f.hex)}<span>${esc(f.name)}</span>${badge(f)}${onOrder(f)?`<button class="catbtn" data-add="${LIB.indexOf(f)}">It arrived</button>`:owned(f)?"":`<button class="catbtn" data-add="${LIB.indexOf(f)}">I own this</button><button class="catbtn" data-order="${LIB.indexOf(f)}">On order</button>`}</div>`).join("");}
 
 /* ---- finder: the paints in one or more photos ---- */
 async function imgPixels(file){const url=URL.createObjectURL(file);try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
@@ -129,7 +132,7 @@ function wire(){
   q("spfVend").innerHTML=VENDORS.map(v=>`<label><input type="checkbox" id="spfV_${v.replace(/\W/g,"")}" checked> ${v}</label>`).join("");
   ["spfQ","spfType","spfVendor","spfMine"].forEach(id=>q(id).addEventListener("input",renderLib));
   q("spfFType").addEventListener("input",renderFinder);q("spfVend").addEventListener("change",renderFinder);
-  q("spfLib").addEventListener("click",e=>{const b=e.target.closest("[data-add]");if(b){addOwned(LIB[+b.dataset.add]);renderLib();renderFinder();}});
+  q("spfLib").addEventListener("click",e=>{const b=e.target.closest("[data-add],[data-order]");if(b){addOwned(LIB[+(b.dataset.add??b.dataset.order)],b.dataset.order!=null);renderLib();renderFinder();}});
   q("spfOut").addEventListener("click",e=>{const b=e.target.closest("[data-addf]");if(b){addOwned(LIB[+b.dataset.addf]);renderFinder();renderLib();}});
   const drop=q("spfDrop"),inp=q("spfFile");drop.addEventListener("click",()=>inp.click());drop.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();inp.click();}});
   inp.addEventListener("change",()=>{runFinder(inp.files);inp.value="";});
