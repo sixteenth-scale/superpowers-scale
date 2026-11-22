@@ -8200,7 +8200,7 @@ function parseSTL(buf){
 
 /* same two rules as fit.py: a cone hat narrows the full span, horns and wings
    keep it wide and only the CENTRE empties out above the dome. Take the lower. */
-function crownOf(tri,expectTopper){
+function crownOf(tri){
   const BINS=200;
   let zmin=Infinity,zmax=-Infinity,xmin=Infinity,xmax=-Infinity;
   for(let i=0;i<tri.length;i+=3){
@@ -8208,7 +8208,6 @@ function crownOf(tri,expectTopper){
     if(z<zmin)zmin=z; if(z>zmax)zmax=z; if(x<xmin)xmin=x; if(x>xmax)xmax=x;
   }
   const H=zmax-zmin, step=H/BINS, cx=(xmax+xmin)/2;
-  if(!expectTopper) return {z:zmax,frac:1,why:"nothing above the crown on file for this character, so the top of the model is the crown"};
   const lo=new Float64Array(BINS+1).fill(Infinity), hi=new Float64Array(BINS+1).fill(-Infinity);
   for(let i=0;i<tri.length;i+=3){
     const b=Math.min((tri[i+2]-zmin)/step|0,BINS), x=tri[i];
@@ -8235,24 +8234,45 @@ function crownOf(tri,expectTopper){
   const ctop=above.filter(b=>cent[b]>=cmax*0.50);
   const byCent=ctop.length?Math.max(...ctop):apex;
   const ci=Math.min(byFull,byCent);
-  if(ci>=apex) return {z:zmax,frac:1,why:"head is widest at the very top; nothing above it"};
-  return {z:zmin+ci*step,frac:(zmin+ci*step-zmin)/H,
-    why:`neck at ${Math.round(neck/BINS*100)}%, crown at ${Math.round(ci/BINS*100)}% by `+
-        `${byFull<=byCent?"full width":"centre line"} (full-width rule ${Math.round(byFull/BINS*100)}%, `+
-        `centre-line rule ${Math.round(byCent/BINS*100)}%)`};
+  /* Both readings come back. A cranium and a close-fitting hat are the same
+     shape -- both are a dome narrowing above the widest part of the head -- so
+     no amount of geometry separates them. The mesh can say WHERE the narrowing
+     starts; only the character says WHETHER it is headgear. Guessing wrong is
+     costly in one direction: calling a bare skull a hat scales the figure
+     several mm too tall. So the default follows the character, and the other
+     reading is always shown so it can be taken with one drag. */
+  const narrowing=(ci<apex)?{frac:ci/BINS,
+      why:`narrowing starts at ${Math.round(ci/BINS*100)}% by `+
+          `${byFull<=byCent?"full width":"centre line"}`}:null;
+  return {frac:1,narrowing,neck:neck/BINS,
+    why:`neck at ${Math.round(neck/BINS*100)}%`};
 }
 
 function fitDetect(){
-  /* re-find the crown when the character changes, because whether to expect a
-     topper comes from the character, not the mesh. Skipped while only the
-     sliders move -- the mesh has not changed and this walks every triangle. */
+  /* re-read when the character changes: whether to expect headgear comes from
+     the character, and this walks every triangle, so it is not run on every
+     slider nudge. */
   if(!FT||FT.detectedFor===curKey)return;
   FT.detectedFor=curKey;
+  const c=crownOf(FT.tri);
+  const gear=(cur&&cur.x&&cur.x!=="none"&&cur.x!=="unassessed")?cur.x:null;
   const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
-  const c=crownOf(FT.tri,onFile>1.0);
-  $("fcrown").value=(c.frac*100).toFixed(1);
-  $("fcrownv").textContent=(c.frac*100).toFixed(1);
-  $("fwhy").textContent=c.why;
+  const expect=gear&&onFile>1.0;
+  const use=(expect&&c.narrowing)?c.narrowing.frac:1;
+  $("fcrown").value=(use*100).toFixed(1);
+  $("fcrownv").textContent=(use*100).toFixed(1);
+  let msg=c.why+". ";
+  if(!c.narrowing){
+    msg+="The head runs to the top of the model with no narrowing, so the top is the crown.";
+  }else if(expect){
+    msg+=`${c.narrowing.why}, and ${cur.n} wears ${gear} on file, so that is taken as the crown.`;
+  }else{
+    msg+=`${c.narrowing.why}. Taken as the top of the skull, because ${cur.n} has no `+
+         `headgear on file — a cranium and a close-fitting helmet are the same shape, `+
+         `so the mesh cannot tell them apart. If this sculpt does wear something, `+
+         `drag the crown to ${Math.round(c.narrowing.frac*100)}%.`;
+  }
+  $("fwhy").textContent=msg;
 }
 
 function fitRender(){
@@ -8287,15 +8307,13 @@ function fitLoad(file){
       $("fout").innerHTML=`<div class="mwarn">Could not read that as an STL. 3MF is not supported in the browser — export STL, or use fit.py.</div>`;return;}
     let zmin=Infinity,zmax=-Infinity;
     for(let i=2;i<got.tri.length;i+=3){const z=got.tri[i];if(z<zmin)zmin=z;if(z>zmax)zmax=z;}
-    FT={...got,H:zmax-zmin,zmin,name:file.name};
-    const onFile=Math.max(parseFloat($("topper").value)||0,parseFloat($("hair").value)||0);
-    FT.detectedFor=curKey;
-    const c=crownOf(got.tri,onFile>1.0);
-    $("fcrown").disabled=false; $("fcrown").value=(c.frac*100).toFixed(1);
-    $("fcrownv").textContent=(c.frac*100).toFixed(1);
-    $("fwhy").textContent=c.why;
-    $("fstate").textContent=`${f2(FT.H)} mm · ${got.n.toLocaleString()} tris`;
+    FT={...got,H:zmax-zmin,zmin,name:file.name,detectedFor:null};
+    /* one owner for the crown decision: fitDetect. Duplicating it here is how
+       the slider came to disagree with the logic that sets it. */
+    $("fcrown").disabled=false;
+    $("fstate").textContent=`${f2(FT.H)} mm \u00b7 ${got.n.toLocaleString()} tris`;
     $("fdrop").hidden=true; $("fclear").disabled=false;
+    fitDetect();
     fitRender();
   };
   fr.readAsArrayBuffer(file);
