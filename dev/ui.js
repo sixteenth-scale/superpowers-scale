@@ -184,7 +184,7 @@ q("spcGo").onclick=()=>run().catch(e=>{q("spcGo").disabled=false;console.error(e
   if(e.url){q("spcLog").innerHTML=`<span class="err">${esc(e.message)}</span>\n1. <a href="${esc(e.url)}" target="_blank" rel="noopener">Download the painted figure</a> (a .glb file — no extra Meshy credits)\n2. Drop it into box 3\n3. Click Color it again`;return;}
   log(e.message||String(e),true);});
 async function run(){
-  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();
+  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();S.keep=null;S.skinReg=-1;
   const detail=Math.max(0.1,+q("spcDetail").value||0.5), slots=Math.max(1,Math.min(16,+q("spcSlots").value||8));
   /* figure: box 2, or the model itself */
   const active=[...S.on].filter(i=>i!==S.figPart).sort((a,b)=>a-b);
@@ -389,6 +389,9 @@ async function run(){
   if(!window._spcNoGlove)gloveTrim(active,regM);
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
+  if(!window._spcNoHead)try{headFix(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoShine)shineToBlack(active);
+  if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -436,6 +439,121 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* piping on the limbs: a thin stripe of a second paint running along an arm or leg (red piping on a black
+   sleeve). Cleanup passes that tidy edges wear a stripe one or two faces wide away, so it is put back last,
+   from the photos: faces now on the limb's main paint whose photo color is nearest another paint, in runs at
+   least 6 mm long, trimmed to a 1.4 mm stripe down the run's middle. Specks, blotches and shine don't make long thin runs. */
+function limbPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=pl.length;
+  for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
+    const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    const near=new Int32Array(n).fill(-1);
+    for(let t=0;t<n;t++){const i=o+t;if(hid[i])continue;let b=-1,bd=Infinity;for(let r=0;r<R;r++){if(S.regions[r].hair)continue;const d=(L[i*3]-pl[r][0])**2+(L[i*3+1]-pl[r][1])**2+(L[i*3+2]-pl[r][2])**2;if(d<bd){bd=d;b=r;}}near[t]=b;}
+    const seen=new Uint8Array(n);let runs=0,painted=0;
+    for(let s0=0;s0<n;s0++){const P=near[s0];if(seen[s0]||P<0||S.label[o+s0]===P)continue;const c=[s0];seen[s0]=1;let ar=0;
+      for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&near[u]===P&&S.label[o+u]!==P){seen[u]=1;c.push(u);}}}
+      if(ar<0.6||Math.hypot(pl[P][1],pl[P][2])<15||P===S.skinReg)continue; /* skin is never piping */ /* a stripe is a colored paint, not a gray or a shine */
+      let mx=0,my=0,mz=0;for(const t of c){mx+=g.c[t*3];my+=g.c[t*3+1];mz+=g.c[t*3+2];}mx/=c.length;my/=c.length;mz/=c.length;
+      const cv=[0,0,0,0,0,0];for(const t of c){const dx=g.c[t*3]-mx,dy=g.c[t*3+1]-my,dz=g.c[t*3+2]-mz;cv[0]+=dx*dx;cv[1]+=dx*dy;cv[2]+=dx*dz;cv[3]+=dy*dy;cv[4]+=dy*dz;cv[5]+=dz*dz;}
+      let d=[1,0.7,0.4];for(let it=0;it<40;it++){const e=[cv[0]*d[0]+cv[1]*d[1]+cv[2]*d[2],cv[1]*d[0]+cv[3]*d[1]+cv[4]*d[2],cv[2]*d[0]+cv[4]*d[1]+cv[5]*d[2]],m=Math.hypot(...e)||1;d=e.map(x=>x/m);}
+      let lo=Infinity,hi=-Infinity;for(const t of c){const p=(g.c[t*3]-mx)*d[0]+(g.c[t*3+1]-my)*d[1]+(g.c[t*3+2]-mz)*d[2];lo=Math.min(lo,p);hi=Math.max(hi,p);}
+      const len=hi-lo;if(len<6||ar/len>3)continue;
+      /* a stripe is about 1.4 mm wide: follow it millimetre by millimetre from its narrowest point, and keep
+         the faces within 0.7 mm of its line (the photo may paint it wider, or smear a blob beside it) */
+      {const nbin=Math.ceil(len)+1,bins=Array.from({length:nbin},()=>[]);const pos=t=>(g.c[t*3]-mx)*d[0]+(g.c[t*3+1]-my)*d[1]+(g.c[t*3+2]-mz)*d[2]-lo;
+       for(const t of c)bins[Math.min(nbin-1,Math.floor(pos(t)))].push(t);
+       const lat=(t,q)=>{const dx=g.c[t*3]-q[0],dy=g.c[t*3+1]-q[1],dz=g.c[t*3+2]-q[2],al=dx*d[0]+dy*d[1]+dz*d[2];return dx*dx+dy*dy+dz*dz-al*al;};
+       const cen=ts=>{let x=0,y=0,z=0,w=0;for(const t of ts){const a=A[o+t];x+=g.c[t*3]*a;y+=g.c[t*3+1]*a;z+=g.c[t*3+2]*a;w+=a;}return w?[x/w,y/w,z/w]:null;};
+       let k0=-1,sp0=Infinity;for(let k=0;k<nbin;k++){if(bins[k].length<3)continue;const q=cen(bins[k]);let sp=0;for(const t of bins[k])sp=Math.max(sp,lat(t,q));if(sp<sp0){sp0=sp;k0=k;}}
+       const line=new Array(nbin).fill(null);if(k0>=0){line[k0]=cen(bins[k0]);
+         for(const dir of [1,-1]){let prev=line[k0];for(let k=k0+dir;k>=0&&k<nbin;k+=dir){const near_=bins[k].filter(t=>lat(t,prev)<1.44);const q=near_.length?cen(near_):null;if(q){line[k]=q;prev=q;}}}}
+       const kept=c.filter(t=>{const k=Math.min(nbin-1,Math.floor(pos(t)));return line[k]&&lat(t,line[k])<0.49;});
+       c.length=0;for(const t of kept)c.push(t);}
+      if(!c.length)continue;
+      S.keep=S.keep||new Uint8Array(S.nFaces);for(const t of c)S.label[o+t]=P;painted+=c.length;runs++;
+      for(let it=0;it<2;it++){const add=[];for(const t of c)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||S.label[o+u]===P||hid[o+u])continue;let c2=0;for(let k=0;k<3;k++){const v=nb[u*3+k];if(v>=0&&S.label[o+v]===P)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=P;c.push(u);}}for(const t of c)S.keep[o+t]=1;}
+    rep.push(nm.replace(/^.*?_\d+_/,"")+" runs"+runs+" f"+painted);}
+  (window._spcDbg=window._spcDbg||{}).piping=rep;}
+/* the head: hair is one paint and the eyes are white.
+   Hair is the paint on the crown. Everything joined to the crown that isn't the face's skin is hair (shine on
+   dark hair reads gray or black in photos), and small specks of skin lying in the hair are hair too. The hair
+   gets its own paint, measured from the photos over the whole hair, so it never shares a paint with a black suit.
+   Eyes: light, low-color spots on the face (the eye whites) are white; dark spots inside them (pupils, on
+   figures that have them) stay dark. */
+function headFix(active,regM,hid,L){const rep=[];
+  const chroma=i=>Math.hypot(L[i*3+1],L[i*3+2]);
+  for(const pi of active){if(!/(^|[^a-z])head([^a-z]|$)/i.test(S.parts[pi].name))continue;
+    const g=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    let z0=Infinity,z1=-Infinity,vis=0;for(let t=0;t<n;t++){if(hid[o+t])continue;const z=g.c[t*3+2];z0=Math.min(z0,z);z1=Math.max(z1,z);vis+=A[o+t];}
+    if(!isFinite(z0))continue;const H_=z1-z0;
+    const most=(pred)=>{const m=new Map();for(let t=0;t<n;t++)if(!hid[o+t]&&pred(t))m.set(S.label[o+t],(m.get(S.label[o+t])||0)+A[o+t]);let b=-1,bv=0;for(const [k,v] of m)if(v>bv){bv=v;b=k;}return b;};
+    const H=most(t=>g.c[t*3+2]>z1-0.08*H_);
+    /* skin: the warm, light paint with most area in the lower half of the head */
+    const F=most(t=>g.c[t*3+2]<z0+0.5*H_&&S.label[o+t]!==H&&L[(o+t)*3]>45&&chroma(o+t)>8);
+    if(H<0||F<0||H===F){rep.push(S.parts[pi].name+" no hair/skin");continue;}
+    S.skinReg=F;
+    /* hair: joined to the crown, not skin */
+    const hair=new Uint8Array(n),q=[];for(let t=0;t<n;t++)if(!hid[o+t]&&g.c[t*3+2]>z1-0.08*H_&&S.label[o+t]===H){hair[t]=1;q.push(t);}
+    for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hair[u]||S.label[o+u]===F)continue;hair[u]=1;q.push(u);}}
+    /* skin specks in the hair: every skin patch but the face itself that lies mostly against hair */
+    {const seen=new Uint8Array(n),comps=[];
+     for(let s0=0;s0<n;s0++){if(seen[s0]||S.label[o+s0]!==F)continue;const c=[s0];seen[s0]=1;let ar=0,bh=0,bt=0;
+       for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(S.label[o+u]===F){if(!seen[u]){seen[u]=1;c.push(u);}}else{bt++;if(hair[u])bh++;}}}
+       comps.push({c,ar,bh,bt});}
+     comps.sort((a,b)=>b.ar-a.ar);let sk=0;
+     for(const cp of comps.slice(1))if(cp.ar<0.04*vis&&cp.bh>=0.6*cp.bt){for(const t of cp.c)hair[t]=1;sk++;}
+     rep.push("skinSpecks"+sk);}
+    /* skin round the edge of the face that is really hair: from the hair, take in skin faces that the photo
+       shows nearer the hair's color than the skin's, or that no photo sees (the inside of the hair) */
+    {let hl=[0,0,0],hw=0;for(let t=0;t<n;t++){const i=o+t;if(!hair[t]||hid[i])continue;const a=A[i];hl[0]+=L[i*3]*a;hl[1]+=L[i*3+1]*a;hl[2]+=L[i*3+2]*a;hw+=a;}
+     if(hw>0){hl=hl.map(x=>x/hw);const sl=C.lab(...S.regions[F].rgb),q2=[];for(let t=0;t<n;t++)if(hair[t])q2.push(t);let ne=0;
+       const d2=(i,c)=>(L[i*3]-c[0])**2+(L[i*3+1]-c[1])**2+(L[i*3+2]-c[2])**2;
+       for(let h=0;h<q2.length;h++){const t=q2[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hair[u]||S.label[o+u]!==F)continue;const i=o+u;
+         if(hid[i]||d2(i,hl)<d2(i,sl)){hair[u]=1;q2.push(u);ne++;}}}
+       rep.push("edge"+ne);}}
+    /* the hair's own paint, from the photos */
+    let r=0,gg=0,b=0,w=0,nh=0;for(let t=0;t<n;t++){if(!hair[t])continue;nh++;if(hid[o+t])continue;const a=A[o+t];r+=S.raw[(o+t)*3]*a;gg+=S.raw[(o+t)*3+1]*a;b+=S.raw[(o+t)*3+2]*a;w+=a;}
+    if(w>0){const HR=S.regions.length;S.regions.push({id:HR,rgb:[r/w,gg/w,b/w],fil:-1,area:0,dE:0,patch:false,hair:true});
+      for(let t=0;t<n;t++)if(hair[t])S.label[o+t]=HR;rep.push("hair "+C.rgb2hex([r/w,gg/w,b/w])+" "+(100*w/vis).toFixed(0)+"%");}
+    /* eyes */
+    let sL=0,sw=0;for(let t=0;t<n;t++)if(!hid[o+t]&&S.label[o+t]===F){sL+=L[(o+t)*3]*A[o+t];sw+=A[o+t];}const skinL=sw?sL/sw:70;
+    const lite=new Uint8Array(n);for(let t=0;t<n;t++){const i=o+t;if(hid[i]||hair[t])continue;if(L[i*3]>Math.min(skinL-20,60)&&chroma(i)<10)lite[t]=1;} /* eye whites read gray in photos: colorless, not dark */
+    const seen=new Uint8Array(n),eyes=[];
+    for(let s0=0;s0<n;s0++){if(!lite[s0]||seen[s0])continue;const c=[s0];seen[s0]=1;let ar=0;
+      for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&lite[u]&&!seen[u]){seen[u]=1;c.push(u);}}}
+      if(ar>0.00012*vis&&ar<0.02*vis){let cx=0,cy=0,cz=0;for(const t of c){cx+=g.c[t*3];cy+=g.c[t*3+1];cz+=g.c[t*3+2];}eyes.push({c,ar,x:cx/c.length,y:cy/c.length,z:cz/c.length});}}
+    /* eyes come in a pair at one height, in the face's upper half */
+    const band=eyes.filter(e=>e.z>z0+0.3*H_&&e.z<z0+0.8*H_).sort((a,b)=>b.ar-a.ar);let pair=[];
+    for(let i=0;i<band.length&&!pair.length;i++)for(let j=i+1;j<band.length;j++){const a=band[i],b=band[j],sep=Math.hypot(a.x-b.x,a.y-b.y);if(Math.abs(a.z-b.z)<0.08*H_&&sep>0.1*H_&&sep<0.45*H_){pair=[a,b];break;}}
+    if(pair.length){let W=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]>85&&Math.hypot(l[1],l[2])<10&&!r.hair;});
+      if(W<0){W=S.regions.length;S.regions.push({id:W,rgb:[0.96,0.96,0.96],fil:-1,area:0,dE:0,patch:false});}
+      let ne=0;S.keep=S.keep||new Uint8Array(S.nFaces);for(const e of pair){for(const t of e.c)S.label[o+t]=W;ne+=e.c.length;
+        /* close the eye: skin faces held between eye faces join it */
+        {const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]===W||hid[o+u]||hair[u])continue;const i=o+u;if(L[i*3]>45&&chroma(i)<14)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}
+        for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]!==F)continue;let c2=0;for(let k2=0;k2<3;k2++){const v=nb[u*3+k2];if(v>=0&&S.label[o+v]===W)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}}
+      /* pupils (figures that have them): dark spots lying mostly inside an eye white */
+      {const blk=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]<25&&Math.hypot(l[1],l[2])<10;});let np_=0;
+       if(blk>=0){const sn=new Uint8Array(n);for(let s0=0;s0<n;s0++){if(sn[s0]||hid[o+s0]||hair[s0]||S.label[o+s0]===W||L[(o+s0)*3]>35)continue;const c=[s0];sn[s0]=1;let bw=0,bt=0,ar=0;
+         for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0)continue;if(!sn[u]&&!hid[o+u]&&!hair[u]&&S.label[o+u]!==W&&L[(o+u)*3]<=35){sn[u]=1;c.push(u);}else if(!c.includes(u)){bt++;if(S.label[o+u]===W)bw++;}}}
+         if(bt&&bw>=0.6*bt&&ar<0.01*vis){for(const t of c)S.label[o+t]=blk;np_++;}}}
+       rep.push("pupils"+np_);}
+      for(const e of pair)for(const t of e.c)S.keep[o+t]=1;
+      rep.push("eyes"+pair.length+" faces"+ne);}else rep.push("eyes0 (cand "+eyes.length+")");}
+  (window._spcDbg=window._spcDbg||{}).head=rep;}
+/* shine on a black suit reads as a dark gray in photos. A dark, colorless paint that lies mostly against black
+   and covers much less than the black is that shine: it goes black. A real gray (a gray suit) covers too much
+   to be taken for shine. */
+function shineToBlack(active){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=S.regions.length;
+  const ar=new Float64Array(R),bord=Array.from({length:R},()=>new Map());
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
+    for(let t=0;t<n;t++){const a=S.label[o+t];if(a<0)continue;ar[a]+=S.area[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const b=S.label[o+u];if(b>=0&&b!==a)bord[a].set(b,(bord[a].get(b)||0)+1);}}}
+  const blk=pl.map((l,i)=>l[0]<22&&Math.hypot(l[1],l[2])<8&&ar[i]>0?i:-1).filter(i=>i>=0);if(!blk.length)return;
+  const B=blk.sort((a,b)=>ar[b]-ar[a])[0];
+  for(let x=0;x<R;x++){if(x===B||!ar[x]||S.regions[x].hair)continue;const l=pl[x];if(Math.hypot(l[1],l[2])>8||l[0]>62)continue;
+    let top=-1,tv=0,tot=0;for(const [k,v] of bord[x]){tot+=v;if(v>tv){tv=v;top=k;}}
+    if(top!==B||ar[x]>0.4*ar[B])continue;
+    for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let t=0;t<n;t++)if(S.label[o+t]===x)S.label[o+t]=B;}
+    rep.push(C.rgb2hex(S.regions[x].rgb)+"→black");}
+  (window._spcDbg=window._spcDbg||{}).shine=rep;}
 /* a gray patch that is only light on a darker paint (shine on gloss black, highlights in brown hair): most of its
    border is that one darker paint, so it takes it. A silver belt between red and black keeps its gray */
 function grayShine(active){let n1=0;const pl=S.regions.map(r=>C.lab(...r.rgb)),gray=pl.map(l=>Math.hypot(l[1],l[2])<10&&l[0]>35&&l[0]<80);
@@ -1718,7 +1836,7 @@ function dropStrays(active,hid,photo){let moved=0;const R=S.regions.length;
     const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
     if(!stray.length)continue;const isS=new Uint8Array(R);stray.forEach(L=>isS[L]=1);
     for(let pass=0;pass<30;pass++){let ch=0;
-      for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0||!isS[L])continue;const v=new Map();
+      for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0||!isS[L]||(S.keep&&S.keep[i]))continue;const v=new Map(); /* eyes and piping placed on purpose stay */
         for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M>=0&&!isS[M])v.set(M,(v.get(M)||0)+1);}
         let b=-1,bv=0;for(const [M,c] of v)if(c>bv){bv=c;b=M;}if(b>=0){S.label[i]=b;moved+=A[i];ch++;}}
       if(!ch)break;}}
@@ -1822,7 +1940,10 @@ function minCut(N,sc,tc,eu,ev,ew){
 function matchFilaments(slots){
   const PL=palLab(), owned=C.PAL.map((f,i)=>f.owned!==false?i:-1).filter(i=>i>=0);
   let allowed=owned.length?owned:C.PAL.map((_,i)=>i);
-  const assign=()=>S.regions.forEach(r=>{const l=C.lab(...r.rgb);let b=-1,bd=Infinity;for(const i of allowed){const d=C.dE(l,PL[i]);if(d<bd){bd=d;b=i;}}r.fil=b;r.dE=bd;});
+  /* a plain (PLA Basic) filament wins over a Matte, Translucent or TPU one of the same color; hair is never put on a colorless filament */
+  const pen=i=>/^PLA Basic$/i.test(C.PAL[i].type||"")?0:2;
+  const assign=()=>S.regions.forEach(r=>{const l=C.lab(...r.rgb);let b=-1,bd=Infinity,bs=Infinity;for(const i of allowed){if(r.hair&&Math.hypot(PL[i][1],PL[i][2])<6)continue;const d=C.dE(l,PL[i]),sc=d+pen(i);if(sc<bs){bs=sc;bd=d;b=i;}}
+    if(b<0)for(const i of allowed){const d=C.dE(l,PL[i]);if(d<bd){bd=d;b=i;}}r.fil=b;r.dE=bd;});
   assign();
   for(;;){const used=new Map();S.regions.forEach(r=>used.set(r.fil,(used.get(r.fil)||0)+r.area));
     if(used.size<=slots)break;let drop=null,da=Infinity;for(const [f,a] of used)if(a<da){da=a;drop=f;}
