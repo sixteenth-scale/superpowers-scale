@@ -395,6 +395,7 @@ async function run(){
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -442,6 +443,31 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* color lines drawn clean: each edge between two paints is smoothed as a curve. Every face near the edge gets
+   its signed distance from it (+ on one paint, - on the other); that field is relaxed (each face moves toward
+   the average of its neighbours) and the edge redrawn where it crosses zero, moving no face more than 0.8 mm.
+   Zigzags, notches and nicks along a line go; the line's course, set by the sculpt, stays. Eyes and piping
+   placed on purpose don't move. */
+function smoothLines(active,hid){const rep=[];const BAND=+(window._spcLineBand||0.8),IT=+(window._spcLineIt||40);
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],g=pieceGeo(pi,null);
+    const pairs=new Map();for(let t=0;t<n;t++){const a=S.label[o+t];if(a<0)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t)continue;const b=S.label[o+u];if(b<0||b===a)continue;const k=Math.min(a,b)*4096+Math.max(a,b);pairs.set(k,(pairs.get(k)||0)+1);}}
+    let mv=0;const dist=new Float32Array(n),phi=new Float32Array(n),phi0=new Float32Array(n),tmp=new Float32Array(n),inb=new Uint8Array(n);
+    const dc=(t,u)=>Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2]);
+    for(const [k,cnt] of pairs){if(cnt<20)continue;const a=Math.floor(k/4096),b=k%4096,isAB=t=>{const l=S.label[o+t];return l===a||l===b;};
+      const R3=BAND*3;dist.fill(Infinity);inb.fill(0);let q=[];
+      for(let t=0;t<n;t++){if(!isAB(t))continue;const l=S.label[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&isAB(u)&&S.label[o+u]!==l){dist[t]=0;q.push(t);break;}}}
+      /* distances out to 3x the band (a few relaxation sweeps) */
+      for(let sweep=0;sweep<200&&q.length;sweep++){const nx=[];for(const t of q){for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!isAB(u))continue;const d=dist[t]+dc(t,u);if(d<dist[u]&&d<R3){dist[u]=d;nx.push(u);}}}q=nx;}
+      const band=[];for(let t=0;t<n;t++)if(isAB(t)&&dist[t]<R3){inb[t]=1;band.push(t);}
+      if(!band.length)continue;
+      for(const t of band){phi0[t]=phi[t]=(S.label[o+t]===a?1:-1)*dist[t];}
+      const fixedF=t=>!inb[t]||(S.keep&&S.keep[o+t]);
+      const val=u=>inb[u]?phi[u]:(S.label[o+u]===a?R3:S.label[o+u]===b?-R3:null);
+      for(let it=0;it<IT;it++){for(const t of band){if(fixedF(t)){tmp[t]=phi[t];continue;}let s2=0,k2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const v=val(u);if(v===null)continue;s2+=v;k2++;}tmp[t]=k2?0.5*phi[t]+0.5*s2/k2:phi[t];}
+        for(const t of band)phi[t]=tmp[t];}
+      for(const t of band){if(fixedF(t)||Math.abs(phi0[t])>=BAND)continue;const want=phi[t]>0?a:b;if(S.label[o+t]!==want){S.label[o+t]=want;mv++;}}}
+    rep.push(p.name.replace(/^.*?_\d+_/,"")+" "+mv);}
+  (window._spcDbg=window._spcDbg||{}).lines=rep;}
 /* glove and boot tops sit on the sculpted cuff: on an arm or a leg whose lowest part (hand, foot) wears a second
    paint, the edge of that paint is set on one plane fitted through the edge itself (its average line), and the
    edge snap after it settles that line onto the sculpted rim. Below the plane is the glove or boot, above it the sleeve; ragged
@@ -465,7 +491,11 @@ function cuffLine(active,regM,hid){const rep=[];
       const D=det(Mx);if(Math.abs(D)<1e-9)return [0,0,zm];const col=(i)=>Mx.map((r,j)=>r.map((v,c)=>c===i?b[j]:v));return [det(col(0))/D,det(col(1))/D,det(col(2))/D];};
     let pl=fit(pts);for(let it=0;it<3;it++){const r=pts.map(t=>[Math.abs(g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2])),t]).sort((a,b)=>a[0]-b[0]);pts=r.slice(0,Math.max(30,Math.floor(r.length*0.6))).map(x=>x[1]);pl=fit(pts);}
     if(Math.hypot(pl[0],pl[1])>0.7){rep.push(nm.replace(/^.*?_\d+_/,"")+" rim too steep");continue;}
-    let ch=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l!==P&&l!==M)continue;if(S.keep&&S.keep[o+t])continue;const h=g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2]);if(Math.abs(h)>3)continue;
+    /* then onto the sculpted rim itself: slide the plane up or down (2 mm at most) to where the most crease faces lie on it */
+    {const bend=surfaceShape(p,nb,C.faceNormals(p.m,p.M),C.xf(p.M,p.m.v)).bend;let best=0,bv=-1;
+     for(let dlt=-2;dlt<=2.001;dlt+=0.05){let sc=0;for(let t=0;t<n;t++){if(hid[o+t]||bend[t]<0.08)continue;const h=g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2]+dlt);if(Math.abs(h)<0.12)sc+=A[o+t];}if(sc>bv){bv=sc;best=dlt;}}
+     pl[2]+=best;rep.push(nm.replace(/^.*?_\d+_/,"")+" rim shift "+best.toFixed(2));}
+    let ch=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l!==P&&l!==M)continue;if(S.keep&&S.keep[o+t])continue;const h=g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2]);if(h<-3)continue;if(h>3&&l!==P)continue; /* above the rim, the glove or boot paint is only where it was put on purpose (piping) */
       const want=h<0?P:M;if(l!==want){S.label[o+t]=want;ch++;}if(Math.abs(h)>0.5){S.keep=S.keep||new Uint8Array(S.nFaces);S.keep[o+t]=1;}} /* settled: only the edge's own 0.5 mm is left to the snap */
     rep.push(nm.replace(/^.*?_\d+_/,"")+" rim z"+(pl[2]).toFixed(1)+" ch"+ch);}
   (window._spcDbg=window._spcDbg||{}).cuff=rep;}
@@ -663,8 +693,12 @@ function headFix(active,regM,hid,L){const rep=[];
        further out). Hidden faces there were only reached through the inside of the hair */
     {const fz=[];let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
      for(let t=0;t<n;t++){if(hid[o+t])continue;x0=Math.min(x0,g.c[t*3]);x1=Math.max(x1,g.c[t*3]);y0=Math.min(y0,g.c[t*3+1]);y1=Math.max(y1,g.c[t*3+1]);if(S.label[o+t]===F&&!hair[t])fz.push(g.c[t*3+2]);}
-     if(fz.length>50){fz.sort((a,b)=>a-b);const chin=fz[Math.floor(fz.length*0.01)]+0.3,cx=(x0+x1)/2,cy=(y0+y1)/2,rN=0.3*Math.max(x1-x0,y1-y0);let nj=0;
-       for(let t=0;t<n;t++){if(!hair[t]||g.c[t*3+2]>chin)continue;if(Math.hypot(g.c[t*3]-cx,g.c[t*3+1]-cy)<rN){hair[t]=0;if(S.label[o+t]!==F&&(hid[o+t]||S.label[o+t]===H))S.label[o+t]=F;nj++;}}
+     const gfn=g.fn;if(fz.length>50){fz.sort((a,b)=>a-b);const chin=fz[Math.floor(fz.length*0.01)]+0.3,cx=(x0+x1)/2,cy=(y0+y1)/2,rN=0.3*Math.max(x1-x0,y1-y0);let nj=0;
+       for(let t=0;t<n;t++){if(!hair[t]||g.c[t*3+2]>chin)continue;if(!hid[o+t]&&gfn[t*3+2]>-0.35)continue; /* the jaw's underside faces down; the inside of the hanging hair faces sideways and stays hair */if(Math.hypot(g.c[t*3]-cx,g.c[t*3+1]-cy)<rN){hair[t]=0;if(S.label[o+t]!==F&&(hid[o+t]||S.label[o+t]===H))S.label[o+t]=F;nj++;}}
+       /* and the jaw's underside joined to the face: from the face skin, take in downward faces below the chin */
+       {const q4=[];for(let t=0;t<n;t++)if(!hair[t]&&S.label[o+t]===F)q4.push(t);let nj2=0;
+        for(let h=0;h<q4.length;h++){const t=q4[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!hair[u])continue;if(g.c[u*3+2]>chin+0.5||gfn[u*3+2]>-0.35||Math.hypot(g.c[u*3]-cx,g.c[u*3+1]-cy)>rN*1.3)continue;hair[u]=0;S.label[o+u]=F;q4.push(u);nj2++;}}
+        nj+=nj2;}
        rep.push("jaw"+nj);}}
     /* the hairline sits on the sculpt: near the hair/skin edge, the edge is moved onto the sculpted step (a
        minimum cut where cutting across a crease is cheap), so it doesn't zigzag across the face */
@@ -686,6 +720,21 @@ function headFix(active,regM,hid,L){const rep=[];
        const side=minCut(N,sc,tc,eu,ev,ew);let mv=0;
        for(let k=0;k<N;k++){const t=nodes[k],hnew=side[k]?1:0;if(hnew!==hair[t]){hair[t]=hnew;if(!hnew)S.label[o+t]=F;mv++;}}
        rep.push("hairline"+mv+"/"+N);}}
+    /* the face is one piece of skin: every other skin patch on the head (a fleck at the hairline, the inside of
+       the hair) is hair, and any third paint left on the head (black specks from the suit) goes to the paint
+       round it */
+    {const seen=new Uint8Array(n),comps=[];
+     for(let s0=0;s0<n;s0++){if(seen[s0]||hair[s0]||S.label[o+s0]!==F)continue;const c=[s0];seen[s0]=1;let ar=0;
+       for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&!hair[u]&&S.label[o+u]===F){seen[u]=1;c.push(u);}}}comps.push({c,ar});}
+     comps.sort((a,b)=>b.ar-a.ar);let nf=0;for(const cp of comps.slice(1)){let vis2=0;for(const t of cp.c)if(!hid[o+t])vis2+=A[o+t];if(vis2<0.03*vis||cp.ar<0.25*comps[0].ar){for(const t of cp.c)hair[t]=1;nf+=cp.c.length;}}
+     let ns=0;for(let pass=0;pass<20;pass++){let ch=0;for(let t=0;t<n;t++){if(hair[t]||S.label[o+t]===F)continue;let vh=0,vf=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(hair[u])vh++;else if(S.label[o+u]===F)vf++;}
+       if(vh>vf&&vh>0){hair[t]=1;ch++;}else if(vf>0){S.label[o+t]=F;ch++;}}ns+=ch;if(!ch)break;}
+     /* and hair islands lying mostly in the skin (a patch under the jaw) are skin */
+     {const sn=new Uint8Array(n);let ni=0;for(let s0=0;s0<n;s0++){if(!hair[s0]||sn[s0])continue;const c=[s0];sn[s0]=1;let ar=0,bs=0,bt=0;
+        for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(hair[u]){if(!sn[u]){sn[u]=1;c.push(u);}}else{bt++;if(S.label[o+u]===F)bs++;}}}
+        if(ar<0.03*vis&&bt&&bs>=0.6*bt){for(const t of c){hair[t]=0;S.label[o+t]=F;}ni+=c.length;}}
+      rep.push("hairIslands"+ni);}
+     rep.push("faceOnly"+nf+" specks"+ns);}
     /* the hair's own paint, from the photos */
     let r=0,gg=0,b=0,w=0,nh=0;for(let t=0;t<n;t++){if(!hair[t])continue;nh++;if(hid[o+t])continue;const a=A[o+t];r+=S.raw[(o+t)*3]*a;gg+=S.raw[(o+t)*3+1]*a;b+=S.raw[(o+t)*3+2]*a;w+=a;}
     if(w>0){const HR=S.regions.length;S.regions.push({id:HR,rgb:[r/w,gg/w,b/w],fil:-1,area:0,dE:0,patch:false,hair:true});
@@ -702,9 +751,25 @@ function headFix(active,regM,hid,L){const rep=[];
     for(let i=0;i<band.length&&!pair.length;i++)for(let j=i+1;j<band.length;j++){const a=band[i],b=band[j],sep=Math.hypot(a.x-b.x,a.y-b.y);if(Math.abs(a.z-b.z)<0.08*H_&&sep>0.1*H_&&sep<0.45*H_){pair=[a,b];break;}}
     if(pair.length){let W=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]>85&&Math.hypot(l[1],l[2])<10&&!r.hair;});
       if(W<0){W=S.regions.length;S.regions.push({id:W,rgb:[0.96,0.96,0.96],fil:-1,area:0,dE:0,patch:false});}
+      /* the sculpt's own detail round the eyes, at 0.5 mm: the eyeball bulges, the lid crease round it sinks, the
+         brow ridge stands up. Each eye white is the eyeball out to its crease; each brow is the ridge above it */
+      const sepE=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y),b05=new Float32Array(n).fill(NaN),near05=[];
+      {const cell=0.5,grid=new Map(),K=(x,y,z)=>((x+2048)*4096+(y+2048))*4096+(z+2048);
+       for(let t=0;t<n;t++){const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+       for(let t=0;t<n;t++){if(hid[o+t]||hair[t])continue;let ok=false;for(const e of pair)if(Math.hypot(g.c[t*3]-e.x,g.c[t*3+1]-e.y,g.c[t*3+2]-e.z)<0.9*sepE)ok=true;if(!ok)continue;
+         const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+         for(let i2=-1;i2<=1;i2++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(K(cx+i2,cy+j,cz+k));if(!b)continue;for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>0.25)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+         if(sw>0){b05[t]=(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2];near05.push(t);}}}
+      let sd=0;for(const t of near05)sd+=b05[t]*b05[t];sd=Math.sqrt(sd/Math.max(1,near05.length))||0.01;
+      for(const e of pair){let t0=-1,bd=-Infinity;for(const t of near05){const d=Math.hypot(g.c[t*3]-e.x,g.c[t*3+1]-e.y,g.c[t*3+2]-e.z);if(d<0.6&&g.c[t*3+2]<=e.z+0.1&&b05[t]>bd){bd=b05[t];t0=t;}}if(t0<0)continue; /* seed: the eyeball's crown near the photo's eye, never the brow above it */
+        const seen=new Uint8Array(n),c=[t0];seen[t0]=1;let ar=0;
+        for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||seen[u]||isNaN(b05[u])||b05[u]<-0.3*sd)continue;if(Math.hypot(g.c[u*3]-g.c[t0*3],g.c[u*3+1]-g.c[t0*3+1],g.c[u*3+2]-g.c[t0*3+2])>0.35*sepE)continue;seen[u]=1;c.push(u);}}
+        let ea=0;for(const t of e.c)ea+=A[o+t];
+        let cz2=0;for(const t of c)cz2+=g.c[t*3+2];cz2/=c.length;
+        if(ar>0.4*ea&&ar<6*ea&&cz2<e.z+0.35){e.c=c;e.geo=true;}}
       let ne=0;S.keep=S.keep||new Uint8Array(S.nFaces);for(const e of pair){for(const t of e.c)S.label[o+t]=W;ne+=e.c.length;
         /* close the eye: skin faces held between eye faces join it */
-        for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]===W||hid[o+u]||hair[u])continue;const i=o+u;if(L[i*3]>skinL-35&&chroma(i)<16)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}
+        if(!e.geo)for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]===W||hid[o+u]||hair[u])continue;const i=o+u;if(L[i*3]>skinL-35&&chroma(i)<16)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}
         for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]!==F)continue;let c2=0;for(let k2=0;k2<3;k2++){const v=nb[u*3+k2];if(v>=0&&S.label[o+v]===W)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}}
       /* pupils (figures that have them): dark spots lying mostly inside an eye white */
       {const blk=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]<25&&Math.hypot(l[1],l[2])<10;});let np_=0;
@@ -714,15 +779,25 @@ function headFix(active,regM,hid,L){const rep=[];
        rep.push("pupils"+np_);}
       for(const e of pair)for(const t of e.c)S.keep[o+t]=1;
       rep.push("eyes"+pair.length+" faces"+ne);
-      /* eyebrows: the dark strip on the skin just above each eye takes the hair's paint */
+      /* eyebrows: brown, the hair's paint */
       {const HRi=S.regions.findIndex(r=>r.hair);let nbw=0;
        if(HRi>=0){const brow=new Uint8Array(n);
+         /* the brows sit on the sculpted brow ridge: above each eye, from just inside it to past its outer corner,
+            on surface that stands well proud of the 0.5 mm round it (photos are too soft to show a brow) */
+         const sep=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y),cand=[];
          for(let t=0;t<n;t++){const i=o+t;if(hid[i]||S.label[i]!==F)continue;const z=g.c[t*3+2];
-           for(const e of pair){const dz=z-e.z,dh=Math.hypot(g.c[t*3]-e.x,g.c[t*3+1]-e.y);if(dz>0.02*H_&&dz<0.16*H_&&dh<0.16*H_&&L[i*3]<skinL-12){brow[t]=1;break;}}}
+           for(let ei=0;ei<2;ei++){const e=pair[ei],e2=pair[1-ei];let wx=e.x-e2.x,wy=e.y-e2.y;const wl=Math.hypot(wx,wy)||1;wx/=wl;wy/=wl;
+             const rx=g.c[t*3]-e.x,ry=g.c[t*3+1]-e.y,al=rx*wx+ry*wy,dz=z-e.z,off=Math.abs(-rx*wy+ry*wx);
+             if(dz>0.07*sep&&dz<0.7*sep&&al>-0.4*sep&&al<0.6*sep&&off<0.6*sep){cand.push(t);break;}}}
+         {const cell=1.5,grid=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);
+          for(let t=0;t<n;t++){const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+          for(const t of cand){const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+            for(let i2=-1;i2<=1;i2++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(K(cx+i2,cy+j,cz+k));if(!b)continue;for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>2.25)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)continue;const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+            if(!isNaN(b05[t])&&b05[t]>+(window._spcBrowS||1.2)*sd)brow[t]=1;}}
          const sb=new Uint8Array(n);
          for(let s0=0;s0<n;s0++){if(!brow[s0]||sb[s0])continue;const c=[s0];sb[s0]=1;let ar=0;
            for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let k=0;k<3;k++){const u=nb[t*3+k];if(u>=0&&brow[u]&&!sb[u]){sb[u]=1;c.push(u);}}}
-           if(ar<0.15)continue;for(const t of c){S.label[o+t]=HRi;S.keep[o+t]=1;}nbw+=c.length;
+           if(ar<0.4)continue;for(const t of c){S.label[o+t]=HRi;S.keep[o+t]=1;}nbw+=c.length;
            for(let it=0;it<2;it++){const add=[];for(const t of c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]!==F)continue;let c2=0;for(let k2=0;k2<3;k2++){const v=nb[u*3+k2];if(v>=0&&S.label[o+v]===HRi)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=HRi;S.keep[o+u]=1;c.push(u);}}}}
        rep.push("brows"+nbw);}}else rep.push("eyes0 (cand "+eyes.length+")");}
   (window._spcDbg=window._spcDbg||{}).head=rep;}
