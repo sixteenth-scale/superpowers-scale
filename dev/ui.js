@@ -391,7 +391,7 @@ async function run(){
   pinColors(active,hid,regM);
   if(!window._spcNoHead)try{headFix(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoShine)shineToBlack(active);
-  if(!window._spcNoCords)try{cordPiping(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoCords)try{cordPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
@@ -500,10 +500,14 @@ function edgeSnap(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...
    0.5 mm round them, measured against the surface 2 mm round them (so the limb's own curve doesn't count). Its
    paint is the colored paint the photo shows on or beside it. Other small patches of that paint on a limb
    with a cord (smears off the photo) go back to the limb's paint. Pieces with no sculpted cord fall back to the photo stripes (limbPiping). */
-function cordPiping(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=pl.length;S._cordDone=new Set();
+function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=pl.length;S._cordDone=new Set();const cand=new Map(),info=new Map();
   for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg|torso|chest|body)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
     const limb=!/(torso|chest|body)/i.test(nm);
     const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    /* the limb's long axis */
+    const ax=(()=>{let mx=0,my=0,mz=0;for(let t=0;t<n;t++){mx+=g.c[t*3];my+=g.c[t*3+1];mz+=g.c[t*3+2];}mx/=n;my/=n;mz/=n;const cv=[0,0,0,0,0,0];
+      for(let t=0;t<n;t+=7){const x=g.c[t*3]-mx,y=g.c[t*3+1]-my,z=g.c[t*3+2]-mz;cv[0]+=x*x;cv[1]+=x*y;cv[2]+=x*z;cv[3]+=y*y;cv[4]+=y*z;cv[5]+=z*z;}
+      let e=[0.3,0.5,1];for(let it=0;it<50;it++){const w=[cv[0]*e[0]+cv[1]*e[1]+cv[2]*e[2],cv[1]*e[0]+cv[3]*e[1]+cv[4]*e[2],cv[2]*e[0]+cv[4]*e[1]+cv[5]*e[2]],m=Math.hypot(...w)||1;e=w.map(x=>x/m);}return e;})();
     const gridOf=cell=>{const m=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);for(let t=0;t<n;t++){const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=m.get(k);if(!b){b=[];m.set(k,b);}b.push(t);}
       return (t,r,fn)=>{const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell),r2=r*r;
         for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=m.get(K(cx+i,cy+j,cz+k));if(!b)continue;for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz<=r2)fn(u);}}};};
@@ -525,16 +529,41 @@ function cordPiping(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(.
       let d=[1,0.7,0.4];for(let it=0;it<40;it++){const e=[cv[0]*d[0]+cv[1]*d[1]+cv[2]*d[2],cv[1]*d[0]+cv[3]*d[1]+cv[4]*d[2],cv[2]*d[0]+cv[4]*d[1]+cv[5]*d[2]],m=Math.hypot(...e)||1;d=e.map(x=>x/m);}
       let lo=Infinity,hi=-Infinity;for(const t of c){const p=(g.c[t*3]-mx)*d[0]+(g.c[t*3+1]-my)*d[1]+(g.c[t*3+2]-mz)*d[2];lo=Math.min(lo,p);hi=Math.max(hi,p);}
       const len=hi-lo;if(len<4||ar/len>1.2)continue;
-      /* its paint: what the photo shows on and right beside it */
-      const votes=new Map(),cur=new Map();let nv=0;const vis=new Set(c);for(const t of c)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0)vis.add(u);}
-      for(const t of vis){if(near[t]>=0){votes.set(near[t],(votes.get(near[t])||0)+1);nv++;}const l=S.label[o+t];cur.set(l,(cur.get(l)||0)+1);}
+      /* the paint the photo shows within 2 mm of it (the photo may sit a millimetre off the cord), on faces still on
+         the paint round it; and how much of that 2 mm is already another paint (a cord along a glove or boot rim) */
+      const hood=new Set();for(const t of c)nearB(t,2,u=>{if(!hid[o+u])hood.add(u);});
+      const cur=new Map();for(const t of hood){const l=S.label[o+t];cur.set(l,(cur.get(l)||0)+1);}
       let M=-1,mv=0;for(const [k,v] of cur)if(v>mv){mv=v;M=k;}
-      let P=-1,pv=0;for(const [k,v] of votes){if(Math.hypot(pl[k][1],pl[k][2])<15||k===S.skinReg)continue;if(v>pv){pv=v;P=k;}}
-      if(P<0||pv<0.25*nv)continue;cords.push({c,P,v:pv/nv,len});}
+      const rim=1-mv/Math.max(1,hood.size);
+      const votes=new Map();let nv=0;for(const t of hood){if(S.label[o+t]!==M)continue;nv++;const k=near[t];if(k>=0)votes.set(k,(votes.get(k)||0)+1);}
+      let P=-1,pv=0;for(const [k,v] of votes){if(k===M||Math.hypot(pl[k][1],pl[k][2])<15||k===S.skinReg)continue;if(v>pv){pv=v;P=k;}}
+      const gf=pieceGeo(pi,regM),pts=[];const st=Math.max(1,Math.floor(c.length/40));for(let i=0;i<c.length;i+=st){const t=c[i];pts.push([gf.c[t*3],gf.c[t*3+1],gf.c[t*3+2]]);}
+      /* its direction: piping on a limb runs along the limb, not round it (a knee fold, a cuff) */
+      const dz=Math.abs(d[0]*ax[0]+d[1]*ax[1]+d[2]*ax[2]);
+      if(limb&&dz<0.6)continue;
+      cords.push({c,P,M,v:nv?pv/nv:0,rim,len,pts,ok:false,sc:0});}
+    cand.set(pi,cords);info.set(pi,{nm,limb,n,o,nb,A,near});}
+  /* left and right twins wear the same piping: a cord whose mirror image on the twin is also a cord adds the
+     twin's photo evidence to its own (one side's photo often misses the stripe) */
+  const side=pi=>/left/i.test(S.parts[pi].name)?"L":/right/i.test(S.parts[pi].name)?"R":"";
+  const base=pi=>S.parts[pi].name.toLowerCase().replace(/^.*?_\d+_/,"").replace(/left|right/g,"#");
+  const md=(P1,P2,fx)=>{let s=0;for(const p of P1){let b=Infinity;for(const q of P2){const d=(2*fx-p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(d<b)b=d;}s+=Math.sqrt(b);}return s/P1.length;};
+  const done=new Set();
+  for(const [a,ca] of cand){if(done.has(a))continue;done.add(a);
+    const b=[...cand.keys()].find(q=>q!==a&&!done.has(q)&&side(q)&&side(a)&&side(q)!==side(a)&&base(q)===base(a));
+    if(b==null){for(const k of ca){k.ok=k.P>=0&&k.rim<0.7&&k.v>=0.2;k.sc=k.v;}continue;} /* (no twin: the torso, where piping runs beside the star's own red) */done.add(b);const cb=cand.get(b);
+    /* mirror plane: halfway between the two pieces on the figure */
+    const cxOf=pi=>{const gq=pieceGeo(pi,regM);let x=0;for(let t=0;t<gq.n;t++)x+=gq.c[t*3];return x/gq.n;};const fx=(cxOf(a)+cxOf(b))/2;
+    for(const k of ca){let best=null,bd=3;for(const q of cb){const d=md(k.pts,q.pts,fx);if(d<bd){bd=d;best=q;}}
+      if(best){const P=k.v>=best.v?k.P:best.P,sc=k.v+best.v;if(P>=0&&k.rim<0.4&&best.rim<0.4&&sc>=0.2){k.ok=best.ok=true;k.P=best.P=P;k.sc=Math.max(k.sc,sc);best.sc=Math.max(best.sc,sc);}}
+      else if(k.P>=0&&k.rim<0.4&&k.v>=0.25){k.ok=true;k.sc=k.v;}}
+    for(const q of cb)if(!q.ok&&q.P>=0&&q.rim<0.4&&q.v>=0.25){q.ok=true;q.sc=q.v;}}
+  /* on one piece, a seam the photos back much less than the best cord there (a back seam beside the side piping)
+     is not piping (weighed by length, so a short scrap doesn't outvote the long cord) */
+  for(const [pi,all] of cand){const okc=all.filter(k=>k.ok);if(!okc.length)continue;const w=k=>k.sc*Math.min(k.len,20),top=Math.max(...okc.map(w));for(const k of okc)if(w(k)<0.4*top)k.ok=false;
+    (window._spcDbg=window._spcDbg||{}).cordCand=((window._spcDbg||{}).cordCand||[]).concat([S.parts[pi].name.replace(/^.*?_\d+_/,'')+':'+all.map(k=>[k.len.toFixed(0),k.v.toFixed(2),k.rim.toFixed(2),k.sc.toFixed(2),k.ok?1:0].join('/')).join(' ')]);}
+  for(const [pi,all] of cand){const {nm,limb,n,o,nb,A}=info.get(pi);const cords=all.filter(k=>k.ok);
     if(!cords.length){rep.push(nm.replace(/^.*?_\d+_/,"")+" no cord");continue;}
-    /* a sculpted seam the photo only half-agrees with (a back seam next to the real piping on the side) is not
-       piping: keep the cords the photo backs nearly as well as the best one */
-    {const keepIt=cords.map(k=>{const rivals=cords.filter(q=>q.len>=0.5*k.len);return k.v>=0.7*Math.max(...rivals.map(q=>q.v));});for(let i=cords.length-1;i>=0;i--)if(!keepIt[i])cords.splice(i,1);} /* against cords at least half as long */
     S._cordDone.add(pi);S.keep=S.keep||new Uint8Array(S.nFaces);
     const cordSet=new Uint8Array(n);for(const k of cords)for(const t of k.c)cordSet[t]=1;
     /* smears of the cord's paint near a cord on a limb (small patches, not a glove or a boot) go back */
@@ -548,9 +577,9 @@ function cordPiping(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(.
         let b=-1,bv=0;for(const [k,x] of v)if(x>bv){bv=x;b=k;}if(b<0)continue;for(const t of c)if(!S.keep[o+t]){S.label[o+t]=b;cleared++;}}}
     /* paint the cords, and close them (a flat cord shows as two edge lines with its top between) */
     let painted=0;for(const k of cords){const set=new Uint8Array(n);for(const t of k.c)set[t]=1;
-      let fr=k.c.slice();for(let r=0;r<2;r++){const nx=[];for(const t of fr)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!set[u]&&!hid[o+u]){set[u]=2;nx.push(u);}}fr=nx;}
+      let fr=k.c.slice();for(let r=0;r<6;r++){const nx=[];for(const t of fr)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!set[u]&&!hid[o+u]){set[u]=2;nx.push(u);}}fr=nx;}
       /* erode the grown rim back one ring: keep grown faces held on 2+ sides */
-      for(let it=0;it<2;it++){const drop=[];for(let t=0;t<n;t++){if(set[t]!==2)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&set[u])c2++;}if(c2<3)drop.push(t);}for(const t of drop)set[t]=0;}
+      for(let it=0;it<6;it++){const drop=[];for(let t=0;t<n;t++){if(set[t]!==2)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&set[u])c2++;}if(c2<3)drop.push(t);}for(const t of drop)set[t]=0;}
       for(let t=0;t<n;t++)if(set[t]){S.label[o+t]=k.P;S.keep[o+t]=1;painted++;}}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" cords"+cords.length+" f"+painted+" cleared"+cleared);}
   (window._spcDbg=window._spcDbg||{}).cords=rep;}
