@@ -9,9 +9,9 @@ const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
 C.loadPalette();
 
 /* ---------- settings ---------- */
-try{q("spcKey").value=localStorage.getItem("spcMeshyKey")||"";const st=JSON.parse(localStorage.getItem("spcSettings")||"{}");
+try{localStorage.removeItem("spcMeshyKey");q("spcKey").value="";const st=JSON.parse(localStorage.getItem("spcSettings")||"{}");
   if(st.slots)q("spcSlots").value=st.slots;if(st.detail)q("spcDetail").value=st.detail;}catch(e){}
-const saveSet=()=>{try{localStorage.setItem("spcMeshyKey",q("spcKey").value.trim());
+const saveSet=()=>{try{
   localStorage.setItem("spcSettings",JSON.stringify({slots:+q("spcSlots").value,detail:+q("spcDetail").value}));}catch(e){}};
 ["spcKey","spcSlots","spcDetail"].forEach(id=>q(id).addEventListener("change",()=>{saveSet();ready();}));
 
@@ -188,7 +188,14 @@ async function run(){
   /* figure: box 2, or the model itself */
   const active=[...S.on].filter(i=>i!==S.figPart).sort((a,b)=>a-b);
   if(!active.length)throw new Error("No pieces are ticked to color.");
-  const fig=S.figure?S.figure.parts:S.figPart>=0?[S.parts[S.figPart]]:active.map(i=>S.parts[i]), parted=!!S.figure||S.figPart>=0;
+  let fig=S.figure?S.figure.parts:S.figPart>=0?[S.parts[S.figPart]]:active.map(i=>S.parts[i]);const parted=!!S.figure||S.figPart>=0;
+  /* a whole figure exported at another size than its parts (a 50 mm figure for 116 mm parts) is brought to the
+     parts' size: their surface area, less the cut faces, matches the figure's */
+  if(parted){const sumA=(ps)=>ps.reduce((s,p)=>s+C.areas(p.m,p.M).reduce((a,b)=>a+b,0),0);
+    const ap=sumA(S.parts.filter((p,i)=>i!==S.figPart&&!/rigid|pin|peg|coupon/i.test(p.name))),af=sumA(fig),k=Math.sqrt(ap/af/1.06); /* all the parts in the file, ticked or not */
+    if(isFinite(k)&&(k>1.25||k<0.8)){let cx0=0,cy0=0,z00=Infinity,nn=0;fig.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
+      const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1]; /* about the figure's own feet */fig=fig.map(p=>({...p,M:C.mul4(Sm,p.M)}));log(`The whole figure is ${k>1?"smaller":"larger"} than the parts: scaled ×${k.toFixed(2)} to match.`);
+      (window._spcDbg=window._spcDbg||{}).figScale=+k.toFixed(3);}}
   const figPts=(()=>{const tot=fig.reduce((s,p)=>s+p.m.f.length/3,0);const rng=C.RNG(11);const all=[];
     fig.forEach(p=>{const n=Math.max(500,Math.round(60000*(p.m.f.length/3)/tot));all.push(C.samplePts(p.m,p.M,n,rng).p);});
     const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};})();
@@ -236,7 +243,35 @@ async function run(){
       if(Math.sign(cx(pi,regM[pi]))===want)continue;
       log(`Placing ${S.parts[pi].name} on its own side…`);await tick();
       const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,M=>Math.sign(cx(pi,M))===want);
-      if(isFinite(r.err)&&Math.sign(cx(pi,r.M))===want){regM[pi]=r.M;errs[pi]=r.err;}}}
+      if(isFinite(r.err)&&Math.sign(cx(pi,r.M))===want){regM[pi]=r.M;errs[pi]=r.err;}}
+    /* a piece sits where its name says on the figure: the head at the top, calves low. One that landed out of
+       its band of height is placed again inside it */
+    {let fz0=Infinity,fz1=-Infinity;for(let i=2;i<figPts.p.length;i+=3){fz0=Math.min(fz0,figPts.p[i]);fz1=Math.max(fz1,figPts.p[i]);}const Hh=fz1-fz0;(window._spcDbg=window._spcDbg||{}).figZ=[+fz0.toFixed(1),+fz1.toFixed(1)];
+     const czz=(pi,M)=>{const v=C.xf(C.mul4(M,S.parts[pi].M),S.parts[pi].m.v);let z=0;for(let i=2;i<v.length;i+=3)z+=v[i];return (z/(v.length/3)-fz0)/Hh;};
+     const band=nm=>/head/.test(nm)?[0.78,1]:/torso|chest|body/.test(nm)?[0.45,0.92]:/(^|[^a-z])arm([^a-z]|$)/.test(nm)?[0.4,0.92]:/thigh/.test(nm)?[0.3,0.68]:/calf|shin/.test(nm)?[0.03,0.45]:/rigid|leg/.test(nm)?[0.08,0.6]:/boot|foot/.test(nm)?[0,0.3]:null;
+     for(const pi of active){const nm=S.parts[pi].name.toLowerCase();if(/pin|peg/.test(nm)||!regM[pi])continue;const bd=band(nm);if(!bd)continue;const h=czz(pi,regM[pi]);if(h>=bd[0]&&h<=bd[1])continue;
+       const sd=side(pi),want=sd*leftSign;log(`Placing ${S.parts[pi].name} at its height on the figure…`);await tick();
+       const ok=M=>{const h2=czz(pi,M);return h2>=bd[0]&&h2<=bd[1]&&(!sd||Math.sign(cx(pi,M))===want);};
+       const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,ok);if(isFinite(r.err)&&ok(r.M)){regM[pi]=r.M;errs[pi]=r.err;((window._spcDbg=window._spcDbg||{}).reband=window._spcDbg.reband||[]).push(S.parts[pi].name);}}}
+    /* left and right twins sit at the same height: one that landed higher or lower than its twin is placed again,
+       held to its twin's height (and its own side) */
+    const cz=(pi,M)=>{const v=C.xf(C.mul4(M,S.parts[pi].M),S.parts[pi].m.v);let z=0;for(let i=2;i<v.length;i+=3)z+=v[i];return z/(v.length/3);};
+    const base=pi=>S.parts[pi].name.toLowerCase().replace(/\.stl$/,"").replace(/^.*?_\d+_/,"").replace(/left|right/g,"#");
+    for(const a of active){if(side(a)!==1||!regM[a])continue;const b=active.find(q=>side(q)===-1&&regM[q]&&base(q)===base(a));if(b==null)continue;
+      const za=cz(a,regM[a]),zb=cz(b,regM[b]),xa=cx(a,regM[a]),xb=cx(b,regM[b]);if(Math.abs(za-zb)<=3&&Math.abs(xa+xb)<=3)continue;
+      const [bad,good]=errs[a]>errs[b]?[a,b]:[b,a],zg=cz(good,regM[good]),xg=cx(good,regM[good]),want=side(bad)*leftSign;
+      log(`Placing ${S.parts[bad].name} level with its twin…`);await tick();
+      const okM=M=>Math.abs(cz(bad,M)-zg)<2.5&&Math.abs(cx(bad,M)+xg)<3&&Math.sign(cx(bad,M))===want; /* level with its twin, and mirrored across the figure */
+      const r=await C.registerPart(S.parts[bad],figPts,G,tick,al.diag/80,okM);
+      if(isFinite(r.err)&&okM(r.M)){regM[bad]=r.M;errs[bad]=r.err;((window._spcDbg=window._spcDbg||{}).relevel=window._spcDbg.relevel||[]).push(S.parts[bad].name);continue;}
+      /* not found that way: a mirrored part is its twin's pose mirrored across the figure, then fitted */
+      {const pc=pi=>{const v=C.xf(S.parts[pi].M,S.parts[pi].m.v);let c=[0,0,0];for(let i=0;i<v.length;i+=3){c[0]+=v[i];c[1]+=v[i+1];c[2]+=v[i+2];}return c.map(x=>x/(v.length/3));};
+       const T=(x,y,z)=>[1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1],cb=pc(bad),cg=pc(good),Fm=C.mul4(T(2*fx,0,0),[-1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+       const smp=C.samplePts(S.parts[bad].m,S.parts[bad].M,400,C.RNG(3)).p,P=[];for(let i=0;i<smp.length;i+=3)P.push([smp[i],smp[i+1],smp[i+2]]);
+       let best=null;for(const ax of [0,1]){const Mi=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];Mi[ax*5]=-1;
+         const Pm=C.mul4(T(...cg),C.mul4(Mi,T(-cb[0],-cb[1],-cb[2]))),M0=C.mul4(Fm,C.mul4(regM[good],Pm));
+         const r2=C.icp(P,G,figPts.p,M0,30,false,4,al.diag/10);if(isFinite(r2.err)&&(!best||r2.err<best.err))best=r2;}
+       if(best&&okM(best.M)&&best.err<errs[bad]*1.5){regM[bad]=best.M;errs[bad]=best.err;((window._spcDbg=window._spcDbg||{}).relevel=window._spcDbg.relevel||[]).push(S.parts[bad].name+" (mirror)");}}}}
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi)){raws.push(null);continue;}
     let Mx=null;
@@ -246,7 +281,7 @@ async function run(){
       const g=pieceGeo(pi,parted?regM:null),dist=new Float32Array(g.n);
       if(parted)for(let t=0;t<g.n;t++)dist[t]=G.near(g.c[t*3],g.c[t*3+1],g.c[t*3+2],8)[1];
       tr={rgb:new Float32Array(g.n*3).fill(0.5),dist};}
-    else tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);}
+    else tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=photoOnly?Math.max(3,4*(Mx?lastErr:0)):Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);} /* from photos, a part may differ from the whole figure by a few mm and still be on show; contacts are found apart */
   rebuildIndex();S.areaC={};
   S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r.rgb,S.offs[pi]*3);});
   if(photoOnly){log("Painting your photos onto the figure…");await tick();const pr=await photoProject(S.images,fig,active,parted?regM:null);
@@ -307,7 +342,7 @@ async function run(){
   if(!window._spcNoTuck){log("Finding spots no one will see…");await tick();try{tuckedAreas(active,regM,hid);}catch(e){console.warn(e);}}
   /* the photos say what each visible face really looks like */
   let photo=null;
-  if(S.images.length){log("Reading your photos…");await tick();
+  if(S.images.length&&!window._spcNoGuide){log("Reading your photos…");await tick();
     try{photo=await photoGuide(S.images,fig,active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
   /* final colors: follow the photos (Meshy where no photo can see), with color edges on the sculpt's ridges and creases */
   log("Putting color edges on the sculpted ridges…");await tick();
@@ -349,6 +384,7 @@ async function run(){
   if(!window._spcNoTorso)torsoTrim(active,regM);
   if(!window._spcNoSpecks)legSpecks(active,hid);
   if(!window._spcNoIslands)dropIslands(active,2);
+  if(!window._spcNoGrayShine)grayShine(active);
   if(!window._spcNoGlove)gloveTrim(active,regM);
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
@@ -399,17 +435,28 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* a gray patch that is only light on a darker paint (shine on gloss black, highlights in brown hair): most of its
+   border is that one darker paint, so it takes it. A silver belt between red and black keeps its gray */
+function grayShine(active){let n1=0;const pl=S.regions.map(r=>C.lab(...r.rgb)),gray=pl.map(l=>Math.hypot(l[1],l[2])<10&&l[0]>35&&l[0]<80);
+  for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],seen=new Uint8Array(n);
+    for(let s0=0;s0<n;s0++){const L=S.label[o+s0];if(seen[s0]||L<0||!gray[L])continue;const q=[s0];seen[s0]=1;const bord=new Map();let nbd=0;
+      for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L){if(!seen[u]){seen[u]=1;q.push(u);}}else{bord.set(M,(bord.get(M)||0)+1);nbd++;}}}
+      let b=-1,bv=0;for(const [M,x] of bord)if(x>bv){bv=x;b=M;}
+      if(b>=0&&bv>=0.6*nbd&&pl[b][0]<pl[L][0]){for(const t of q)S.label[o+t]=b;n1+=q.length;}}}
+  (window._spcDbg=window._spcDbg||{}).grayShine=n1;}
 /* gloves: piping (raised strips) running from the cuff band down the glove onto the back of the hand is the
    band's paint. Raised thin strips inside the glove paint that touch the band paint take it; fingers and knuckles,
    which never touch the band, stay glove. */
 function gloveTrim(active,regM){const rep=[];
-  for(const pi of active){if(!/arm|glove/i.test(S.parts[pi].name))continue;
+  for(const pi of active){if(!/(^|[^a-z])(arm|glove)([^a-z]|$)/i.test(S.parts[pi].name))continue; /* whole word: "Starman" holds "arm" */
     const g=pieceGeo(pi,null),gf=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
     let z0=Infinity,z1=-Infinity;for(let t=0;t<n;t++){z0=Math.min(z0,gf.c[t*3+2]);z1=Math.max(z1,gf.c[t*3+2]);}
     const lo=new Map();for(let t=0;t<n;t++)if(gf.c[t*3+2]<z0+0.1*(z1-z0))lo.set(S.label[o+t],(lo.get(S.label[o+t])||0)+A[o+t]);
     let B=-1,bv=0;for(const [L,x] of lo)if(x>bv){bv=x;B=L;}if(B<0)continue;
     const ed=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==B)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const L=S.label[o+u];if(L!==B)ed.set(L,(ed.get(L)||0)+1);}}
     let G=-1,gv=0;for(const [L,x] of ed)if(x>gv){gv=x;G=L;}if(G<0)continue;
+    /* only a narrow band (a cuff) between glove and sleeve carries piping; a sleeve straight onto the glove has none */
+    {let ag=0,at=0;for(let t=0;t<n;t++){at+=A[o+t];if(S.label[o+t]===G)ag+=A[o+t];}if(ag>0.2*at)continue;}
     /* raise over 1.2 mm, on the glove only */
     const cell=1.2,grid=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);
     for(let t=0;t<n;t++){if(S.label[o+t]!==B&&S.label[o+t]!==G)continue;const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
@@ -479,7 +526,7 @@ function pinColors(active,hid,regM){
     for(let i=0;i<n;i++)if(!hid[o+i])return false;return true;};
   const pins=active.filter(isPin),others=active.filter(pi=>!pins.includes(pi)),tal=new Map();
   for(const pi of pins){const nm=nameOf(pi),side=/left/.test(nm)?"left":/right/.test(nm)?"right":"";
-    const joint=/knee/.test(nm)?/calf|thigh|shin|knee/:/elbow/.test(nm)?/arm|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
+    const joint=/knee/.test(nm)?/calf|thigh|shin|knee/:/elbow/.test(nm)?/(^|[^a-z])arm([^a-z]|$)|elbow|bicep|hand/:/hip/.test(nm)?/thigh|leg|torso|hip/:null;
     let cand=others.filter(q=>(!joint||joint.test(nameOf(q)))&&(!side||nameOf(q).includes(side)));
     if(!cand.length)cand=others.filter(q=>!joint||joint.test(nameOf(q)));
     if(!cand.length)cand=others;
@@ -1237,46 +1284,66 @@ async function readPhoto(file){
 }
 /* the paints, read off the photos: the figure's pixels (not edges, not the backdrop) grouped by color.
    A darker twin of a color is its shadow, a paler one its shine: both fold into it */
+window._spcPhotoPal=f=>photoPalette(f);
 async function photoPalette(files){
-  const Ls=[],Rs=[];for(const f of files.slice(0,4)){const ph=await readPhoto(f);
-    for(let y=0;y<ph.H;y+=2)for(let x=0;x<ph.W;x+=2){const j=y*ph.W+x;if(!ph.fg[j]||ph.edge[j]>10)continue;Ls.push(ph.L[j*3],ph.L[j*3+1],ph.L[j*3+2]);Rs.push(ph.rgb[j*3],ph.rgb[j*3+1],ph.rgb[j*3+2]);}}
-  const N=Ls.length/3;if(N<100)return [];const L=Float32Array.from(Ls),Wt=new Float32Array(N).fill(1),cents=C.kmeans(L,Wt,14,C.RNG(7));
+  const Ls=[],Rs=[],Pos=[],dims=[];for(const f of files.slice(0,6)){const ph=await readPhoto(f),pi2=dims.length;dims.push([Math.ceil(ph.W/2),Math.ceil(ph.H/2)]);
+    for(let y=0;y<ph.H;y+=2)for(let x=0;x<ph.W;x+=2){const j=y*ph.W+x;if(!ph.fg[j]||ph.edge[j]>10)continue;Ls.push(ph.L[j*3],ph.L[j*3+1],ph.L[j*3+2]);Rs.push(ph.rgb[j*3],ph.rgb[j*3+1],ph.rgb[j*3+2]);Pos.push(pi2,x>>1,y>>1);}}
+  const N=Ls.length/3;if(N<100)return [];const L=Float32Array.from(Ls);
+  /* k-means seeded far apart, so a small but distinct paint (a face, an eye) gets its own center */
+  const K=24,cents=[[L[0],L[1],L[2]]],dmin=new Float32Array(N).fill(Infinity),step0=Math.max(1,Math.floor(N/60000));
+  while(cents.length<K){const c=cents[cents.length-1];let bi=0,bd=-1;for(let i=0;i<N;i+=step0){const d=(L[i*3]-c[0])**2+(L[i*3+1]-c[1])**2+(L[i*3+2]-c[2])**2;if(d<dmin[i])dmin[i]=d;if(dmin[i]>bd){bd=dmin[i];bi=i;}}cents.push([L[bi*3],L[bi*3+1],L[bi*3+2]]);}
+  for(let it=0;it<12;it++){const acc=cents.map(()=>[0,0,0,0]);for(let i=0;i<N;i+=step0){let b=0,bd=Infinity;for(let c=0;c<K;c++){const d=(L[i*3]-cents[c][0])**2+(L[i*3+1]-cents[c][1])**2+(L[i*3+2]-cents[c][2])**2;if(d<bd){bd=d;b=c;}}const a=acc[b];a[0]+=L[i*3];a[1]+=L[i*3+1];a[2]+=L[i*3+2];a[3]++;}
+    acc.forEach((a,c)=>{if(a[3])cents[c]=[a[0]/a[3],a[1]/a[3],a[2]/a[3]];});}
   const cl=cents.map(()=>({r:0,g:0,b:0,n:0}));
-  for(let i=0;i<N;i++){let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(L[i*3]-cents[c][0])**2+(L[i*3+1]-cents[c][1])**2+(L[i*3+2]-cents[c][2])**2;if(d<bd){bd=d;b=c;}}const q=cl[b];q.r+=Rs[i*3];q.g+=Rs[i*3+1];q.b+=Rs[i*3+2];q.n++;}
+  const asg=new Int16Array(N);
+  for(let i=0;i<N;i++){let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(L[i*3]-cents[c][0])**2+(L[i*3+1]-cents[c][1])**2+(L[i*3+2]-cents[c][2])**2;if(d<bd){bd=d;b=c;}}asg[i]=b;const q=cl[b];q.r+=Rs[i*3];q.g+=Rs[i*3+1];q.b+=Rs[i*3+2];q.n++;}
+  /* how solid each color is in the photos: a blur between two paints is a thin seam, a paint fills areas */
+  const grids=dims.map(([w,h])=>new Int16Array(w*h).fill(-1));for(let i=0;i<N;i++){const [p,x,y]=[Pos[i*3],Pos[i*3+1],Pos[i*3+2]];grids[p][y*dims[p][0]+x]=asg[i];}
+  const solidOf=ks=>{const K=new Set(ks);let tot=0,inn=0;grids.forEach((g,p)=>{const [w,h]=dims[p];for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++){const c=g[y*w+x];if(c<0||!K.has(c))continue;tot++;
+      let all=true;for(const [dx,dy] of [[2,0],[-2,0],[0,2],[0,-2]]){const c2=g[(y+dy)*w+x+dx];if(c2<0||!K.has(c2)){all=false;break;}}if(all)inn++;}});return tot?inn/tot:0;};
   let G=cl.map((q,k)=>({rgb:q.n?[q.r/q.n/255,q.g/q.n/255,q.b/q.n/255]:[0,0,0],area:q.n,ks:[k]})).filter(q=>q.area>0);
   const twin=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb);
-    if(C.dE(a,b)<10)return true;
+    if(C.dE(a,b)<(a[0]<35&&b[0]<35?6:10))return true; /* among darks a small step (black to brown) is a different paint */
     const [big,small,lb,ls]=A.area>=B.area?[A,B,a,b]:[B,A,b,a],cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);
+    {let dh0=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh0>180)dh0=360-dh0;if(dh0<12&&cS>25&&cB>25&&Math.min(cS,cB)>0.75*Math.max(cS,cB)&&Math.abs(ls[0]-lb[0])<30)return true;} /* the same paint lit and shaded */
     if(small.area>0.5*big.area||cB<20)return false;
     let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;
-    if(dh<14&&ls[0]<lb[0]-8)return true;          /* shadow */
-    if(dh<10&&ls[0]>lb[0]+8&&cS<cB)return true;   /* shine */
+    if(dh<14&&ls[0]<lb[0]-8&&cS>0.5*cB)return true;          /* shadow: darker, still as colored */
+    if(dh<10&&ls[0]>lb[0]+8&&cS<cB&&cS>0.6*cB)return true;   /* shine: lighter, still as colored */
     return false;};
   /* a black and its sheen: both nearly gray, the darker one very dark */
   const sheen=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb),ca=Math.hypot(a[1],a[2]),cb=Math.hypot(b[1],b[2]);
-    if(ca>14||cb>14)return false;const [dk,lt]=a[0]<=b[0]?[a,b]:[b,a],[DK,LT]=a[0]<=b[0]?[A,B]:[B,A];return dk[0]<32&&lt[0]<50&&LT.area<1.5*DK.area;}; /* a silver (lighter than this) is its own paint */
+    if(ca>6||cb>6||a[2]>1.5||b[2]>1.5)return false;const [dk,lt]=a[0]<=b[0]?[a,b]:[b,a],[DK,LT]=a[0]<=b[0]?[A,B]:[B,A];return dk[0]<25&&lt[0]<36&&LT.area<2*DK.area;}; /* only cool/neutral darks: a warm dark (brown hair) is its own paint; lighter grays are sorted out in the photo itself */ /* a silver (lighter than this) is its own paint */
   /* pale gray glare on a colored paint: lighter, much grayer, and smaller */
   const glare=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb);const [big,sm,lb,ls]=A.area>=B.area?[A,B,a,b]:[B,A,b,a];
-    const cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);if(cB<25||sm.area>0.35*big.area||ls[0]<lb[0]+10)return false;
-    let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;return dh<35&&cS>0.2*cB;};
-  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])||sheen(G[i],G[j])||glare(G[i],G[j])){m=[i,j];break;}
-    if(!m)break;const A=G[m[0]],B=G[m[1]],[big,small]=A.area>=B.area?[A,B]:[B,A];big.area+=small.area;big.ks.push(...small.ks);G=G.filter(x=>x!==small);}
+    const cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);if(cB<25||sm.area>0.35*big.area||ls[0]<lb[0]+10||ls[0]<75)return false; /* glare is near white; skin (darker) is a paint */
+    let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;if(!(dh<15&&cS>0.15*cB&&cS<0.45*cB))return false;if(sm.solid==null)sm.solid=solidOf(sm.ks);return sm.solid<0.45;}; /* glare is streaks and spots; a solid pale area (a face) is skin */ /* skin next to red is no glare: its hue is off */
+  window._spcPal0=G.map(g=>C.rgb2hex(g.rgb)+' '+g.area);window._spcMg=[];
+  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])||sheen(G[i],G[j])||glare(G[i],G[j])){m=[i,j];window._spcMg.push(C.rgb2hex(G[i].rgb)+'+'+C.rgb2hex(G[j].rgb)+(twin(G[i],G[j])?'T':sheen(G[i],G[j])?'S':'G'));break;}
+    if(!m)break;const A=G[m[0]],B=G[m[1]],[big,small]=A.area>=B.area?[A,B]:[B,A];
+    /* a black is its darker tone: the lighter one is light on its gloss */
+    {const lb=C.lab(...big.rgb),ls=C.lab(...small.rgb);if(Math.hypot(lb[1],lb[2])<8&&Math.hypot(ls[1],ls[2])<8&&lb[0]<40&&ls[0]<lb[0])big.rgb=small.rgb;}
+    big.area+=small.area;big.ks.push(...small.ks);G=G.filter(x=>x!==small);}
   /* a color that lies between two others and covers less than either is where they blur together (orange
      between red and gold): its pixels go to the nearer of the two */
   for(let again=true;again;){again=false;const lb=G.map(g=>C.lab(...g.rgb));
-    for(let x=0;x<G.length&&!again;x++)for(let a=0;a<G.length&&!again;a++)for(let b=a+1;b<G.length;b++){if(a===x||b===x||G[x].area>=Math.min(G[a].area,G[b].area))continue;
+    for(let x=0;x<G.length&&!again;x++)for(let a=0;a<G.length&&!again;a++)for(let b=a+1;b<G.length;b++){if(a===x||b===x||G[x].area>=Math.min(G[a].area,G[b].area))continue;if(Math.hypot(lb[x][1],lb[x][2])<12)continue;if(G[x].solid==null)G[x].solid=solidOf(G[x].ks);if(G[x].solid>0.45)continue; /* a solid area (skin) is a paint, not a seam */
       const A=lb[a],B=lb[b],X=lb[x],AB=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],n2=AB[0]**2+AB[1]**2+AB[2]**2;if(n2<100)continue;
       const t=((X[0]-A[0])*AB[0]+(X[1]-A[1])*AB[1]+(X[2]-A[2])*AB[2])/n2;if(t<0.15||t>0.85)continue;
       if(Math.hypot(A[0]+t*AB[0]-X[0],A[1]+t*AB[1]-X[1],A[2]+t*AB[2]-X[2])>12)continue;
-      const to=t<0.5?G[a]:G[b];to.area+=G[x].area;to.ks.push(...G[x].ks);G.splice(x,1);again=true;break;}}
+      const to=t<0.5?G[a]:G[b];window._spcMg&&window._spcMg.push('blend '+C.rgb2hex(G[x].rgb));to.area+=G[x].area;to.ks.push(...G[x].ks);G.splice(x,1);again=true;break;}}
   const tot=G.reduce((s,q)=>s+q.area,0);
-  const keep=G.filter(q=>q.area>=0.004*tot).sort((a,b)=>b.area-a.area),out=keep.map(q=>q.rgb);
+  const big0=G.filter(q=>q.area>=0.004*tot),keep=G.filter(q=>q.area>=0.004*tot||(q.area>=0.0012*tot&&big0.every(b=>C.dE(C.lab(...b.rgb),C.lab(...q.rgb))>18))).sort((a,b)=>b.area-a.area) /* a small paint unlike every other (a face) stays */,out=keep.map(q=>q.rgb);
   /* every k-means color points at the paint it ended up in: a photo pixel reads as its paint, glare and sheen included */
   const parent=new Int32Array(cents.length).fill(-1);keep.forEach((q,i)=>q.ks.forEach(k=>parent[k]=i));
   const kl=keep.map(q=>C.lab(...q.rgb));for(let k=0;k<cents.length;k++)if(parent[k]<0){let b=0,bd=Infinity;kl.forEach((l,i)=>{const d=C.dE(l,cents[k]);if(d<bd){bd=d;b=i;}});parent[k]=b;}
   out.classify=(l0,l1,l2)=>{let b=0,bd=Infinity;for(let c=0;c<cents.length;c++){const d=(l0-cents[c][0])**2+(l1-cents[c][1])**2+(l2-cents[c][2])**2;if(d<bd){bd=d;b=c;}}return parent[b];};
   return out;
 }
+/* the figure seen from its side: camera on +x (d=1) or -x (d=-1). Same layout as figView, with y across */
+function figViewSide(fv,d){const sw=fv.map(({v,f})=>{const w=new Float32Array(v.length);for(let i=0;i<v.length;i+=3){w[i]=d*v[i+1];w[i+1]=-d*v[i];w[i+2]=v[i+2];}return {v:w,f};});
+  /* in the swapped frame x across is d*y and the camera sits on -y: figView(.., -1) */
+  const V=figView(sw,-1);V.side=d;return V;}
 /* the figure seen from the front (d=-1) or the back (d=+1): a depth map */
 function figView(fv,d){
   let X0=Infinity,X1=-Infinity,Z0=Infinity,Z1=-Infinity;fv.forEach(({v})=>{for(let i=0;i<v.length;i+=3){X0=Math.min(X0,v[i]);X1=Math.max(X1,v[i]);Z0=Math.min(Z0,v[i+2]);Z1=Math.max(Z1,v[i+2]);}});
@@ -1299,27 +1366,40 @@ async function photoProject(files,fig,active,regM){
   const photos=[];for(const f of files.slice(0,6))photos.push(await readPhoto(f));
   const iF=photos.findIndex(ph=>/front/i.test(ph.name)),iB=photos.findIndex(ph=>/back|rear|behind/i.test(ph.name));
   const use=[[iF>=0?iF:0,-1]];if(iB>=0&&iB!==use[0][0])use.push([iB,1]);else if(iF<0&&photos.length===2)use.push([1,1]);
+  /* side photos (left / right in the name) come after front and back, which tell which side each one shows */
+  const sides=photos.map((ph,i)=>i).filter(i=>/left|right|side/i.test(photos[i].name)&&!use.some(u2=>u2[0]===i));
   const rgb=new Float32Array(S.nFaces*3).fill(-1),wt=new Float32Array(S.nFaces);let pal=null;try{pal=await photoPalette(files);}catch(e){}
   /* each photo pixel read as a paint. Glare on a gloss black reads as a gray paint (silver): a gray patch that is
      mostly ringed by black, within a few percent of the photo, is the black's glare. A silver belt is wide and stays */
   const cmaps=photos.map(()=>null);
   const classOf=(pIdx,j)=>{if(!cmaps[pIdx]){const ph=photos[pIdx],W=ph.W,H=ph.H,cm=new Int16Array(W*H).fill(-1);
       for(let i=0;i<W*H;i++)if(ph.fg[i])cm[i]=pal.classify(ph.L[i*3],ph.L[i*3+1],ph.L[i*3+2]);
-      const pl=pal.map(c=>C.lab(...c)),gray=pl.map(l=>Math.hypot(l[1],l[2])<12&&l[0]>45);let blk=-1,bl=Infinity;pl.forEach((l,i)=>{if(Math.hypot(l[1],l[2])<12&&l[0]<bl){bl=l[0];blk=i;}});
-      if(blk>=0&&bl<35&&gray.some(x=>x)){const r=Math.max(4,Math.round(0.02*H)),I=(c)=>{const S2=new Int32Array((W+1)*(H+1));for(let y=0;y<H;y++){let run=0;for(let x=0;x<W;x++){run+=cm[y*W+x]===c?1:0;S2[(y+1)*(W+1)+x+1]=S2[y*(W+1)+x+1]+run;}}return S2;};
+      const pl=pal.map(c=>C.lab(...c)),gray=pl.map(l=>Math.hypot(l[1],l[2])<10&&l[0]>38),dark=pl.map((l,i)=>!gray[i]&&l[0]<40&&Math.hypot(l[1],l[2])<20);
+      if(dark.some(x=>x)&&gray.some(x=>x)){const r=Math.max(4,Math.round(0.02*H)),I=(c)=>{const S2=new Int32Array((W+1)*(H+1));for(let y=0;y<H;y++){let run=0;for(let x=0;x<W;x++){run+=cm[y*W+x]===c?1:0;S2[(y+1)*(W+1)+x+1]=S2[y*(W+1)+x+1]+run;}}return S2;};
         const box=(S2,x,y)=>{const x0=Math.max(0,x-r),y0=Math.max(0,y-r),x1=Math.min(W,x+r+1),y1=Math.min(H,y+r+1);return S2[y1*(W+1)+x1]-S2[y0*(W+1)+x1]-S2[y1*(W+1)+x0]+S2[y0*(W+1)+x0];};
-        const Sb=I(blk),Sg=new Map();const out=cm.slice();
-        for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,c=cm[i];if(c<0||!gray[c])continue;if(!Sg.has(c))Sg.set(c,I(c));const nb=box(Sb,x,y),ng=box(Sg.get(c),x,y);if(nb>1.2*ng)out[i]=blk;}
+        const Sd=new Map(),Sg=new Map();pl.forEach((_,i)=>{if(dark[i])Sd.set(i,I(i));else if(gray[i])Sg.set(i,I(i));});const out=cm.slice();
+        for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,c=cm[i];if(c<0||!gray[c])continue;const ng=box(Sg.get(c),x,y);let bd=-1,bn=0;for(const [k,S2] of Sd){const nk=box(S2,x,y);if(nk>bn){bn=nk;bd=k;}}if(bd>=0&&bn>1.2*ng)out[i]=bd;}
         cmaps[pIdx]=out;}else cmaps[pIdx]=cm;}
     return cmaps[pIdx][j];};
-  for(const [pIdx,d] of use){const ph=photos[pIdx],V=views[d],[px0,py0,px1,py1]=ph.box,s=(py1-py0)/Math.max(1,V.fy1-V.fy0),pcx=(px0+px1)/2,fcx=(V.fx0+V.fx1)/2;
-    for(const pi of active){const g=pieceGeo(pi,regM),o=S.offs[pi];
-      for(let t=0;t<g.n;t++){const cs=g.fn[t*3+1]*d;if(cs<0.15||cs<=wt[o+t])continue;const X=g.c[t*3],Y=g.c[t*3+1],Z=g.c[t*3+2],rx=Math.round(V.sx(X)),ry=Math.round(V.sy(Z));
-        if(rx<0||ry<0||rx>=V.RW||ry>=V.RH||-Y*d>V.dep[ry*V.RW+rx]+2)continue;
-        const x=Math.round(pcx+(V.sx(X)-fcx)*s),y=Math.round(py0+(V.sy(Z)-V.fy0)*s);if(x<0||y<0||x>=ph.W||y>=ph.H)continue;const j=y*ph.W+x;if(!ph.fg[j])continue;
-        wt[o+t]=cs;if(pal&&pal.classify){const c=pal[classOf(pIdx,j)];for(let k=0;k<3;k++)rgb[(o+t)*3+k]=c[k];}
-        else for(let k=0;k<3;k++)rgb[(o+t)*3+k]=ph.rgb[j*3+k]/255;}}
-    await tick();}
+  /* a view: front/back (axis y) or side (axis x). For a face: where it lands across, its depth, how squarely it faces the camera */
+  const geos=active.map(pi=>pieceGeo(pi,regM));
+  const viewOf=(axis,d)=>{if(axis==="y")return {V:views[d],h:(X,Y)=>X,dp:(X,Y)=>-Y*d,cs:(g,t)=>g.fn[t*3+1]*d};
+    const V=figViewSide(fv,d);return {V,h:(X,Y)=>d*Y,dp:(X,Y)=>-d*X,cs:(g,t)=>g.fn[t*3]*d};};
+  const paint=async(pIdx,vw,dry)=>{const ph=photos[pIdx],V=vw.V,[px0,py0,px1,py1]=ph.box,s=(py1-py0)/Math.max(1,V.fy1-V.fy0),pcx=(px0+px1)/2,fcx=(V.fx0+V.fx1)/2;let agree=0,n=0;
+    for(const g of geos){const o=S.offs[g.pi];
+      for(let t=0;t<g.n;t++){const cs=vw.cs(g,t);if(cs<0.15)continue;if(!dry&&cs<=wt[o+t])continue;const X=g.c[t*3],Y=g.c[t*3+1],Z=g.c[t*3+2],H=vw.h(X,Y),rx=Math.round(V.sx(H)),ry=Math.round(V.sy(Z));
+        if(rx<0||ry<0||rx>=V.RW||ry>=V.RH||vw.dp(X,Y)>V.dep[ry*V.RW+rx]+4)continue; /* a part may sit a few mm inside the whole figure */
+        const x=Math.round(pcx+(V.sx(H)-fcx)*s),y=Math.round(py0+(V.sy(Z)-V.fy0)*s);if(x<0||y<0||x>=ph.W||y>=ph.H)continue;const j=y*ph.W+x;if(!ph.fg[j])continue;
+        const c=pal&&pal.classify?pal[classOf(pIdx,j)]:[ph.rgb[j*3]/255,ph.rgb[j*3+1]/255,ph.rgb[j*3+2]/255];
+        if(dry){if(wt[o+t]>0.2){n++;if(Math.abs(c[0]-rgb[(o+t)*3])+Math.abs(c[1]-rgb[(o+t)*3+1])+Math.abs(c[2]-rgb[(o+t)*3+2])<0.15)agree++;}continue;}
+        wt[o+t]=cs;for(let k=0;k<3;k++)rgb[(o+t)*3+k]=c[k];}}
+    await tick();return n?agree/n:0;};
+  if(pal&&pal.classify)for(let i=0;i<photos.length;i++){classOf(i,0);await tick();}
+  for(const [pIdx,d] of use)await paint(pIdx,viewOf("y",d),false);
+  /* each side photo: whichever side of the figure it agrees with where front/back already saw */
+  const sideUse=[];for(const i of sides){const a=await paint(i,viewOf("x",1),true),b=await paint(i,viewOf("x",-1),true);sideUse.push([i,a>=b?1:-1,Math.max(a,b)]);}
+  (window._spcDbg=window._spcDbg||{}).sides=sideUse.map(([i,d,a])=>photos[i].name+":"+d+":"+a.toFixed(2));
+  if(!window._spcNoSides)for(const [i,d,a] of sideUse)if(a>0.3)await paint(i,viewOf("x",d),false);
   /* unseen faces: the nearest seen face's color */
   for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],q=[];for(let t=0;t<n;t++)if(rgb[(o+t)*3]>=0)q.push(t);
     for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u2=nb[t*3+e];if(u2<0||rgb[(o+u2)*3]>=0)continue;for(let k=0;k<3;k++)rgb[(o+u2)*3+k]=rgb[(o+t)*3+k];q.push(u2);}}}

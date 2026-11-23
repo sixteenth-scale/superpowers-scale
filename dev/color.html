@@ -14,12 +14,12 @@
           </div>
           <div id="spcDropF" class="drop" tabindex="0" role="button" aria-label="Add the whole figure">
             <b>2 · Whole figure <i class="spc-opt">only if 1 is parted out</i></b>
-            <span>The one-piece figure the parts were cut from. Meshy paints this; the parts are found on it.</span>
+            <span>The one-piece figure the parts were cut from. The photos are painted onto it, and each part is found on it.</span>
             <input id="spcFileF" type="file" accept=".3mf,.stl" hidden>
           </div>
           <div id="spcDropI" class="drop" tabindex="0" role="button" aria-label="Add reference images or a colored model">
             <b>3 · Reference art</b>
-            <span>Front and back photos (up to 4), plus the colored model if you have one — a GLB from Meshy, or a painted 3MF. The photos decide the final colors wherever they can see.</span>
+            <span>Front, back, left and right photos — put the side in each file name. A colored model (a GLB or a painted 3MF) is optional. The photos decide the colors wherever they can see.</span>
             <input id="spcFileI" type="file" accept="image/*,.glb,.3mf" multiple hidden>
           </div>
         </div>
@@ -31,7 +31,7 @@
           <div id="spcTip" class="spc-tip">Click the model to pick a sculpted area (or a color patch) and change its paint</div>
           <div class="spc-tools">
             <button class="catbtn" id="spcShowFil" aria-pressed="true">Filaments</button>
-            <button class="catbtn" id="spcShowRaw" aria-pressed="false">Meshy colors</button>
+            <button class="catbtn" id="spcShowRaw" aria-pressed="false">Photo colors</button>
             <span class="spc-sep"></span>
             <button class="catbtn" id="spcModeSel" aria-pressed="true" title="Click a color on the model to change that patch or that color everywhere">Pick region</button>
             <button class="catbtn" id="spcModePaint" aria-pressed="false" title="Click a patch to repaint just that patch">Paint patch</button>
@@ -56,13 +56,10 @@
         <div id="spcLog" class="spc-log"></div>
       </div>
       <div class="mside">
-        <p class="mhelp">Meshy paints the figure from your art, the colors are moved onto
-        <b>your</b> geometry, and every color is snapped to a filament on your shelf.
-        Anything without a close match is flagged. Fix any region before you save.</p>
-        <div class="field">
-          <label class="lbl" for="spcKey">Meshy API key <span class="hint">kept in this browser only</span></label>
-          <input id="spcKey" type="password" autocomplete="off" placeholder="msy_…">
-        </div>
+        <p class="mhelp">Your reference photos are painted onto <b>your</b> geometry, and every
+        color is snapped to a filament on your shelf. Anything without a close match is flagged.
+        Fix any region before you save.</p>
+        <input id="spcKey" type="hidden" value="">
         <div class="spc-row">
           <div class="field"><label class="lbl" for="spcSlots">Max filaments</label>
             <input id="spcSlots" type="number" min="1" max="16" step="1" value="8"></div>
