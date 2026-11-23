@@ -550,7 +550,7 @@ function shineToBlack(active){const rep=[];const pl=S.regions.map(r=>C.lab(...r.
   const B=blk.sort((a,b)=>ar[b]-ar[a])[0];
   for(let x=0;x<R;x++){if(x===B||!ar[x]||S.regions[x].hair)continue;const l=pl[x];if(Math.hypot(l[1],l[2])>8||l[0]>62)continue;
     let top=-1,tv=0,tot=0;for(const [k,v] of bord[x]){tot+=v;if(v>tv){tv=v;top=k;}}
-    if(top!==B||ar[x]>0.4*ar[B])continue;
+    if(ar[x]>0.4*ar[B])continue; /* (a dark gray anywhere on the figure, not just against the black) */
     for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let t=0;t<n;t++)if(S.label[o+t]===x)S.label[o+t]=B;}
     rep.push(C.rgb2hex(S.regions[x].rgb)+"→black");}
   (window._spcDbg=window._spcDbg||{}).shine=rep;}
