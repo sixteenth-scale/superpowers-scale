@@ -10767,7 +10767,7 @@ async function photoPalette(files){
     {let dh0=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh0>180)dh0=360-dh0;if(dh0<12&&cS>25&&cB>25&&Math.min(cS,cB)>0.75*Math.max(cS,cB)&&Math.abs(ls[0]-lb[0])<30)return true;} /* the same paint lit and shaded */
     if(small.area>0.5*big.area||cB<20)return false;
     let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;
-    if(dh<14&&ls[0]<lb[0]-8&&cS>0.5*cB)return true;          /* shadow: darker, still as colored */
+    if(dh<14&&ls[0]<lb[0]-8&&cS>0.62*cB)return true;          /* shadow: darker, still as colored */
     if(dh<10&&ls[0]>lb[0]+8&&cS<cB&&cS>0.6*cB)return true;   /* shine: lighter, still as colored */
     return false;};
   /* a black and its sheen: both nearly gray, the darker one very dark */
@@ -10777,8 +10777,7 @@ async function photoPalette(files){
   const glare=(A,B)=>{const a=C.lab(...A.rgb),b=C.lab(...B.rgb);const [big,sm,lb,ls]=A.area>=B.area?[A,B,a,b]:[B,A,b,a];
     const cB=Math.hypot(lb[1],lb[2]),cS=Math.hypot(ls[1],ls[2]);if(cB<25||sm.area>0.35*big.area||ls[0]<lb[0]+10||ls[0]<75)return false; /* glare is near white; skin (darker) is a paint */
     let dh=Math.abs(Math.atan2(lb[2],lb[1])-Math.atan2(ls[2],ls[1]))*180/Math.PI;if(dh>180)dh=360-dh;if(!(dh<15&&cS>0.15*cB&&cS<0.45*cB))return false;if(sm.solid==null)sm.solid=solidOf(sm.ks);return sm.solid<0.45;}; /* glare is streaks and spots; a solid pale area (a face) is skin */ /* skin next to red is no glare: its hue is off */
-  window._spcPal0=G.map(g=>C.rgb2hex(g.rgb)+' '+g.area);window._spcMg=[];
-  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])||sheen(G[i],G[j])||glare(G[i],G[j])){m=[i,j];window._spcMg.push(C.rgb2hex(G[i].rgb)+'+'+C.rgb2hex(G[j].rgb)+(twin(G[i],G[j])?'T':sheen(G[i],G[j])?'S':'G'));break;}
+  for(;;){let m=null;for(let i=0;i<G.length&&!m;i++)for(let j=i+1;j<G.length;j++)if(twin(G[i],G[j])||sheen(G[i],G[j])||glare(G[i],G[j])){m=[i,j];break;}
     if(!m)break;const A=G[m[0]],B=G[m[1]],[big,small]=A.area>=B.area?[A,B]:[B,A];
     /* a black is its darker tone: the lighter one is light on its gloss */
     {const lb=C.lab(...big.rgb),ls=C.lab(...small.rgb);if(Math.hypot(lb[1],lb[2])<8&&Math.hypot(ls[1],ls[2])<8&&lb[0]<40&&ls[0]<lb[0])big.rgb=small.rgb;}
@@ -10786,11 +10785,11 @@ async function photoPalette(files){
   /* a color that lies between two others and covers less than either is where they blur together (orange
      between red and gold): its pixels go to the nearer of the two */
   for(let again=true;again;){again=false;const lb=G.map(g=>C.lab(...g.rgb));
-    for(let x=0;x<G.length&&!again;x++)for(let a=0;a<G.length&&!again;a++)for(let b=a+1;b<G.length;b++){if(a===x||b===x||G[x].area>=Math.min(G[a].area,G[b].area))continue;if(Math.hypot(lb[x][1],lb[x][2])<12)continue;if(G[x].solid==null)G[x].solid=solidOf(G[x].ks);if(G[x].solid>0.45)continue; /* a solid area (skin) is a paint, not a seam */
+    for(let x=0;x<G.length&&!again;x++)for(let a=0;a<G.length&&!again;a++)for(let b=a+1;b<G.length;b++){if(a===x||b===x||G[x].area>=Math.min(G[a].area,G[b].area))continue;if(Math.hypot(lb[x][1],lb[x][2])<12)continue;if(G[x].solid==null)G[x].solid=solidOf(G[x].ks);if(G[x].solid>0.3)continue; /* a solid area (skin) is a paint, not a seam */
       const A=lb[a],B=lb[b],X=lb[x],AB=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],n2=AB[0]**2+AB[1]**2+AB[2]**2;if(n2<100)continue;
       const t=((X[0]-A[0])*AB[0]+(X[1]-A[1])*AB[1]+(X[2]-A[2])*AB[2])/n2;if(t<0.15||t>0.85)continue;
       if(Math.hypot(A[0]+t*AB[0]-X[0],A[1]+t*AB[1]-X[1],A[2]+t*AB[2]-X[2])>12)continue;
-      const to=t<0.5?G[a]:G[b];window._spcMg&&window._spcMg.push('blend '+C.rgb2hex(G[x].rgb));to.area+=G[x].area;to.ks.push(...G[x].ks);G.splice(x,1);again=true;break;}}
+      const to=t<0.5?G[a]:G[b];to.area+=G[x].area;to.ks.push(...G[x].ks);G.splice(x,1);again=true;break;}}
   const tot=G.reduce((s,q)=>s+q.area,0);
   const big0=G.filter(q=>q.area>=0.004*tot),keep=G.filter(q=>q.area>=0.004*tot||(q.area>=0.0012*tot&&big0.every(b=>C.dE(C.lab(...b.rgb),C.lab(...q.rgb))>18))).sort((a,b)=>b.area-a.area) /* a small paint unlike every other (a face) stays */,out=keep.map(q=>q.rgb);
   /* every k-means color points at the paint it ended up in: a photo pixel reads as its paint, glare and sheen included */
