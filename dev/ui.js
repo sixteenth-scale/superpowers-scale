@@ -537,11 +537,14 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
       const rim=1-mv/Math.max(1,hood.size);
       const votes=new Map();let nv=0;for(const t of hood){if(S.label[o+t]!==M)continue;nv++;const k=near[t];if(k>=0)votes.set(k,(votes.get(k)||0)+1);}
       let P=-1,pv=0;for(const [k,v] of votes){if(k===M||Math.hypot(pl[k][1],pl[k][2])<15||k===S.skinReg)continue;if(v>pv){pv=v;P=k;}}
+      /* (and over the whole 2 mm, counting faces already on that paint: piping that is partly painted already) */
+      let vAll=0;{const va=new Map();for(const t of hood){const k=S.label[o+t]!==M?S.label[o+t]:near[t];if(k>=0&&k!==M)va.set(k,(va.get(k)||0)+1);}
+        let bk=-1,bv=0;for(const [k,v] of va){if(Math.hypot(pl[k][1],pl[k][2])<15||k===S.skinReg)continue;if(v>bv){bv=v;bk=k;}}if(P<0)P=bk;vAll=bk===P?bv/Math.max(1,hood.size):0;}
       const gf=pieceGeo(pi,regM),pts=[];const st=Math.max(1,Math.floor(c.length/40));for(let i=0;i<c.length;i+=st){const t=c[i];pts.push([gf.c[t*3],gf.c[t*3+1],gf.c[t*3+2]]);}
       /* its direction: piping on a limb runs along the limb, not round it (a knee fold, a cuff) */
       const dz=Math.abs(d[0]*ax[0]+d[1]*ax[1]+d[2]*ax[2]);
       if(limb&&dz<0.6)continue;
-      cords.push({c,P,M,v:nv?pv/nv:0,rim,len,pts,ok:false,sc:0});}
+      cords.push({c,P,M,v:nv?pv/nv:0,vAll,rim,len,pts,ok:false,sc:0});}
     cand.set(pi,cords);info.set(pi,{nm,limb,n,o,nb,A,near});}
   /* left and right twins wear the same piping: a cord whose mirror image on the twin is also a cord adds the
      twin's photo evidence to its own (one side's photo often misses the stripe) */
@@ -551,7 +554,7 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
   const done=new Set();
   for(const [a,ca] of cand){if(done.has(a))continue;done.add(a);
     const b=[...cand.keys()].find(q=>q!==a&&!done.has(q)&&side(q)&&side(a)&&side(q)!==side(a)&&base(q)===base(a));
-    if(b==null){for(const k of ca){k.ok=k.P>=0&&k.rim<0.7&&k.v>=0.2;k.sc=k.v;}continue;} /* (no twin: the torso, where piping runs beside the star's own red) */done.add(b);const cb=cand.get(b);
+    if(b==null){for(const k of ca){k.ok=k.P>=0&&(k.v>=0.25||k.vAll>=0.35);k.sc=Math.max(k.v,k.vAll);}continue;} /* (no twin: the torso, where piping runs beside the star's own red) */done.add(b);const cb=cand.get(b);
     /* mirror plane: halfway between the two pieces on the figure */
     const cxOf=pi=>{const gq=pieceGeo(pi,regM);let x=0;for(let t=0;t<gq.n;t++)x+=gq.c[t*3];return x/gq.n;};const fx=(cxOf(a)+cxOf(b))/2;
     for(const k of ca){let best=null,bd=3;for(const q of cb){const d=md(k.pts,q.pts,fx);if(d<bd){bd=d;best=q;}}
@@ -560,7 +563,7 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
     for(const q of cb)if(!q.ok&&q.P>=0&&q.rim<0.4&&q.v>=0.25){q.ok=true;q.sc=q.v;}}
   /* on one piece, a seam the photos back much less than the best cord there (a back seam beside the side piping)
      is not piping (weighed by length, so a short scrap doesn't outvote the long cord) */
-  for(const [pi,all] of cand){const okc=all.filter(k=>k.ok);if(!okc.length)continue;const w=k=>k.sc*Math.min(k.len,20),top=Math.max(...okc.map(w));for(const k of okc)if(w(k)<0.4*top)k.ok=false;
+  for(const [pi,all] of cand){const okc=all.filter(k=>k.ok);if(!okc.length){(window._spcDbg=window._spcDbg||{}).cordCand=((window._spcDbg||{}).cordCand||[]).concat([S.parts[pi].name.replace(/^.*?_\d+_/,'')+'(none):'+all.map(k=>[k.len.toFixed(0),k.v.toFixed(2),k.rim.toFixed(2)].join('/')).join(' ')]);continue;}const w=k=>k.sc*Math.min(k.len,20),top=Math.max(...okc.map(w));for(const k of okc)if(w(k)<0.4*top)k.ok=false;
     (window._spcDbg=window._spcDbg||{}).cordCand=((window._spcDbg||{}).cordCand||[]).concat([S.parts[pi].name.replace(/^.*?_\d+_/,'')+':'+all.map(k=>[k.len.toFixed(0),k.v.toFixed(2),k.rim.toFixed(2),k.sc.toFixed(2),k.ok?1:0].join('/')).join(' ')]);}
   for(const [pi,all] of cand){const {nm,limb,n,o,nb,A}=info.get(pi);const cords=all.filter(k=>k.ok);
     if(!cords.length){rep.push(nm.replace(/^.*?_\d+_/,"")+" no cord");continue;}
@@ -576,7 +579,9 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
         const v=new Map();for(const t of c)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const l=S.label[o+u];if(l!==P&&l>=0)v.set(l,(v.get(l)||0)+1);}
         let b=-1,bv=0;for(const [k,x] of v)if(x>bv){bv=x;b=k;}if(b<0)continue;for(const t of c)if(!S.keep[o+t]){S.label[o+t]=b;cleared++;}}}
     /* paint the cords, and close them (a flat cord shows as two edge lines with its top between) */
-    let painted=0;for(const k of cords){const set=new Uint8Array(n);for(const t of k.c)set[t]=1;
+    /* cords of one paint are closed together: the two edge lines of one flat cord fill in between */
+    let painted=0;const byP=new Map();for(const k of cords){if(!byP.has(k.P))byP.set(k.P,{P:k.P,c:[]});byP.get(k.P).c.push(...k.c);}
+    for(const k of byP.values()){const set=new Uint8Array(n);for(const t of k.c)set[t]=1;
       let fr=k.c.slice();for(let r=0;r<6;r++){const nx=[];for(const t of fr)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!set[u]&&!hid[o+u]){set[u]=2;nx.push(u);}}fr=nx;}
       /* erode the grown rim back one ring: keep grown faces held on 2+ sides */
       for(let it=0;it<6;it++){const drop=[];for(let t=0;t<n;t++){if(set[t]!==2)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&set[u])c2++;}if(c2<3)drop.push(t);}for(const t of drop)set[t]=0;}
