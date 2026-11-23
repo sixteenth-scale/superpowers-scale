@@ -193,7 +193,7 @@ async function run(){
   /* a whole figure exported at another size than its parts (a 50 mm figure for 116 mm parts) is brought to the
      parts' size: their surface area, less the cut faces, matches the figure's */
   if(parted){const sumA=(ps)=>ps.reduce((s,p)=>s+C.areas(p.m,p.M).reduce((a,b)=>a+b,0),0);
-    const ap=sumA(S.parts.filter((p,i)=>i!==S.figPart&&!/rigid|pin|peg|coupon/i.test(p.name))),af=sumA(fig),k=Math.sqrt(ap/af/1.06); /* all the parts in the file, ticked or not */
+    const ap=sumA(S.parts.filter((p,i)=>i!==S.figPart&&!/rigid|pin|peg|coupon|wing|mace|cape|weapon|shield|staff|sword|gun|base|stand/i.test(p.name)&&/head|torso|chest|body|arm|thigh|calf|leg|shin|foot|boot|hand/i.test(p.name))), /* body parts only: accessories don't count */af=sumA(fig),k=Math.sqrt(ap/af/1.06); /* all the parts in the file, ticked or not */
     if(isFinite(k)&&(k>1.25||k<0.8)){let cx0=0,cy0=0,z00=Infinity,nn=0;fig.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
       const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1]; /* about the figure's own feet */fig=fig.map(p=>({...p,M:C.mul4(Sm,p.M)}));log(`The whole figure is ${k>1?"smaller":"larger"} than the parts: scaled ×${k.toFixed(2)} to match.`);
       (window._spcDbg=window._spcDbg||{}).figScale=+k.toFixed(3);}}
