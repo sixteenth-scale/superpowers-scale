@@ -9849,7 +9849,10 @@ async function run(){
   pinColors(active,hid,regM);
   if(!window._spcNoHead)try{headFix(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoShine)shineToBlack(active);
+  if(!window._spcNoCords)try{cordPiping(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -9897,12 +9900,124 @@ function fillHidden(hid){
       patch.forEach(t=>{if(got.has(t))S.label[o+t]=got.get(t);});}
   });
 }
+/* glove and boot tops sit on the sculpted cuff: on an arm or a leg whose lowest part (hand, foot) wears a second
+   paint, the edge of that paint is set on one plane fitted through the edge itself (its average line), and the
+   edge snap after it settles that line onto the sculpted rim. Below the plane is the glove or boot, above it the sleeve; ragged
+   flames either way go. Piping placed on purpose stays. */
+function cuffLine(active,regM,hid){const rep=[];
+  for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|calf|shin|leg|boot)([^a-z]|$)/i.test(nm)||/pin|peg|thigh/i.test(nm))continue;
+    const p=S.parts[pi],g=pieceGeo(pi,regM),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    let zmin=Infinity,tmin=-1;for(let t=0;t<n;t++)if(!hid[o+t]&&g.c[t*3+2]<zmin){zmin=g.c[t*3+2];tmin=t;}if(tmin<0)continue;
+    const P=S.label[o+tmin];if(P<0)continue;
+    /* the paint above it: the most common other paint touching P */
+    const bm=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const l=S.label[o+u];if(l>=0&&l!==P)bm.set(l,(bm.get(l)||0)+1);}}
+    let M=-1,mv=0;for(const [k,v] of bm)if(v>mv){mv=v;M=k;}if(M<0)continue;
+    /* edge height: median z of the P|M edge */
+    const ez=[];for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]===M){ez.push(g.c[t*3+2]);break;}}}
+    if(ez.length<20)continue;ez.sort((a,b)=>a-b);const zm=ez[ez.length>>1];
+    /* the edge faces themselves; a plane through them (refit on the closest part) is the average edge line */
+    let pts=[];for(let t=0;t<n;t++){if(S.label[o+t]!==P&&S.label[o+t]!==M)continue;let on=false;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&S.label[o+u]!==S.label[o+t]&&(S.label[o+u]===P||S.label[o+u]===M)){on=true;break;}}if(on&&Math.abs(g.c[t*3+2]-zm)<5)pts.push(t);}
+    if(pts.length<30){rep.push(nm.replace(/^.*?_\d+_/,"")+" no edge");continue;}
+    const fit=ts=>{let sxx=0,sxy=0,sx=0,syy=0,sy=0,sxz=0,syz=0,sz=0,k=ts.length;for(const t of ts){const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2];sxx+=x*x;sxy+=x*y;sx+=x;syy+=y*y;sy+=y;sxz+=x*z;syz+=y*z;sz+=z;}
+      const Mx=[[sxx,sxy,sx],[sxy,syy,sy],[sx,sy,k]],b=[sxz,syz,sz];const det=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+      const D=det(Mx);if(Math.abs(D)<1e-9)return [0,0,zm];const col=(i)=>Mx.map((r,j)=>r.map((v,c)=>c===i?b[j]:v));return [det(col(0))/D,det(col(1))/D,det(col(2))/D];};
+    let pl=fit(pts);for(let it=0;it<3;it++){const r=pts.map(t=>[Math.abs(g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2])),t]).sort((a,b)=>a[0]-b[0]);pts=r.slice(0,Math.max(30,Math.floor(r.length*0.6))).map(x=>x[1]);pl=fit(pts);}
+    if(Math.hypot(pl[0],pl[1])>0.7){rep.push(nm.replace(/^.*?_\d+_/,"")+" rim too steep");continue;}
+    let ch=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l!==P&&l!==M)continue;if(S.keep&&S.keep[o+t])continue;const h=g.c[t*3+2]-(pl[0]*g.c[t*3]+pl[1]*g.c[t*3+1]+pl[2]);if(Math.abs(h)>3)continue;
+      const want=h<0?P:M;if(l!==want){S.label[o+t]=want;ch++;}if(Math.abs(h)>0.5){S.keep=S.keep||new Uint8Array(S.nFaces);S.keep[o+t]=1;}} /* settled: only the edge's own 0.5 mm is left to the snap */
+    rep.push(nm.replace(/^.*?_\d+_/,"")+" rim z"+(pl[2]).toFixed(1)+" ch"+ch);}
+  (window._spcDbg=window._spcDbg||{}).cuff=rep;}
+/* every color edge onto the sculpt, last: for each pair of paints that meet on a piece, the faces within a few
+   rings of their edge are re-decided by a minimum cut in which cutting across a sculpted crease (the flank of
+   a raised cord, the step of a panel) is cheap and cutting across smooth surface is dear. Each face is pulled a
+   little toward its paint now and toward what the photo shows. That puts ragged edges onto the sculpt's own
+   lines: the inside and outside of piping, a hairline, a cuff. Eyes and piping placed on purpose stay. */
+function edgeSnap(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),RK=+(window._spcSnapRings||8);
+  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area;
+    const bend=surfaceShape(p,nb,C.faceNormals(p.m,p.M),C.xf(p.M,p.m.v)).bend;
+    const pairs=new Map();for(let t=0;t<n;t++){const a=S.label[o+t];if(a<0)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t)continue;const b=S.label[o+u];if(b<0||b===a)continue;const k=Math.min(a,b)*4096+Math.max(a,b);pairs.set(k,(pairs.get(k)||0)+1);}}
+    let mvT=0;
+    for(const [k,cnt] of pairs){if(cnt<20)continue;const a=Math.floor(k/4096),b=k%4096,isAB=t=>{const l=S.label[o+t];return l===a||l===b;};
+      const ring=new Int16Array(n).fill(-1),q=[];
+      for(let t=0;t<n;t++){if(!isAB(t))continue;const l=S.label[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&isAB(u)&&S.label[o+u]!==l){ring[t]=0;q.push(t);break;}}}
+      for(let h=0;h<q.length;h++){const t=q[h];if(ring[t]>=RK)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ring[u]<0&&isAB(u)){ring[u]=ring[t]+1;q.push(u);}}}
+      const idx=new Int32Array(n).fill(-1);q.forEach((t,i)=>idx[t]=i);const N=q.length;if(!N)continue;
+      const sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
+      for(let i=0;i<N;i++){const t=q[i],f=o+t,isA=S.label[f]===a;
+        if(ring[t]>=RK||(S.keep&&S.keep[f])){if(isA)sc[i]=1e9;else tc[i]=1e9;continue;}
+        let pull=isA?0.1:-0.1;if(!hid[f]){const da=Math.hypot(L[f*3]-pl[a][0],L[f*3+1]-pl[a][1],L[f*3+2]-pl[a][2]),db=Math.hypot(L[f*3]-pl[b][0],L[f*3+1]-pl[b][1],L[f*3+2]-pl[b][2]);pull+=0.2*Math.max(-1,Math.min(1,(db-da)/30));}
+        if(pull>0)sc[i]=pull*A[f];else tc[i]=-pull*A[f];}
+      for(let i=0;i<N;i++){const t=q[i];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t||idx[u]<0)continue;const bb=Math.max(bend[t],bend[u]);eu.push(i);ev.push(idx[u]);ew.push(Math.sqrt((A[o+t]+A[o+u])/2)*0.08/(1+(bb/0.03)**2));}}
+      const side=minCut(N,sc,tc,eu,ev,ew);
+      for(let i=0;i<N;i++){const t=q[i],want=side[i]?a:b;if(S.label[o+t]!==want){S.label[o+t]=want;mvT++;}}}
+    rep.push(p.name.replace(/^.*?_\d+_/,"")+" "+mvT);}
+  (window._spcDbg=window._spcDbg||{}).edgeSnap=rep;}
+/* piping that is sculpted: a raised cord. Where the sculpt has one, the cord itself is the stripe, so the paint
+   lands exactly on it, as wide as it is and as far as it runs (to the top of the arm, over the shoulder),
+   whatever the photo smeared around it. A cord is a long, thin run of faces standing proud of the surface
+   0.5 mm round them, measured against the surface 2 mm round them (so the limb's own curve doesn't count). Its
+   paint is the colored paint the photo shows on or beside it. Other small patches of that paint on a limb
+   with a cord (smears off the photo) go back to the limb's paint. Pieces with no sculpted cord fall back to the photo stripes (limbPiping). */
+function cordPiping(active,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=pl.length;S._cordDone=new Set();
+  for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg|torso|chest|body)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
+    const limb=!/(torso|chest|body)/i.test(nm);
+    const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    const gridOf=cell=>{const m=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);for(let t=0;t<n;t++){const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=m.get(k);if(!b){b=[];m.set(k,b);}b.push(t);}
+      return (t,r,fn)=>{const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell),r2=r*r;
+        for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=m.get(K(cx+i,cy+j,cz+k));if(!b)continue;for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz<=r2)fn(u);}}};};
+    const nearA=gridOf(0.5),ras=new Float32Array(n);
+    for(let t=0;t<n;t++){let sw=0,mx=0,my=0,mz=0;nearA(t,0.5,u=>{if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0.3)return;const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;});
+      if(sw>0)ras[t]=(g.c[t*3]-mx/sw)*g.fn[t*3]+(g.c[t*3+1]-my/sw)*g.fn[t*3+1]+(g.c[t*3+2]-mz/sw)*g.fn[t*3+2];}
+    const nearB=gridOf(2),rid=new Float32Array(n);
+    for(let t=0;t<n;t++){let sw=0,sv=0;nearB(t,2,u=>{if(ras[u]>0.05)return;sw+=A[o+u];sv+=ras[u]*A[o+u];});rid[t]=ras[t]-(sw?sv/sw:0);}
+    const T=+(window._spcCordT||0.03),up=new Uint8Array(n);for(let t=0;t<n;t++)up[t]=!hid[o+t]&&rid[t]>T?1:0;
+    /* what the photo shows on each face */
+    const near=new Int32Array(n).fill(-1);
+    for(let t=0;t<n;t++){const i=o+t;if(hid[i])continue;let b=-1,bd=Infinity;for(let r=0;r<R;r++){if(S.regions[r].hair)continue;const d=(L[i*3]-pl[r][0])**2+(L[i*3+1]-pl[r][1])**2+(L[i*3+2]-pl[r][2])**2;if(d<bd){bd=d;b=r;}}near[t]=b;}
+    const seen=new Uint8Array(n),cords=[];
+    for(let s0=0;s0<n;s0++){if(!up[s0]||seen[s0])continue;const c=[s0];seen[s0]=1;let ar=0;
+      for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&up[u]&&!seen[u]){seen[u]=1;c.push(u);}}}
+      if(ar<0.3)continue;
+      let mx=0,my=0,mz=0;for(const t of c){mx+=g.c[t*3];my+=g.c[t*3+1];mz+=g.c[t*3+2];}mx/=c.length;my/=c.length;mz/=c.length;
+      const cv=[0,0,0,0,0,0];for(const t of c){const dx=g.c[t*3]-mx,dy=g.c[t*3+1]-my,dz=g.c[t*3+2]-mz;cv[0]+=dx*dx;cv[1]+=dx*dy;cv[2]+=dx*dz;cv[3]+=dy*dy;cv[4]+=dy*dz;cv[5]+=dz*dz;}
+      let d=[1,0.7,0.4];for(let it=0;it<40;it++){const e=[cv[0]*d[0]+cv[1]*d[1]+cv[2]*d[2],cv[1]*d[0]+cv[3]*d[1]+cv[4]*d[2],cv[2]*d[0]+cv[4]*d[1]+cv[5]*d[2]],m=Math.hypot(...e)||1;d=e.map(x=>x/m);}
+      let lo=Infinity,hi=-Infinity;for(const t of c){const p=(g.c[t*3]-mx)*d[0]+(g.c[t*3+1]-my)*d[1]+(g.c[t*3+2]-mz)*d[2];lo=Math.min(lo,p);hi=Math.max(hi,p);}
+      const len=hi-lo;if(len<4||ar/len>1.2)continue;
+      /* its paint: what the photo shows on and right beside it */
+      const votes=new Map(),cur=new Map();let nv=0;const vis=new Set(c);for(const t of c)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0)vis.add(u);}
+      for(const t of vis){if(near[t]>=0){votes.set(near[t],(votes.get(near[t])||0)+1);nv++;}const l=S.label[o+t];cur.set(l,(cur.get(l)||0)+1);}
+      let M=-1,mv=0;for(const [k,v] of cur)if(v>mv){mv=v;M=k;}
+      let P=-1,pv=0;for(const [k,v] of votes){if(Math.hypot(pl[k][1],pl[k][2])<15||k===S.skinReg)continue;if(v>pv){pv=v;P=k;}}
+      if(P<0||pv<0.25*nv)continue;cords.push({c,P,v:pv/nv,len});}
+    if(!cords.length){rep.push(nm.replace(/^.*?_\d+_/,"")+" no cord");continue;}
+    /* a sculpted seam the photo only half-agrees with (a back seam next to the real piping on the side) is not
+       piping: keep the cords the photo backs nearly as well as the best one */
+    {const keepIt=cords.map(k=>{const rivals=cords.filter(q=>q.len>=0.5*k.len);return k.v>=0.7*Math.max(...rivals.map(q=>q.v));});for(let i=cords.length-1;i>=0;i--)if(!keepIt[i])cords.splice(i,1);} /* against cords at least half as long */
+    S._cordDone.add(pi);S.keep=S.keep||new Uint8Array(S.nFaces);
+    const cordSet=new Uint8Array(n);for(const k of cords)for(const t of k.c)cordSet[t]=1;
+    /* smears of the cord's paint near a cord on a limb (small patches, not a glove or a boot) go back */
+    let cleared=0;if(limb){let tot=0;for(let t=0;t<n;t++)tot+=A[o+t];const Ps=new Set(cords.map(k=>k.P)),sn=new Uint8Array(n);
+      for(let s0=0;s0<n;s0++){const P=S.label[o+s0];if(sn[s0]||!Ps.has(P)||cordSet[s0])continue;const c=[s0];sn[s0]=1;let ar=0;
+        for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!sn[u]&&S.label[o+u]===P){sn[u]=1;c.push(u);}}}
+        if(ar>0.06*tot)continue;
+        /* (any small patch of it on a limb that has a cord: the cord is where that paint goes) */
+        /* back to the paint round it */
+        const v=new Map();for(const t of c)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const l=S.label[o+u];if(l!==P&&l>=0)v.set(l,(v.get(l)||0)+1);}
+        let b=-1,bv=0;for(const [k,x] of v)if(x>bv){bv=x;b=k;}if(b<0)continue;for(const t of c)if(!S.keep[o+t]){S.label[o+t]=b;cleared++;}}}
+    /* paint the cords, and close them (a flat cord shows as two edge lines with its top between) */
+    let painted=0;for(const k of cords){const set=new Uint8Array(n);for(const t of k.c)set[t]=1;
+      let fr=k.c.slice();for(let r=0;r<2;r++){const nx=[];for(const t of fr)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!set[u]&&!hid[o+u]){set[u]=2;nx.push(u);}}fr=nx;}
+      /* erode the grown rim back one ring: keep grown faces held on 2+ sides */
+      for(let it=0;it<2;it++){const drop=[];for(let t=0;t<n;t++){if(set[t]!==2)continue;let c2=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&set[u])c2++;}if(c2<3)drop.push(t);}for(const t of drop)set[t]=0;}
+      for(let t=0;t<n;t++)if(set[t]){S.label[o+t]=k.P;S.keep[o+t]=1;painted++;}}
+    rep.push(nm.replace(/^.*?_\d+_/,"")+" cords"+cords.length+" f"+painted+" cleared"+cleared);}
+  (window._spcDbg=window._spcDbg||{}).cords=rep;}
 /* piping on the limbs: a thin stripe of a second paint running along an arm or leg (red piping on a black
    sleeve). Cleanup passes that tidy edges wear a stripe one or two faces wide away, so it is put back last,
    from the photos: faces now on the limb's main paint whose photo color is nearest another paint, in runs at
    least 6 mm long, trimmed to a 1.4 mm stripe down the run's middle. Specks, blotches and shine don't make long thin runs. */
 function limbPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.lab(...r.rgb)),R=pl.length;
-  for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
+  for(const pi of active){const nm=S.parts[pi].name;if(S._cordDone&&S._cordDone.has(pi))continue;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg|torso|chest|body)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue; /* the torso too: piping over the shoulders */
     const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
     const near=new Int32Array(n).fill(-1);
     for(let t=0;t<n;t++){const i=o+t;if(hid[i])continue;let b=-1,bd=Infinity;for(let r=0;r<R;r++){if(S.regions[r].hair)continue;const d=(L[i*3]-pl[r][0])**2+(L[i*3+1]-pl[r][1])**2+(L[i*3+2]-pl[r][2])**2;if(d<bd){bd=d;b=r;}}near[t]=b;}
@@ -9968,6 +10083,33 @@ function headFix(active,regM,hid,L){const rep=[];
        for(let h=0;h<q2.length;h++){const t=q2[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hair[u]||S.label[o+u]!==F)continue;const i=o+u;
          if(hid[i]||d2(i,hl)<d2(i,sl)){hair[u]=1;q2.push(u);ne++;}}}
        rep.push("edge"+ne);}}
+    /* under the jaw is skin: nothing below the chin and inside the neck's reach is hair (the hair hangs
+       further out). Hidden faces there were only reached through the inside of the hair */
+    {const fz=[];let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+     for(let t=0;t<n;t++){if(hid[o+t])continue;x0=Math.min(x0,g.c[t*3]);x1=Math.max(x1,g.c[t*3]);y0=Math.min(y0,g.c[t*3+1]);y1=Math.max(y1,g.c[t*3+1]);if(S.label[o+t]===F&&!hair[t])fz.push(g.c[t*3+2]);}
+     if(fz.length>50){fz.sort((a,b)=>a-b);const chin=fz[Math.floor(fz.length*0.01)]+0.3,cx=(x0+x1)/2,cy=(y0+y1)/2,rN=0.3*Math.max(x1-x0,y1-y0);let nj=0;
+       for(let t=0;t<n;t++){if(!hair[t]||g.c[t*3+2]>chin)continue;if(Math.hypot(g.c[t*3]-cx,g.c[t*3+1]-cy)<rN){hair[t]=0;if(S.label[o+t]!==F&&(hid[o+t]||S.label[o+t]===H))S.label[o+t]=F;nj++;}}
+       rep.push("jaw"+nj);}}
+    /* the hairline sits on the sculpt: near the hair/skin edge, the edge is moved onto the sculpted step (a
+       minimum cut where cutting across a crease is cheap), so it doesn't zigzag across the face */
+    {const sh=surfaceShape(S.parts[pi],nb,C.faceNormals(S.parts[pi].m,S.parts[pi].M),C.xf(S.parts[pi].M,S.parts[pi].m.v)).bend;
+     const isHS=t=>hair[t]||S.label[o+t]===F;const ring=new Int16Array(n).fill(-1),q3=[];
+     for(let t=0;t<n;t++){if(!isHS(t))continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&isHS(u)&&hair[u]!==hair[t]){ring[t]=0;q3.push(t);break;}}}
+     const RK=+(window._spcHairRings||10);
+     for(let h=0;h<q3.length;h++){const t=q3[h];if(ring[t]>=RK)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ring[u]<0&&isHS(u)){ring[u]=ring[t]+1;q3.push(u);}}}
+     const idx=new Int32Array(n).fill(-1),nodes=[];for(const t of q3){idx[t]=nodes.length;nodes.push(t);}
+     if(nodes.length){const N=nodes.length,sc=new Float64Array(N),tc=new Float64Array(N),eu=[],ev=[],ew=[];
+       const hl0=C.lab(...S.regions[H].rgb),sl0=C.lab(...S.regions[F].rgb),dd=(i,c)=>Math.hypot(L[i*3]-c[0],L[i*3+1]-c[1],L[i*3+2]-c[2]);
+       for(let k=0;k<N;k++){const t=nodes[k],i=o+t;
+         if(ring[t]>=RK){if(hair[t])sc[k]=1e9;else tc[k]=1e9;continue;}
+         /* source = hair. A light pull toward where it is now, and toward what the photo shows */
+         let pull=hair[t]?0.15:-0.15;if(!hid[i]){const x=Math.max(-1,Math.min(1,(dd(i,sl0)-dd(i,hl0))/30));pull+=0.35*x;}
+         if(pull>0)sc[k]=pull*A[i];else tc[k]=-pull*A[i];}
+       for(let k=0;k<N;k++){const t=nodes[k];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<=t||idx[u]<0)continue;
+         const b=Math.max(sh[t],sh[u]);eu.push(k);ev.push(idx[u]);ew.push(Math.sqrt((A[o+t]+A[o+u])/2)*0.08/(1+(b/0.03)**2));}}
+       const side=minCut(N,sc,tc,eu,ev,ew);let mv=0;
+       for(let k=0;k<N;k++){const t=nodes[k],hnew=side[k]?1:0;if(hnew!==hair[t]){hair[t]=hnew;if(!hnew)S.label[o+t]=F;mv++;}}
+       rep.push("hairline"+mv+"/"+N);}}
     /* the hair's own paint, from the photos */
     let r=0,gg=0,b=0,w=0,nh=0;for(let t=0;t<n;t++){if(!hair[t])continue;nh++;if(hid[o+t])continue;const a=A[o+t];r+=S.raw[(o+t)*3]*a;gg+=S.raw[(o+t)*3+1]*a;b+=S.raw[(o+t)*3+2]*a;w+=a;}
     if(w>0){const HR=S.regions.length;S.regions.push({id:HR,rgb:[r/w,gg/w,b/w],fil:-1,area:0,dE:0,patch:false,hair:true});
@@ -9986,7 +10128,7 @@ function headFix(active,regM,hid,L){const rep=[];
       if(W<0){W=S.regions.length;S.regions.push({id:W,rgb:[0.96,0.96,0.96],fil:-1,area:0,dE:0,patch:false});}
       let ne=0;S.keep=S.keep||new Uint8Array(S.nFaces);for(const e of pair){for(const t of e.c)S.label[o+t]=W;ne+=e.c.length;
         /* close the eye: skin faces held between eye faces join it */
-        {const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]===W||hid[o+u]||hair[u])continue;const i=o+u;if(L[i*3]>45&&chroma(i)<14)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}
+        for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]===W||hid[o+u]||hair[u])continue;const i=o+u;if(L[i*3]>skinL-35&&chroma(i)<16)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}
         for(let it=0;it<2;it++){const add=[];for(const t of e.c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]!==F)continue;let c2=0;for(let k2=0;k2<3;k2++){const v=nb[u*3+k2];if(v>=0&&S.label[o+v]===W)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=W;e.c.push(u);}}}
       /* pupils (figures that have them): dark spots lying mostly inside an eye white */
       {const blk=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]<25&&Math.hypot(l[1],l[2])<10;});let np_=0;
@@ -9995,7 +10137,18 @@ function headFix(active,regM,hid,L){const rep=[];
          if(bt&&bw>=0.6*bt&&ar<0.01*vis){for(const t of c)S.label[o+t]=blk;np_++;}}}
        rep.push("pupils"+np_);}
       for(const e of pair)for(const t of e.c)S.keep[o+t]=1;
-      rep.push("eyes"+pair.length+" faces"+ne);}else rep.push("eyes0 (cand "+eyes.length+")");}
+      rep.push("eyes"+pair.length+" faces"+ne);
+      /* eyebrows: the dark strip on the skin just above each eye takes the hair's paint */
+      {const HRi=S.regions.findIndex(r=>r.hair);let nbw=0;
+       if(HRi>=0){const brow=new Uint8Array(n);
+         for(let t=0;t<n;t++){const i=o+t;if(hid[i]||S.label[i]!==F)continue;const z=g.c[t*3+2];
+           for(const e of pair){const dz=z-e.z,dh=Math.hypot(g.c[t*3]-e.x,g.c[t*3+1]-e.y);if(dz>0.02*H_&&dz<0.16*H_&&dh<0.16*H_&&L[i*3]<skinL-12){brow[t]=1;break;}}}
+         const sb=new Uint8Array(n);
+         for(let s0=0;s0<n;s0++){if(!brow[s0]||sb[s0])continue;const c=[s0];sb[s0]=1;let ar=0;
+           for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let k=0;k<3;k++){const u=nb[t*3+k];if(u>=0&&brow[u]&&!sb[u]){sb[u]=1;c.push(u);}}}
+           if(ar<0.15)continue;for(const t of c){S.label[o+t]=HRi;S.keep[o+t]=1;}nbw+=c.length;
+           for(let it=0;it<2;it++){const add=[];for(const t of c)for(let k=0;k<3;k++){const u=nb[t*3+k];if(u<0||S.label[o+u]!==F)continue;let c2=0;for(let k2=0;k2<3;k2++){const v=nb[u*3+k2];if(v>=0&&S.label[o+v]===HRi)c2++;}if(c2>=2)add.push(u);}for(const u of add){S.label[o+u]=HRi;S.keep[o+u]=1;c.push(u);}}}}
+       rep.push("brows"+nbw);}}else rep.push("eyes0 (cand "+eyes.length+")");}
   (window._spcDbg=window._spcDbg||{}).head=rep;}
 /* shine on a black suit reads as a dark gray in photos. A dark, colorless paint that lies mostly against black
    and covers much less than the black is that shine: it goes black. A real gray (a gray suit) covers too much
