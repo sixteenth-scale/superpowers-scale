@@ -762,7 +762,7 @@ function paintStrings(p,states,M){
     const kids=kidsPrusa(tri).map(k=>refinePlane(k,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};return {kids};}
   /* straight paint lines (see straightLines): the side of each smoothed border decides the paint */
-  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0)});
+  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0),snap:/(torso|chest|body)/i.test(p.name||"")}); /* (crease snapping on the torso's emblem; limbs' stripes are drawn on their cords already) */
   const needs=t=>SL.inBand[t]===1;
   function paintAt(q,t){return SL.at(q,t);}
   const LFINE=+(globalThis._spcLineFine||0.06),LMAXD=9;
@@ -834,8 +834,18 @@ function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=op
     return {pts,a,b,es};};
   for(let e=0;e<nE;e++){if(used[e])continue;const u=dir[e*4],w=dir[e*4+1];if(node(u))chains.push(follow(e,u));else if(node(w))chains.push(follow(e,w));}
   for(let e=0;e<nE;e++)if(!used[e])chains.push(follow(e,dir[e*4]));
+  /* sculpted creases: a vertex on a sharp fold (faces round it meeting at 14 degrees or more) */
+  const fnA=new Float32Array(nF*3);for(let t=0;t<nF;t++){const a=P(WF[t*3]),b=P(WF[t*3+1]),c=P(WF[t*3+2]);const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],w=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];const nn=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]],l=Math.hypot(...nn)||1;fnA[t*3]=nn[0]/l;fnA[t*3+1]=nn[1]/l;fnA[t*3+2]=nn[2]/l;}
+  const crease=new Float32Array(V);{const em2=new Map();for(let t=0;t<nF;t++)for(let k=0;k<3;k++){const u=WF[t*3+k],w=WF[t*3+(k+1)%3];if(u===w)continue;const key=u<w?u*V+w:w*V+u;const o=em2.get(key);if(o===undefined){em2.set(key,t);continue;}
+      const dt=Math.abs(fnA[t*3]*fnA[o*3]+fnA[t*3+1]*fnA[o*3+1]+fnA[t*3+2]*fnA[o*3+2]),c=1-dt;if(c>crease[u])crease[u]=c;if(c>crease[w])crease[w]=c;}}
+  const CR=+(opt.crease!=null?opt.crease:0.03),vg=new Map(),vk=(x,y,z)=>((Math.floor(x/0.6)+8192)*16384+(Math.floor(y/0.6)+8192))*16384+(Math.floor(z/0.6)+8192);
+  for(let i=0;i<V;i++)if(crease[i]>CR){const k=vk(v[i*3],v[i*3+1],v[i*3+2]);let g=vg.get(k);if(!g){g=[];vg.set(k,g);}g.push(i);}
+  const creaseNear=(q,R)=>{const cx=Math.floor(q[0]/0.6),cy=Math.floor(q[1]/0.6),cz=Math.floor(q[2]/0.6);let sw=0,x=0,y=0,z=0;
+    for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const g=vg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+k+8192));if(!g)continue;
+      for(const vi of g){const d=Math.hypot(v[vi*3]-q[0],v[vi*3+1]-q[1],v[vi*3+2]-q[2]);if(d>R)continue;const w=crease[vi]*(1-d/R);sw+=w;x+=v[vi*3]*w;y+=v[vi*3+1]*w;z+=v[vi*3+2]*w;}}
+    return sw>0?[x/sw,y/sw,z/sw]:null;};
   /* smooth each chain */
-  const segs=[],segChain=[],segLeft=[];let sumLen=0;
+  const segs=[],segChain=[],segLeft=[];let sumLen=0,snapped=0;
   for(const ch of chains){const n=ch.pts.length;if(n<2)continue;const closed=ch.pts[0]===ch.pts[n-1]&&n>3;
     let X=ch.pts.map(P);let L=0;for(let i=1;i<n;i++)L+=Math.hypot(X[i][0]-X[i-1][0],X[i][1]-X[i-1][1],X[i][2]-X[i-1][2]);sumLen+=L;
     const h=L/Math.max(1,n-1)||0.4,sg=Math.min(SIG,L/(closed?14:6)),K=Math.max(0,Math.min(200,Math.round((sg/h)**2*2)));
@@ -843,6 +853,14 @@ function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=op
       for(let i=0;i<n;i++){let ip,in_;if(closed){if(i===n-1)continue;ip=i===0?n-2:i-1;in_=i+1;}else{if(i===0||i===n-1)continue;ip=i-1;in_=i+1;}
         for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[ip][c]+X[in_][c])/2-X[i][c]);}
       if(closed)Y[n-1]=Y[0].slice();X=Y;}
+    /* a border that runs along a sculpted crease is laid onto it (where most of its length has a crease within
+       0.6 mm), then evened out again */
+    if(n>6&&opt.snap!==false&&!(closed&&L<25)){ /* (not small closed shapes: an eyebrow or an eye keeps its own outline) */const tg=X.map(q=>creaseNear(q,0.6));const hit=tg.filter(Boolean).length;
+      if(hit>0.6*n){X=X.map((q,i)=>tg[i]?[0.3*q[0]+0.7*tg[i][0],0.3*q[1]+0.7*tg[i][1],0.3*q[2]+0.7*tg[i][2]]:q);
+        for(let it=0;it<Math.min(K,8);it++)for(const lam of [0.5,-0.53]){const Y=X.map(q=>q.slice());
+          for(let i=0;i<n;i++){let ip,in_;if(closed){if(i===n-1)continue;ip=i===0?n-2:i-1;in_=i+1;}else{if(i===0||i===n-1)continue;ip=i-1;in_=i+1;}
+            for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[ip][c]+X[in_][c])/2-X[i][c]);}
+          if(closed)Y[n-1]=Y[0].slice();X=Y;}snapped++;}}
     const c0=segs.length/8;for(let i=1;i<n;i++){segs.push(X[i-1][0],X[i-1][1],X[i-1][2],X[i][0],X[i][1],X[i][2],ch.a,ch.b);segChain.push(c0,c0+n-2,closed?1:0);
       /* the way into the a side: from the original edge toward the a-face's third corner */
       /* stored as the surface normal that puts the a side on the left of the curve as it runs (the mesh's own
@@ -875,7 +893,7 @@ function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=op
     return sd>=0?segs[o+6]:segs[o+7];}
   const inBand=new Uint8Array(nF);for(let t=0;t<nF;t++){const a=P(WF[t*3]),b=P(WF[t*3+1]),c=P(WF[t*3+2]),m=[(a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3,(a[2]+b[2]+c[2])/3];
     const e=Math.max(Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]),Math.hypot(b[0]-c[0],b[1]-c[1],b[2]-c[2]),Math.hypot(c[0]-a[0],c[1]-a[1],c[2]-a[2]));const r=near(m,t);if(r&&r.d<e+0.3)inBand[t]=1;}
-  return {at,inBand,chains:chains.length,segs:NS,len:sumLen};}
+  return {at,inBand,chains:chains.length,segs:NS,len:sumLen,snapped};}
 /* ---------- writing the 3MF ---------- */
 function meshXML(m,codes,keepVerts,oldXml,sp){
   const out=[];
