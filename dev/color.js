@@ -762,9 +762,20 @@ function paintStrings(p,states,M){
     const kids=kidsPrusa(tri).map(k=>refinePlane(k,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};return {kids};}
   /* straight paint lines (see straightLines): the side of each smoothed border decides the paint */
-  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0),snap:/(torso|chest|body)/i.test(p.name||""),snapR:0.7,snapW:0.7}); /* (crease snapping on the torso's emblem; limbs' stripes are drawn on their cords already) */
+  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0),snap:/(torso|chest|body)/i.test(p.name||""),snapR:0.7,snapW:0.7,snapOnly:globalThis._spcSnapStates||null}); /* (crease snapping on the torso's emblem; limbs' stripes are drawn on their cords already) */
   const needs=t=>SL.inBand[t]===1;
-  function paintAt(q,t){return SL.at(q,t);}
+  /* strokes: piping laid as a line of one width along a smooth centre line. Near a stroke the paint is decided
+     exactly by the distance to that line (within half the width it is the stroke's paint; on the faces the stroke
+     owns, anything else is the paint round it), so its edges are true parallel curves at any resolution. */
+  const STK=globalThis._spcStrokes&&globalThis._spcStrokes.get(p);let sgrid=null,sDist=null;
+  if(STK&&STK.list.length){const G=1.0,gk=(x,y,z)=>((Math.floor(x/G)+4096)*8192+(Math.floor(y/G)+4096))*8192+(Math.floor(z/G)+4096);sgrid=new Map();const SEG=[];
+    for(const sk of STK.list){for(let i=1;i<sk.X.length;i++){const a=sk.X[i-1],b=sk.X[i];const id=SEG.length;SEG.push([a,b,sk]);const R=sk.r+1.5;
+      const lo=[0,1,2].map(c=>Math.floor((Math.min(a[c],b[c])-R)/G)),hi=[0,1,2].map(c=>Math.floor((Math.max(a[c],b[c])+R)/G));
+      for(let x=lo[0];x<=hi[0];x++)for(let y=lo[1];y<=hi[1];y++)for(let z=lo[2];z<=hi[2];z++){const k=((x+4096)*8192+(y+4096))*8192+(z+4096);let L=sgrid.get(k);if(!L){L=[];sgrid.set(k,L);}L.push(id);}}}
+    /* the nearest stroke: [distance, stroke] */
+    sDist=q=>{const L=sgrid.get(gk(q[0],q[1],q[2]));if(!L)return null;let bd=Infinity,bs=null;for(const id of L){const [a,b,sk]=SEG[id];const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy+(q[2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy,q[2]-a[2]-u*dz)-sk.r;if(d<bd){bd=d;bs=sk;}}return bs?[bd,bs]:null;};}
+  const stkOwn=t=>STK&&STK.own&&STK.own[t];
+  function paintAt(q,t){if(sDist){const r=sDist(q);if(r&&r[0]<=0)return r[1].s;if(stkOwn(t)){const l=SL.at(q,t);return l===STK.ownS[t]?STK.ownBase[t]:l;}}return SL.at(q,t);}
   const LFINE=+(globalThis._spcLineFine||0.06),LMAXD=9;
   function refine(tri,wt,wf,depth){
     const pc=paintAt(cen(tri),wf);
@@ -782,7 +793,7 @@ function paintStrings(p,states,M){
   function node(triP,triO,level,idx,depth){
     if(level===lv){const t=idx;const wt=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];
       if(onPlane(t))return refinePlane(triP,depth);
-      if(!needs(t))return {leaf:states[t]};
+      if(!needs(t)&&!(sDist&&(stkOwn(t)||(()=>{const c=cen(wt),r=sDist(c);return r&&r[0]<1.2;})())))return {leaf:states[t]};
       /* the working face's corners in its own order; triP covers the same triangle */
       return refine(triP,wt,t,depth);}
     const ko=kidsOurs(triO),kp=kidsPrusa(triP);
@@ -864,7 +875,7 @@ function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=op
         for(let k=0;k<M;k++){let x=re[0];for(let h2=1;h2<=KH;h2++){const w=2*Math.PI*h2*k/M;x+=2*(re[h2]*Math.cos(w)+im[h2]*Math.sin(w));}out[k][c]=x;}}
       /* back onto the chain's own point count */
       X=X.map((q,i)=>out[Math.min(M-1,Math.round(acc[i]/Lt*M)%M)].slice());X[n-1]=X[0].slice();}
-    if(n>6&&opt.snap!==false&&!(closed&&L<25)){ /* (not small closed shapes: an eyebrow or an eye keeps its own outline) */const SR=+(opt.snapR||0.6),tg=X.map(q=>creaseNear(q,SR));const hit=tg.filter(Boolean).length;
+    if(n>6&&opt.snap!==false&&!(closed&&L<25)&&(!opt.snapOnly||opt.snapOnly.has(ch.a)||opt.snapOnly.has(ch.b))){ /* (not small closed shapes: an eyebrow or an eye keeps its own outline) */const SR=+(opt.snapR||0.6),tg=X.map(q=>creaseNear(q,SR));const hit=tg.filter(Boolean).length;
       if(hit>0.6*n){const SW=+(opt.snapW||0.7);X=X.map((q,i)=>tg[i]?[(1-SW)*q[0]+SW*tg[i][0],(1-SW)*q[1]+SW*tg[i][1],(1-SW)*q[2]+SW*tg[i][2]]:q);
         for(let it=0;it<Math.min(K,8);it++)for(const lam of [0.5,-0.53]){const Y=X.map(q=>q.slice());
           for(let i=0;i<n;i++){let ip,in_;if(closed){if(i===n-1)continue;ip=i===0?n-2:i-1;in_=i+1;}else{if(i===0||i===n-1)continue;ip=i-1;in_=i+1;}
