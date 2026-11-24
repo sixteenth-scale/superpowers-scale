@@ -762,7 +762,7 @@ function paintStrings(p,states,M){
     const kids=kidsPrusa(tri).map(k=>refinePlane(k,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};return {kids};}
   /* straight paint lines (see straightLines): the side of each smoothed border decides the paint */
-  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0),snap:/(torso|chest|body)/i.test(p.name||"")}); /* (crease snapping on the torso's emblem; limbs' stripes are drawn on their cords already) */
+  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0),snap:/(torso|chest|body)/i.test(p.name||""),snapR:0.7,snapW:0.7}); /* (crease snapping on the torso's emblem; limbs' stripes are drawn on their cords already) */
   const needs=t=>SL.inBand[t]===1;
   function paintAt(q,t){return SL.at(q,t);}
   const LFINE=+(globalThis._spcLineFine||0.06),LMAXD=9;
@@ -855,8 +855,17 @@ function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=op
       if(closed)Y[n-1]=Y[0].slice();X=Y;}
     /* a border that runs along a sculpted crease is laid onto it (where most of its length has a crease within
        0.6 mm), then evened out again */
-    if(n>6&&opt.snap!==false&&!(closed&&L<25)){ /* (not small closed shapes: an eyebrow or an eye keeps its own outline) */const tg=X.map(q=>creaseNear(q,0.6));const hit=tg.filter(Boolean).length;
-      if(hit>0.6*n){X=X.map((q,i)=>tg[i]?[0.3*q[0]+0.7*tg[i][0],0.3*q[1]+0.7*tg[i][1],0.3*q[2]+0.7*tg[i][2]]:q);
+    /* small closed shapes (an eye, an eyebrow): drawn as a smooth closed curve, the shape's outline kept to its
+       first few waves round (an almond stays an almond, blotches and dents go) */
+    if(closed&&L<25&&n>8){const M=64,pts=[];let acc=[0];for(let i=1;i<n;i++)acc.push(acc[i-1]+Math.hypot(X[i][0]-X[i-1][0],X[i][1]-X[i-1][1],X[i][2]-X[i-1][2]));const Lt=acc[n-1]||1;
+      let j=0;for(let k=0;k<M;k++){const sA=k*Lt/M;while(j<n-2&&acc[j+1]<sA)j++;const f=(sA-acc[j])/((acc[j+1]-acc[j])||1);pts.push([0,1,2].map(c=>X[j][c]+f*(X[j+1][c]-X[j][c])));}
+      const KH=+(opt.harm||4),out=pts.map(()=>[0,0,0]);
+      for(let c=0;c<3;c++){const re=[],im=[];for(let h2=0;h2<=KH;h2++){let a=0,b=0;for(let k=0;k<M;k++){const w=2*Math.PI*h2*k/M;a+=pts[k][c]*Math.cos(w);b+=pts[k][c]*Math.sin(w);}re.push(a/M);im.push(b/M);}
+        for(let k=0;k<M;k++){let x=re[0];for(let h2=1;h2<=KH;h2++){const w=2*Math.PI*h2*k/M;x+=2*(re[h2]*Math.cos(w)+im[h2]*Math.sin(w));}out[k][c]=x;}}
+      /* back onto the chain's own point count */
+      X=X.map((q,i)=>out[Math.min(M-1,Math.round(acc[i]/Lt*M)%M)].slice());X[n-1]=X[0].slice();}
+    if(n>6&&opt.snap!==false&&!(closed&&L<25)){ /* (not small closed shapes: an eyebrow or an eye keeps its own outline) */const SR=+(opt.snapR||0.6),tg=X.map(q=>creaseNear(q,SR));const hit=tg.filter(Boolean).length;
+      if(hit>0.6*n){const SW=+(opt.snapW||0.7);X=X.map((q,i)=>tg[i]?[(1-SW)*q[0]+SW*tg[i][0],(1-SW)*q[1]+SW*tg[i][1],(1-SW)*q[2]+SW*tg[i][2]]:q);
         for(let it=0;it<Math.min(K,8);it++)for(const lam of [0.5,-0.53]){const Y=X.map(q=>q.slice());
           for(let i=0;i<n;i++){let ip,in_;if(closed){if(i===n-1)continue;ip=i===0?n-2:i-1;in_=i+1;}else{if(i===0||i===n-1)continue;ip=i-1;in_=i+1;}
             for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[ip][c]+X[in_][c])/2-X[i][c]);}
