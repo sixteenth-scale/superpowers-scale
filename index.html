@@ -10118,7 +10118,7 @@ function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
     for(let t=0;t<n;t++)if(comp[t]>=0&&comp[t]!==big&&BASE>=0&&!(S.keep&&S.keep[o+t]&&dE[t]<=2)){S.label[o+t]=BASE;if(S.keep)S.keep[o+t]=0;cleared++;}}
   /* the outline faces (stripe paint next to the emblem) */
   const outline=[];for(let t=0;t<n;t++)if(S.label[o+t]===RED&&dE[t]<=2.0)outline.push(t);
-  S.keep=S.keep||new Uint8Array(S.nFaces);const paths=[];
+  S.keep=S.keep||new Uint8Array(S.nFaces);const paths=[];const RID=S.rid&&S.rid[tor];
   const cg=new Map();for(let t=0;t<n;t++){if(hid[o+t])continue;const k=((Math.floor(g.c[t*3])+4096)*8192+(Math.floor(g.c[t*3+1])+4096))*8192+(Math.floor(g.c[t*3+2])+4096);let a=cg.get(k);if(!a){a=[];cg.set(k,a);}a.push(t);}
   for(const pi of arms){const ga=pieceGeo(pi,regM),oa=S.offs[pi];
     /* the top of the arm's piping, on the figure */
@@ -10129,8 +10129,8 @@ function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
     /* end on the torso's cut edge for the arm (a visible face beside a hidden one), nearest the arm's piping top */
     let tcx=0;for(let t=0;t<n;t++)tcx+=g.c[t*3];tcx/=n;const sideA=Math.sign(tp[0]-tcx);
     let hw=0;for(let t=0;t<n;t++)if(!hid[o+t])hw=Math.max(hw,Math.abs(g.c[t*3]-tcx));
-    let end=-1,bd=Infinity;for(let t=0;t<n;t++){if(hid[o+t]||Math.sign(g.c[t*3]-tcx)!==sideA||Math.abs(g.c[t*3]-tcx)<0.8*hw)continue;let cut=false; /* (out at the shoulder, not the neck) */for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&hid[o+u])cut=true;}if(!cut)continue;
-      const d=-g.c[t*3+2];if(d<bd){bd=d;end=t;}} /* the top of the arm opening: the piping runs over the shoulder to it */
+    let end=-1,bd=Infinity;for(let t=0;t<n;t++){if(hid[o+t]||Math.sign(g.c[t*3]-tcx)!==sideA||Math.abs(g.c[t*3]-tcx)<0.6*hw)continue;let cut=false; /* (out at the shoulder, not the neck) */for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&hid[o+u])cut=true;}if(!cut)continue;
+      const d=-g.c[t*3+2];if(d<bd){bd=d;end=t;}} /* the top of the arm opening */
     bd=(g.c[end*3]-tp[0])**2+(g.c[end*3+1]-tp[1])**2+(g.c[end*3+2]-tp[2])**2;
     if(end<0){rep.push(S.parts[pi].name+" no end");continue;}
     let st=-1;bd=Infinity;for(const t of outline){const d=(g.c[t*3]-g.c[end*3])**2+(g.c[t*3+1]-g.c[end*3+1])**2+(g.c[t*3+2]-g.c[end*3+2])**2;if(d<bd){bd=d;st=t;}}
@@ -10138,14 +10138,14 @@ function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
     /* shortest way over the visible surface */
     const dd=new Map([[st,0]]),prev=new Map(),h=[[0,st]];let found=false;
     while(h.length){const [d,t]=hpop(h);if(d>(dd.get(t)??Infinity))continue;if(t===end){found=true;break;}if(d>120)break;
-      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const fr_=Math.max(0,0.6-g.fn[u*3+2]);const nd=d+dist(t,u)*(1+8*fr_);if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}} /* (surface that doesn't face up costs more: the piping runs along the top of the shoulder, not across the chest or back) */
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const nd=d+dist(t,u)*(RID&&RID[u]>0.03?1:6);if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}} /* (the sculpted cord costs least: the piping follows the raised cord the sculptor made) */
     if(!found){rep.push(S.parts[pi].name+" no path");continue;}
     const path=[];for(let t=end;t!==undefined;t=prev.get(t))path.push(t);
     /* straighten the path (it hugs triangle centres), then paint everything within 0.7 mm of it */
     /* straighten it, keeping it on the surface (each round: smooth, then back onto the nearest face) */
     let X=path.map(t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]]);
     const proj=q=>{const cx=Math.floor(q[0]/1.0),cy=Math.floor(q[1]/1.0),cz=Math.floor(q[2]/1.0);let b=null,bd2=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const a=cg.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const t of a){const d=(g.c[t*3]-q[0])**2+(g.c[t*3+1]-q[1])**2+(g.c[t*3+2]-q[2])**2;if(d<bd2){bd2=d;b=t;}}}return b==null?q:[g.c[b*3],g.c[b*3+1],g.c[b*3+2]];};
-    for(let it=0;it<25;it++){for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}
+    for(let it=0;it<6;it++){for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}
       for(let i=1;i<X.length-1;i++)X[i]=proj(X[i]);}
     const near=(t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
     const seen=new Set(path),fr=path.slice();let painted=0;
@@ -10305,6 +10305,7 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
       if(sw>0)ras[t]=(g.c[t*3]-mx/sw)*g.fn[t*3]+(g.c[t*3+1]-my/sw)*g.fn[t*3+1]+(g.c[t*3+2]-mz/sw)*g.fn[t*3+2];}
     const nearB=gridOf(2),rid=new Float32Array(n);
     for(let t=0;t<n;t++){let sw=0,sv=0;nearB(t,2,u=>{if(ras[u]>0.05)return;sw+=A[o+u];sv+=ras[u]*A[o+u];});rid[t]=ras[t]-(sw?sv/sw:0);}
+    (S.rid=S.rid||{})[pi]=rid;
     const T=+(window._spcCordT||0.03),up=new Uint8Array(n);for(let t=0;t<n;t++)up[t]=!hid[o+t]&&rid[t]>T?1:0;
     /* what the photo shows on each face */
     const near=new Int32Array(n).fill(-1);
