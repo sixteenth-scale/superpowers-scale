@@ -9355,20 +9355,23 @@ function paintStrings(p,states,M){
     if(depth>=7||e<=0.12)return {leaf:sdP(cen(tri))>0?capS:bodyS};
     const kids=kidsPrusa(tri).map(k=>refinePlane(k,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};return {kids};}
-  const needs=t=>{if(!broad.has(states[t])||maxEdge(t)<=R)return false;
-    for(const p of [P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2]),cen([P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])])]){const m=disc(p);if(m.size>1)return true;}return false;};
-  /* inside one big working face: a sub-triangle takes the broad paint that covers most of a 1.5 mm disc round
-     its middle, so the border runs smooth through long thin triangles instead of in saw teeth */
-  const memo=new Map(),at=p=>{const k=p[0].toFixed(3)+","+p[1].toFixed(3)+","+p[2].toFixed(3);let v=memo.get(k);if(v===undefined){v=top(disc(p))[0];memo.set(k,v);}return v;};
+  /* straight paint lines (see straightLines): the side of each smoothed border decides the paint */
+  const SL=straightLines(wv,W.f,states,{sigma:+(globalThis._spcLineSigma||1.0)});
+  const needs=t=>SL.inBand[t]===1;
+  function paintAt(q,t){return SL.at(q,t);}
+  const LFINE=+(globalThis._spcLineFine||0.06),LMAXD=9;
   function refine(tri,wt,wf,depth){
-    const best=at(cen(tri)),st=best>=0?best:states[wf];
+    const pc=paintAt(cen(tri),wf);
     const e=Math.max(len(sub(tri[0],tri[1])),len(sub(tri[1],tri[2])),len(sub(tri[2],tri[0])));
-    if(depth>=MAXD||e<=FINE)return {leaf:st};
-    /* the same paint at all three corners and the middle of a triangle smaller than the disc: one paint */
-    if(e<DISC&&at(tri[0])===best&&at(tri[1])===best&&at(tri[2])===best)return {leaf:st};
+    if(depth>=LMAXD||e<=LFINE)return {leaf:pc};
+    const p0=paintAt(tri[0],wf),p1=paintAt(tri[1],wf),p2=paintAt(tri[2],wf);
+    if(p0===pc&&p1===pc&&p2===pc){/* check edge midpoints too: a thin line could pass between corners */
+      const k=kidsPrusa(tri);if(paintAt(k[3][0],wf)===pc&&paintAt(k[3][1],wf)===pc&&paintAt(k[3][2],wf)===pc&&e<0.6)return {leaf:pc};
+      if(e<0.25)return {leaf:pc};}
     const kids=kidsPrusa(tri).map(k=>refine(k,wt,wf,depth+1));
     if(kids.every(k=>k.leaf!==undefined&&k.leaf===kids[0].leaf))return {leaf:kids[0].leaf};
     return {kids};}
+  paintStrings.lineInfo={chains:SL.chains,segs:SL.segs};
   /* node of the original triangle: down through the working-mesh subdivision, then refinement */
   function node(triP,triO,level,idx,depth){
     if(level===lv){const t=idx;const wt=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];
@@ -9395,6 +9398,78 @@ function paintStrings(p,states,M){
   paintStrings.last={fine,total:nB};
   return res;
 }
+/* ---------- straight paint lines ----------
+   Every border between two paints is pulled out of the mesh as a chain of points (a curve), the chain is
+   smoothed as a curve (Taubin smoothing, which straightens without shrinking; about 1 mm wide, less for small
+   closed loops such as eyes), and the paint at any point near a border is decided by which side of that
+   smoothed curve it lies on. The line then runs straight through the middle of triangles at any resolution,
+   instead of stepping along triangle edges. Ends where three paints meet stay put. */
+function straightLines(v,f,lab,opt){opt=opt||{};const SIG=opt.sigma||1.0,BAND=opt.band||2.0;
+  const V=v.length/3,nF=f.length/3;
+  const WF=new Uint32Array(f.length);{const seen=new Map(),canon=new Uint32Array(V);
+    for(let i=0;i<V;i++){const k=Math.round(v[i*3]*1e4)+","+Math.round(v[i*3+1]*1e4)+","+Math.round(v[i*3+2]*1e4);const c=seen.get(k);canon[i]=c===undefined?(seen.set(k,i),i):c;}
+    for(let i=0;i<f.length;i++)WF[i]=canon[f[i]];}
+  const P=i=>[v[i*3],v[i*3+1],v[i*3+2]];
+  /* directed border edges, paint a on the left */
+  const em=new Map(),dir=[],dirF=[];
+  for(let t=0;t<nF;t++)for(let k=0;k<3;k++){const u=WF[t*3+k],w=WF[t*3+(k+1)%3];if(u===w)continue;const key=u<w?u*V+w:w*V+u;const o=em.get(key);
+    if(o===undefined){em.set(key,t);continue;}if(o<0)continue;em.set(key,-1);const la=lab[t],lb=lab[o];if(la===lb||la<0||lb<0)continue;
+    /* in face t the edge runs u->w with t on its left */
+    /* the a-side face, for the way into it (normals can't be trusted: a mesh may be wound both ways) */
+    if(la<lb)dir.push(u,w,la,lb),dirF.push(t);else dir.push(w,u,lb,la),dirF.push(o);}
+  const nE=dir.length/4,deg=new Map();for(let e=0;e<nE;e++){for(const x of [dir[e*4],dir[e*4+1]])deg.set(x,(deg.get(x)||0)+1);}
+  /* chains, followed without regard to which way each face is wound */
+  const inc=new Map();for(let e=0;e<nE;e++)for(const x of [dir[e*4],dir[e*4+1]]){if(!inc.has(x))inc.set(x,[]);inc.get(x).push(e);}
+  const used=new Uint8Array(nE),chains=[];
+  const node=x=>deg.get(x)!==2;
+  const follow=(e0,start)=>{const a=dir[e0*4+2],b=dir[e0*4+3],pts=[start],es=[];let e=e0,cur=start;
+    for(;;){used[e]=1;es.push(e);const w=dir[e*4]===cur?dir[e*4+1]:dir[e*4];pts.push(w);cur=w;if(node(w))break;
+      const nx=(inc.get(w)||[]).find(q=>!used[q]&&dir[q*4+2]===a&&dir[q*4+3]===b);if(nx===undefined)break;e=nx;}
+    return {pts,a,b,es};};
+  for(let e=0;e<nE;e++){if(used[e])continue;const u=dir[e*4],w=dir[e*4+1];if(node(u))chains.push(follow(e,u));else if(node(w))chains.push(follow(e,w));}
+  for(let e=0;e<nE;e++)if(!used[e])chains.push(follow(e,dir[e*4]));
+  /* smooth each chain */
+  const segs=[],segChain=[],segLeft=[];let sumLen=0;
+  for(const ch of chains){const n=ch.pts.length;if(n<2)continue;const closed=ch.pts[0]===ch.pts[n-1]&&n>3;
+    let X=ch.pts.map(P);let L=0;for(let i=1;i<n;i++)L+=Math.hypot(X[i][0]-X[i-1][0],X[i][1]-X[i-1][1],X[i][2]-X[i-1][2]);sumLen+=L;
+    const h=L/Math.max(1,n-1)||0.4,sg=Math.min(SIG,L/(closed?14:6)),K=Math.max(0,Math.min(200,Math.round((sg/h)**2*2)));
+    for(let it=0;it<K;it++)for(const lam of [0.5,-0.53]){const Y=X.map(q=>q.slice());
+      for(let i=0;i<n;i++){let ip,in_;if(closed){if(i===n-1)continue;ip=i===0?n-2:i-1;in_=i+1;}else{if(i===0||i===n-1)continue;ip=i-1;in_=i+1;}
+        for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[ip][c]+X[in_][c])/2-X[i][c]);}
+      if(closed)Y[n-1]=Y[0].slice();X=Y;}
+    const c0=segs.length/8;for(let i=1;i<n;i++){segs.push(X[i-1][0],X[i-1][1],X[i-1][2],X[i][0],X[i][1],X[i][2],ch.a,ch.b);segChain.push(c0,c0+n-2,closed?1:0);
+      /* the way into the a side: from the original edge toward the a-face's third corner */
+      /* stored as the surface normal that puts the a side on the left of the curve as it runs (the mesh's own
+         winding can't be trusted): N = edge x (way into the a face) */
+      const e=ch.es[i-1],u=ch.pts[i-1],w=ch.pts[i],t=dirF[e];let x=-1;for(let k=0;k<3;k++){const z=WF[t*3+k];if(z!==u&&z!==w)x=z;}
+      const pu=P(u),pw=P(w),px=x>=0?P(x):pu,m=[(pu[0]+pw[0])/2,(pu[1]+pw[1])/2,(pu[2]+pw[2])/2],ed=[pw[0]-pu[0],pw[1]-pu[1],pw[2]-pu[2]],lf=[px[0]-m[0],px[1]-m[1],px[2]-m[2]];
+      const N=[ed[1]*lf[2]-ed[2]*lf[1],ed[2]*lf[0]-ed[0]*lf[2],ed[0]*lf[1]-ed[1]*lf[0]],nl=Math.hypot(...N)||1;segLeft.push(N[0]/nl,N[1]/nl,N[2]/nl);}
+      /* even the normals out along the curve */
+      for(let it=0;it<3;it++){const c1=segs.length/8;const tmp=segLeft.slice(c0*3,c1*3);for(let i=c0+1;i<c1-1;i++)for(let k=0;k<3;k++)segLeft[i*3+k]=(tmp[(i-1-c0)*3+k]+2*tmp[(i-c0)*3+k]+tmp[(i+1-c0)*3+k])/4;}}
+  const NS=segs.length/8,cell=1.0,grid=new Map(),gk=(x,y,z)=>((x+4096)*8192+(y+4096))*8192+(z+4096);
+  for(let i=0;i<NS;i++){const o=i*8,x0=Math.floor(Math.min(segs[o],segs[o+3])/cell),x1=Math.floor(Math.max(segs[o],segs[o+3])/cell),y0=Math.floor(Math.min(segs[o+1],segs[o+4])/cell),y1=Math.floor(Math.max(segs[o+1],segs[o+4])/cell),z0=Math.floor(Math.min(segs[o+2],segs[o+5])/cell),z1=Math.floor(Math.max(segs[o+2],segs[o+5])/cell);
+    for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)for(let z=z0;z<=z1;z++){const k=gk(x,y,z);let g=grid.get(k);if(!g){g=[];grid.set(k,g);}g.push(i);}}
+  const fn=new Float32Array(nF*3);for(let t=0;t<nF;t++){const a=P(WF[t*3]),b=P(WF[t*3+1]),c=P(WF[t*3+2]);const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],w=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];const n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]],l=Math.hypot(...n)||1;fn[t*3]=n[0]/l;fn[t*3+1]=n[1]/l;fn[t*3+2]=n[2]/l;}
+  /* nearest smoothed border at a point, among borders of the face's own paint */
+  function near(q,t){const L0=lab[t],cx=Math.floor(q[0]/cell),cy=Math.floor(q[1]/cell),cz=Math.floor(q[2]/cell);let bd=BAND*BAND,bi=-1,bp=null,bs=0;
+    for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)for(let k=-2;k<=2;k++){const g=grid.get(gk(cx+i,cy+j,cz+k));if(!g)continue;
+      for(const sI of g){const o=sI*8;if(segs[o+6]!==L0&&segs[o+7]!==L0)continue;const ax=segs[o],ay=segs[o+1],az=segs[o+2],dx=segs[o+3]-ax,dy=segs[o+4]-ay,dz=segs[o+5]-az,dd=dx*dx+dy*dy+dz*dz||1e-12;
+        let s2=((q[0]-ax)*dx+(q[1]-ay)*dy+(q[2]-az)*dz)/dd;s2=Math.max(0,Math.min(1,s2));const px=ax+s2*dx,py=ay+s2*dy,pz=az+s2*dz,d=(q[0]-px)**2+(q[1]-py)**2+(q[2]-pz)**2;
+        if(d<bd){bd=d;bi=sI;bp=[px,py,pz];bs=s2;}}}
+    return bi<0?null:{i:bi,p:bp,d:Math.sqrt(bd),s:bs};}
+  /* tangent at the nearest point: at a joint between two segments, the average of both (so the side is right
+     round a bend); past the open end of a curve, the face keeps its paint */
+  const tan=i=>{const o=i*8,x=segs[o+3]-segs[o],y=segs[o+4]-segs[o+1],z=segs[o+5]-segs[o+2],l=Math.hypot(x,y,z)||1;return [x/l,y/l,z/l];};
+  function at(q,t){const r=near(q,t);if(!r)return lab[t];const o=r.i*8,c0=segChain[r.i*3],c1=segChain[r.i*3+1],cl=segChain[r.i*3+2],n=[fn[t*3],fn[t*3+1],fn[t*3+2]];
+    let T0=tan(r.i);if(r.s<=0){let j=r.i-1;if(j<c0){if(!cl)return lab[t];j=c1;}const T1=tan(j);T0=[T0[0]+T1[0],T0[1]+T1[1],T0[2]+T1[2]];}
+    else if(r.s>=1){let j=r.i+1;if(j>c1){if(!cl)return lab[t];j=c0;}const T1=tan(j);T0=[T0[0]+T1[0],T0[1]+T1[1],T0[2]+T1[2]];}
+    /* side: the way into the a side, square to the curve here */
+    const Nx=segLeft[r.i*3],Ny=segLeft[r.i*3+1],Nz=segLeft[r.i*3+2],tx=T0[0],ty=T0[1],tz=T0[2];const lx=Ny*tz-Nz*ty,ly=Nz*tx-Nx*tz,lz=Nx*ty-Ny*tx;
+    const sd=lx*(q[0]-r.p[0])+ly*(q[1]-r.p[1])+lz*(q[2]-r.p[2]);
+    return sd>=0?segs[o+6]:segs[o+7];}
+  const inBand=new Uint8Array(nF);for(let t=0;t<nF;t++){const a=P(WF[t*3]),b=P(WF[t*3+1]),c=P(WF[t*3+2]),m=[(a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3,(a[2]+b[2]+c[2])/3];
+    const e=Math.max(Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]),Math.hypot(b[0]-c[0],b[1]-c[1],b[2]-c[2]),Math.hypot(c[0]-a[0],c[1]-a[1],c[2]-a[2]));const r=near(m,t);if(r&&r.d<e+0.3)inBand[t]=1;}
+  return {at,inBand,chains:chains.length,segs:NS,len:sumLen};}
 /* ---------- writing the 3MF ---------- */
 function meshXML(m,codes,keepVerts,oldXml,sp){
   const out=[];
@@ -9449,7 +9524,7 @@ async function save3MF(S,fils,faceState){
 }
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
-return {paintStrings,inv4,faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
+return {paintStrings,straightLines,inv4,faceNormals,OWNED,PRESET,loadPalette,savePalette,get PAL(){return PAL;},set PAL(v){PAL=v;},catalog,fname,
   hex2rgb,rgb2hex,lab,dE,labHex,unzip,zip,weld,areas,adjacency,subdivide,splitLong,meanEdge,stlOf,stlBytes,read3MF,readGLB,
   PAINT,unpaint,grid,samplePts,RNG,alignSource,registerPart,colorCloud,transferColors,kmeans,cleanIslands,
   Viewer,meshyTexture,meshyWait,setFilaments,save3MF,xf,mul4,inv4,I4,bboxOf,rot24,icp,horn,ap};
@@ -9642,7 +9717,7 @@ q("spcGo").onclick=()=>run().catch(e=>{q("spcGo").disabled=false;console.error(e
   if(e.url){q("spcLog").innerHTML=`<span class="err">${esc(e.message)}</span>\n1. <a href="${esc(e.url)}" target="_blank" rel="noopener">Download the painted figure</a> (a .glb file — no extra Meshy credits)\n2. Drop it into box 3\n3. Click Color it again`;return;}
   log(e.message||String(e),true);});
 async function run(){
-  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();S.keep=null;S.keepHard=null;S.skinReg=-1;
+  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();S.keep=null;S.keepHard=null;S.skinReg=-1;S.pipeRegs=null;
   const detail=Math.max(0.1,+q("spcDetail").value||0.5), slots=Math.max(1,Math.min(16,+q("spcSlots").value||8));
   /* figure: box 2, or the model itself */
   const active=[...S.on].filter(i=>i!==S.figPart).sort((a,b)=>a-b);
@@ -9855,21 +9930,34 @@ async function run(){
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
   if(!window._spcNoHead)try{headFix(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
-  if(!window._spcNoShine)shineToBlack(active);
+  const _tr=(tag)=>{const ti=active.find(pi=>/torso/i.test(S.parts[pi].name));if(ti==null)return;const o=S.offs[ti],n=S.parts[ti].m.f.length/3,c=new Map();for(let t=0;t<n;t++)c.set(S.label[o+t],(c.get(S.label[o+t])||0)+1);(window._spcTrace=window._spcTrace||[]).push(tag+":"+JSON.stringify([...c]));};
+  _tr('pre');if(!window._spcNoShine)shineToBlack(active);
   if(!window._spcNoCords)try{cordPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('edge');
   if(!window._spcNoBridge)try{bridgeStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('bridge');
+  if(!window._spcNoShoulder)try{shoulderPiping(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('shoulder');
   if(!window._spcNoBlotch)try{limbBlotches(active,hid);}catch(e){console.warn(e);}
-  if(!window._spcNoLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(window._spcOldLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   /* and a fine pass that also evens out the edges of the piping (eyes and brows stay as drawn) */
-  if(!window._spcNoLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
+  if(window._spcOldLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
+  _tr('blotch');
   /* last sweep: lone faces of another paint (a speck the size of a triangle or two) take the paint round them */
   {let sw=0;for(let pass=0;pass<3;pass++)for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
      for(let t=0;t<n;t++){if(S.keepHard&&S.keepHard[o+t])continue;const L=S.label[o+t];const m=new Map();let same=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L)same++;else m.set(M,(m.get(M)||0)+1);}
        if(same===0){let b=-1,bv=0;for(const [k,v] of m)if(v>bv){bv=v;b=k;}if(b>=0&&bv>=2){S.label[o+t]=b;sw++;}}}}
    try{limbBlotches(active,hid);}catch(e){}(window._spcDbg=window._spcDbg||{}).specks2=sw;}
+  _tr('specks');(window._spcTrace=window._spcTrace||[]).push('regs:'+JSON.stringify(S.regions.map((r,i)=>[i,C.rgb2hex(r.rgb),r.fil,!!r.hair])));
+  /* straight lines in the view too: each face takes the side of the smoothed border its middle lies on (the
+     saved file cuts the same borders exactly, through the triangles) */
+  if(!window._spcNoStraight)try{const rep=[];for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,v=C.xf(p.M,p.m.v),f=p.m.f;
+      const lab=Int32Array.from(S.label.subarray(o,o+n)),SL=C.straightLines(v,f,lab,{sigma:+(window._spcLineSigma||1.0)});let ch=0;
+      for(let t=0;t<n;t++){if(!SL.inBand[t])continue;const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3,q=[(v[a]+v[b]+v[c])/3,(v[a+1]+v[b+1]+v[c+1])/3,(v[a+2]+v[b+2]+v[c+2])/3];const L2=SL.at(q,t);if(L2!==S.label[o+t]){S.label[o+t]=L2;ch++;}}
+      rep.push(p.name.replace(/^.*?_\d+_/,"")+" "+SL.chains+"/"+ch);}(window._spcDbg=window._spcDbg||{}).straight=rep;}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -9968,6 +10056,62 @@ function bridgeStripes(active,hid){const rep=[];const pl=S.regions.map(r=>C.lab(
       S.keep=S.keep||new Uint8Array(S.nFaces);for(const t of set){S.label[o+t]=a.L;S.keep[o+t]=1;}ext++;}
     rep.push(p.name.replace(/^.*?_\d+_/,"")+" runs"+runs.length+" joins"+joins+" ext"+ext);}
   (window._spcDbg=window._spcDbg||{}).bridge=rep;}
+/* piping over the shoulders: a straight stripe from the tip of the chest emblem's outline to where the arm's own
+   piping starts, along the shortest way over the surface. On the torso the stripe paint is otherwise only allowed
+   along the emblem (within 2 mm of the paint it outlines); everything else of it there (smears, broken bits) goes
+   to the paint round it, then the shoulder stripes are drawn clean, 1.4 mm wide. */
+function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
+  const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
+  const arms=active.filter(pi=>/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name)&&regM[pi]);if(!arms.length)return;
+  const g=pieceGeo(tor,regM),o=S.offs[tor],n=g.n,nb=S.nb[tor],A=S.area;
+  /* the stripe paint: the paint of the arm cords */
+  let RED=-1;{const cnt=new Map();for(const pi of arms){const oa=S.offs[pi],na=S.parts[pi].m.f.length/3;for(let t=0;t<na;t++)if(S.keep&&S.keep[oa+t]){const l=S.label[oa+t];if(l>=0&&Math.hypot(...C.lab(...S.regions[l].rgb).slice(1))>15)cnt.set(l,(cnt.get(l)||0)+1);}}let bv=0;for(const [k,v] of cnt)if(v>bv){bv=v;RED=k;}}
+  if(RED<0){rep.push("no arm cord");(window._spcDbg=window._spcDbg||{}).shoulder=rep;return;}
+  /* the paint it outlines on the torso: the commonest other paint touching it */
+  const tm=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==RED)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const l=S.label[o+u];if(l!==RED)tm.set(l,(tm.get(l)||0)+1);}}
+  /* black borders it too; the emblem is the lighter of the two commonest */
+  const cand=[...tm].sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]);if(!cand.length)return;
+  const EMB=cand.reduce((a,b)=>C.lab(...S.regions[a].rgb)[0]>C.lab(...S.regions[b].rgb)[0]?a:b);
+  const BASE=cand.find(x=>x!==EMB)??-1;
+  /* distance from the emblem over the surface */
+  const isEmb=l=>l!==RED&&l!==BASE&&l>=0; /* (an emblem may be two regions of one filament) */const dE=new Float32Array(n).fill(Infinity),q=[];for(let t=0;t<n;t++)if(isEmb(S.label[o+t])&&!hid[o+t]){dE[t]=0;q.push([0,t]);}
+  const dist=(t,u)=>Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2]);
+  {const h=[];for(const x of q)hpush(h,x);while(h.length){const [d,t]=hpop(h);if(d>dE[t])continue;if(d>4)break;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const nd=d+dist(t,u);if(nd<dE[u]){dE[u]=nd;hpush(h,[nd,u]);}}}}
+  /* stray bits of the stripe paint (not the emblem's outline, the largest piece of it) go to the base paint */
+  let cleared=0;{const comp=new Int32Array(n).fill(-1),sizes=[];for(let s0=0;s0<n;s0++){if(comp[s0]>=0||S.label[o+s0]!==RED)continue;const id=sizes.length,c=[s0];comp[s0]=id;
+      for(let h2=0;h2<c.length;h2++){const t=c[h2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&comp[u]<0&&S.label[o+u]===RED){comp[u]=id;c.push(u);}}}sizes.push(c.length);}
+    let big=-1,bs=0;sizes.forEach((z,i)=>{if(z>bs){bs=z;big=i;}});
+    for(let t=0;t<n;t++)if(comp[t]>=0&&comp[t]!==big&&BASE>=0&&!(S.keep&&S.keep[o+t]&&dE[t]<=2)){S.label[o+t]=BASE;if(S.keep)S.keep[o+t]=0;cleared++;}}
+  /* the outline faces (stripe paint next to the emblem) */
+  const outline=[];for(let t=0;t<n;t++)if(S.label[o+t]===RED&&dE[t]<=2.0)outline.push(t);
+  S.keep=S.keep||new Uint8Array(S.nFaces);
+  for(const pi of arms){const ga=pieceGeo(pi,regM),oa=S.offs[pi];
+    /* the top of the arm's piping, on the figure */
+    let top=-1,tz=-Infinity;for(let t=0;t<ga.n;t++)if(S.label[oa+t]===RED&&S.keep[oa+t]&&!hid[oa+t]&&ga.c[t*3+2]>tz){tz=ga.c[t*3+2];top=t;}
+    if(top<0){rep.push(S.parts[pi].name+" no top");continue;}
+    const tp=[ga.c[top*3],ga.c[top*3+1],ga.c[top*3+2]];
+    /* end: the nearest visible torso face to it; start: the nearest outline face to that */
+    /* end on the torso's cut edge for the arm (a visible face beside a hidden one), nearest the arm's piping top */
+    let tcx=0;for(let t=0;t<n;t++)tcx+=g.c[t*3];tcx/=n;const sideA=Math.sign(tp[0]-tcx);
+    let end=-1,bd=Infinity;for(let t=0;t<n;t++){if(hid[o+t]||Math.sign(g.c[t*3]-tcx)!==sideA)continue;let cut=false;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&hid[o+u])cut=true;}if(!cut)continue;
+      const d=(g.c[t*3]-tp[0])**2+(g.c[t*3+1]-tp[1])**2+(g.c[t*3+2]-tp[2])**2;if(d<bd){bd=d;end=t;}}
+    if(end<0||bd>64){rep.push(S.parts[pi].name+" far "+Math.sqrt(bd).toFixed(1));continue;}
+    let st=-1;bd=Infinity;for(const t of outline){const d=(g.c[t*3]-g.c[end*3])**2+(g.c[t*3+1]-g.c[end*3+1])**2+(g.c[t*3+2]-g.c[end*3+2])**2;if(d<bd){bd=d;st=t;}}
+    if(st<0)continue;
+    /* shortest way over the visible surface */
+    const dd=new Map([[st,0]]),prev=new Map(),h=[[0,st]];let found=false;
+    while(h.length){const [d,t]=hpop(h);if(d>(dd.get(t)??Infinity))continue;if(t===end){found=true;break;}if(d>40)break;
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const nd=d+dist(t,u);if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}}
+    if(!found){rep.push(S.parts[pi].name+" no path");continue;}
+    const path=[];for(let t=end;t!==undefined;t=prev.get(t))path.push(t);
+    /* straighten the path (it hugs triangle centres), then paint everything within 0.7 mm of it */
+    let X=path.map(t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]]);for(let it=0;it<30;it++)for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}
+    const near=(t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
+    const seen=new Set(path),fr=path.slice();let painted=0;
+    for(let h2=0;h2<fr.length;h2++){const t=fr[h2];if(near(t)<=W_/2&&!hid[o+t]){if(!isEmb(S.label[o+t])){S.label[o+t]=RED;S.keep[o+t]=1;painted++;}
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen.has(u)){seen.add(u);fr.push(u);}}}}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" gap"+Math.sqrt(bd).toFixed(1)+" len"+(dd.get(end)).toFixed(1)+" f"+painted+" top"+tp.map(x=>x.toFixed(1)).join("/"));}
+  rep.push("cleared"+cleared+" outline"+outline.length+" RED"+RED+" EMB"+EMB+" BASE"+BASE+" cand"+JSON.stringify([...tm]));(window._spcDbg=window._spcDbg||{}).shoulder=rep;}
 /* blotches: on an arm or a leg, a small patch (under 2% of the piece) that lies wholly inside one other paint
    is a smear off the photo (skin on a boot, a dark spot on a glove): it takes the paint round it. Eyes and
    piping placed on purpose stay. */
@@ -9977,7 +10121,7 @@ function limbBlotches(active,hid){const rep=[];
     const seen=new Uint8Array(n);let nf=0;
     for(let s0=0;s0<n;s0++){if(seen[s0])continue;const L=S.label[o+s0];if(L<0)continue;const c=[s0];seen[s0]=1;let ar=0;const bd=new Map();
       for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L){if(!seen[u]){seen[u]=1;c.push(u);}}else bd.set(M,(bd.get(M)||0)+1);}}
-      if(ar>0.02*tot||bd.size!==1)continue;if(c.some(t=>S.keep&&S.keep[o+t]))continue;const M=[...bd.keys()][0];if(M<0)continue;
+      if(ar>0.08*tot||bd.size!==1)continue; /* (up to 8% of the piece, if wholly inside one paint) */if(c.some(t=>S.keep&&S.keep[o+t]))continue;const M=[...bd.keys()][0];if(M<0)continue;
       for(const t of c)S.label[o+t]=M;nf+=c.length;}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" "+nf);}
   (window._spcDbg=window._spcDbg||{}).blotch=rep;}
@@ -10168,6 +10312,7 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
       {const gq=pieceGeo(pi,null),dd=new Float32Array(n).fill(Infinity);let fr2=k.c.slice();for(const t of fr2)dd[t]=0;
        for(let r=0;r<12&&fr2.length;r++){const nx=[];for(const t of fr2)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!set[u])continue;const d=dd[t]+Math.hypot(gq.c[t*3]-gq.c[u*3],gq.c[t*3+1]-gq.c[u*3+1],gq.c[t*3+2]-gq.c[u*3+2]);if(d<dd[u]){dd[u]=d;nx.push(u);}}fr2=nx;}
        for(let t=0;t<n;t++)if(set[t]&&dd[t]>0.6)set[t]=0;}
+      S.pipeRegs=S.pipeRegs||new Set();S.pipeRegs.add(k.P);
       for(let t=0;t<n;t++)if(set[t]){S.label[o+t]=k.P;S.keep[o+t]=1;painted++;}}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" cords"+cords.length+" f"+painted+" cleared"+cleared);}
   (window._spcDbg=window._spcDbg||{}).cords=rep;}
@@ -11648,7 +11793,9 @@ function dropStrays(active,hid,photo){let moved=0;const R=S.regions.length;
   for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
     const ar=new Float64Array(R),shown=new Float64Array(R);let tot=0;
     for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0)continue;tot+=A[i];ar[L]+=A[i];if(photo&&!hid[i]&&photo.w[i]>0.5&&photo.sure[i*2]>=0&&photo.sure[i*2+1]<12){const P=S._remap?S._remap[photo.sure[i*2]]:photo.sure[i*2];if(P===L)shown[L]+=A[i];}}
-    const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
+    /* a paint placed on purpose somewhere on the piece (piping, an eye) is no stray there: its other faces stay too */
+    const placed=new Uint8Array(R);if(S.pipeRegs)for(const L of S.pipeRegs)if(L<R)placed[L]=1;
+    const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&!placed[L]&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
     if(!stray.length)continue;const isS=new Uint8Array(R);stray.forEach(L=>isS[L]=1);
     for(let pass=0;pass<30;pass++){let ch=0;
       for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0||!isS[L]||(S.keep&&S.keep[i]))continue;const v=new Map(); /* eyes and piping placed on purpose stay */

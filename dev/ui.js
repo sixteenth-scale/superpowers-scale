@@ -184,7 +184,7 @@ q("spcGo").onclick=()=>run().catch(e=>{q("spcGo").disabled=false;console.error(e
   if(e.url){q("spcLog").innerHTML=`<span class="err">${esc(e.message)}</span>\n1. <a href="${esc(e.url)}" target="_blank" rel="noopener">Download the painted figure</a> (a .glb file — no extra Meshy credits)\n2. Drop it into box 3\n3. Click Color it again`;return;}
   log(e.message||String(e),true);});
 async function run(){
-  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();S.keep=null;S.keepHard=null;S.skinReg=-1;
+  q("spcGo").disabled=true;q("spcSave").disabled=true;saveSet();S.keep=null;S.keepHard=null;S.skinReg=-1;S.pipeRegs=null;
   const detail=Math.max(0.1,+q("spcDetail").value||0.5), slots=Math.max(1,Math.min(16,+q("spcSlots").value||8));
   /* figure: box 2, or the model itself */
   const active=[...S.on].filter(i=>i!==S.figPart).sort((a,b)=>a-b);
@@ -397,21 +397,34 @@ async function run(){
   if(!window._spcNoTwinMatch)twinMatch(active,regM);
   pinColors(active,hid,regM);
   if(!window._spcNoHead)try{headFix(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
-  if(!window._spcNoShine)shineToBlack(active);
+  const _tr=(tag)=>{const ti=active.find(pi=>/torso/i.test(S.parts[pi].name));if(ti==null)return;const o=S.offs[ti],n=S.parts[ti].m.f.length/3,c=new Map();for(let t=0;t<n;t++)c.set(S.label[o+t],(c.get(S.label[o+t])||0)+1);(window._spcTrace=window._spcTrace||[]).push(tag+":"+JSON.stringify([...c]));};
+  _tr('pre');if(!window._spcNoShine)shineToBlack(active);
   if(!window._spcNoCords)try{cordPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('edge');
   if(!window._spcNoBridge)try{bridgeStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('bridge');
+  if(!window._spcNoShoulder)try{shoulderPiping(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  _tr('shoulder');
   if(!window._spcNoBlotch)try{limbBlotches(active,hid);}catch(e){console.warn(e);}
-  if(!window._spcNoLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(window._spcOldLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   /* and a fine pass that also evens out the edges of the piping (eyes and brows stay as drawn) */
-  if(!window._spcNoLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
+  if(window._spcOldLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
+  _tr('blotch');
   /* last sweep: lone faces of another paint (a speck the size of a triangle or two) take the paint round them */
   {let sw=0;for(let pass=0;pass<3;pass++)for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
      for(let t=0;t<n;t++){if(S.keepHard&&S.keepHard[o+t])continue;const L=S.label[o+t];const m=new Map();let same=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L)same++;else m.set(M,(m.get(M)||0)+1);}
        if(same===0){let b=-1,bv=0;for(const [k,v] of m)if(v>bv){bv=v;b=k;}if(b>=0&&bv>=2){S.label[o+t]=b;sw++;}}}}
    try{limbBlotches(active,hid);}catch(e){}(window._spcDbg=window._spcDbg||{}).specks2=sw;}
+  _tr('specks');(window._spcTrace=window._spcTrace||[]).push('regs:'+JSON.stringify(S.regions.map((r,i)=>[i,C.rgb2hex(r.rgb),r.fil,!!r.hair])));
+  /* straight lines in the view too: each face takes the side of the smoothed border its middle lies on (the
+     saved file cuts the same borders exactly, through the triangles) */
+  if(!window._spcNoStraight)try{const rep=[];for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,v=C.xf(p.M,p.m.v),f=p.m.f;
+      const lab=Int32Array.from(S.label.subarray(o,o+n)),SL=C.straightLines(v,f,lab,{sigma:+(window._spcLineSigma||1.0)});let ch=0;
+      for(let t=0;t<n;t++){if(!SL.inBand[t])continue;const a=f[t*3]*3,b=f[t*3+1]*3,c=f[t*3+2]*3,q=[(v[a]+v[b]+v[c])/3,(v[a+1]+v[b+1]+v[c+1])/3,(v[a+2]+v[b+2]+v[c+2])/3];const L2=SL.at(q,t);if(L2!==S.label[o+t]){S.label[o+t]=L2;ch++;}}
+      rep.push(p.name.replace(/^.*?_\d+_/,"")+" "+SL.chains+"/"+ch);}(window._spcDbg=window._spcDbg||{}).straight=rep;}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(window._spcSnap)window._spcSnap('final',S.label,x=>S.regions[x].rgb,hid);
   sumAreas();
   const R0n=S.regions.length;{const keep=S.regions.map((r,i)=>r.area>0?i:-1).filter(i=>i>=0),mp=new Map(keep.map((x,i)=>[x,i]));S._mp1=mp;
@@ -510,6 +523,62 @@ function bridgeStripes(active,hid){const rep=[];const pl=S.regions.map(r=>C.lab(
       S.keep=S.keep||new Uint8Array(S.nFaces);for(const t of set){S.label[o+t]=a.L;S.keep[o+t]=1;}ext++;}
     rep.push(p.name.replace(/^.*?_\d+_/,"")+" runs"+runs.length+" joins"+joins+" ext"+ext);}
   (window._spcDbg=window._spcDbg||{}).bridge=rep;}
+/* piping over the shoulders: a straight stripe from the tip of the chest emblem's outline to where the arm's own
+   piping starts, along the shortest way over the surface. On the torso the stripe paint is otherwise only allowed
+   along the emblem (within 2 mm of the paint it outlines); everything else of it there (smears, broken bits) goes
+   to the paint round it, then the shoulder stripes are drawn clean, 1.4 mm wide. */
+function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
+  const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
+  const arms=active.filter(pi=>/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name)&&regM[pi]);if(!arms.length)return;
+  const g=pieceGeo(tor,regM),o=S.offs[tor],n=g.n,nb=S.nb[tor],A=S.area;
+  /* the stripe paint: the paint of the arm cords */
+  let RED=-1;{const cnt=new Map();for(const pi of arms){const oa=S.offs[pi],na=S.parts[pi].m.f.length/3;for(let t=0;t<na;t++)if(S.keep&&S.keep[oa+t]){const l=S.label[oa+t];if(l>=0&&Math.hypot(...C.lab(...S.regions[l].rgb).slice(1))>15)cnt.set(l,(cnt.get(l)||0)+1);}}let bv=0;for(const [k,v] of cnt)if(v>bv){bv=v;RED=k;}}
+  if(RED<0){rep.push("no arm cord");(window._spcDbg=window._spcDbg||{}).shoulder=rep;return;}
+  /* the paint it outlines on the torso: the commonest other paint touching it */
+  const tm=new Map();for(let t=0;t<n;t++){if(S.label[o+t]!==RED)continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const l=S.label[o+u];if(l!==RED)tm.set(l,(tm.get(l)||0)+1);}}
+  /* black borders it too; the emblem is the lighter of the two commonest */
+  const cand=[...tm].sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]);if(!cand.length)return;
+  const EMB=cand.reduce((a,b)=>C.lab(...S.regions[a].rgb)[0]>C.lab(...S.regions[b].rgb)[0]?a:b);
+  const BASE=cand.find(x=>x!==EMB)??-1;
+  /* distance from the emblem over the surface */
+  const isEmb=l=>l!==RED&&l!==BASE&&l>=0; /* (an emblem may be two regions of one filament) */const dE=new Float32Array(n).fill(Infinity),q=[];for(let t=0;t<n;t++)if(isEmb(S.label[o+t])&&!hid[o+t]){dE[t]=0;q.push([0,t]);}
+  const dist=(t,u)=>Math.hypot(g.c[t*3]-g.c[u*3],g.c[t*3+1]-g.c[u*3+1],g.c[t*3+2]-g.c[u*3+2]);
+  {const h=[];for(const x of q)hpush(h,x);while(h.length){const [d,t]=hpop(h);if(d>dE[t])continue;if(d>4)break;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const nd=d+dist(t,u);if(nd<dE[u]){dE[u]=nd;hpush(h,[nd,u]);}}}}
+  /* stray bits of the stripe paint (not the emblem's outline, the largest piece of it) go to the base paint */
+  let cleared=0;{const comp=new Int32Array(n).fill(-1),sizes=[];for(let s0=0;s0<n;s0++){if(comp[s0]>=0||S.label[o+s0]!==RED)continue;const id=sizes.length,c=[s0];comp[s0]=id;
+      for(let h2=0;h2<c.length;h2++){const t=c[h2];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&comp[u]<0&&S.label[o+u]===RED){comp[u]=id;c.push(u);}}}sizes.push(c.length);}
+    let big=-1,bs=0;sizes.forEach((z,i)=>{if(z>bs){bs=z;big=i;}});
+    for(let t=0;t<n;t++)if(comp[t]>=0&&comp[t]!==big&&BASE>=0&&!(S.keep&&S.keep[o+t]&&dE[t]<=2)){S.label[o+t]=BASE;if(S.keep)S.keep[o+t]=0;cleared++;}}
+  /* the outline faces (stripe paint next to the emblem) */
+  const outline=[];for(let t=0;t<n;t++)if(S.label[o+t]===RED&&dE[t]<=2.0)outline.push(t);
+  S.keep=S.keep||new Uint8Array(S.nFaces);
+  for(const pi of arms){const ga=pieceGeo(pi,regM),oa=S.offs[pi];
+    /* the top of the arm's piping, on the figure */
+    let top=-1,tz=-Infinity;for(let t=0;t<ga.n;t++)if(S.label[oa+t]===RED&&S.keep[oa+t]&&!hid[oa+t]&&ga.c[t*3+2]>tz){tz=ga.c[t*3+2];top=t;}
+    if(top<0){rep.push(S.parts[pi].name+" no top");continue;}
+    const tp=[ga.c[top*3],ga.c[top*3+1],ga.c[top*3+2]];
+    /* end: the nearest visible torso face to it; start: the nearest outline face to that */
+    /* end on the torso's cut edge for the arm (a visible face beside a hidden one), nearest the arm's piping top */
+    let tcx=0;for(let t=0;t<n;t++)tcx+=g.c[t*3];tcx/=n;const sideA=Math.sign(tp[0]-tcx);
+    let end=-1,bd=Infinity;for(let t=0;t<n;t++){if(hid[o+t]||Math.sign(g.c[t*3]-tcx)!==sideA)continue;let cut=false;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&hid[o+u])cut=true;}if(!cut)continue;
+      const d=(g.c[t*3]-tp[0])**2+(g.c[t*3+1]-tp[1])**2+(g.c[t*3+2]-tp[2])**2;if(d<bd){bd=d;end=t;}}
+    if(end<0||bd>64){rep.push(S.parts[pi].name+" far "+Math.sqrt(bd).toFixed(1));continue;}
+    let st=-1;bd=Infinity;for(const t of outline){const d=(g.c[t*3]-g.c[end*3])**2+(g.c[t*3+1]-g.c[end*3+1])**2+(g.c[t*3+2]-g.c[end*3+2])**2;if(d<bd){bd=d;st=t;}}
+    if(st<0)continue;
+    /* shortest way over the visible surface */
+    const dd=new Map([[st,0]]),prev=new Map(),h=[[0,st]];let found=false;
+    while(h.length){const [d,t]=hpop(h);if(d>(dd.get(t)??Infinity))continue;if(t===end){found=true;break;}if(d>40)break;
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const nd=d+dist(t,u);if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}}
+    if(!found){rep.push(S.parts[pi].name+" no path");continue;}
+    const path=[];for(let t=end;t!==undefined;t=prev.get(t))path.push(t);
+    /* straighten the path (it hugs triangle centres), then paint everything within 0.7 mm of it */
+    let X=path.map(t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]]);for(let it=0;it<30;it++)for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}
+    const near=(t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
+    const seen=new Set(path),fr=path.slice();let painted=0;
+    for(let h2=0;h2<fr.length;h2++){const t=fr[h2];if(near(t)<=W_/2&&!hid[o+t]){if(!isEmb(S.label[o+t])){S.label[o+t]=RED;S.keep[o+t]=1;painted++;}
+        for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen.has(u)){seen.add(u);fr.push(u);}}}}
+    rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" gap"+Math.sqrt(bd).toFixed(1)+" len"+(dd.get(end)).toFixed(1)+" f"+painted+" top"+tp.map(x=>x.toFixed(1)).join("/"));}
+  rep.push("cleared"+cleared+" outline"+outline.length+" RED"+RED+" EMB"+EMB+" BASE"+BASE+" cand"+JSON.stringify([...tm]));(window._spcDbg=window._spcDbg||{}).shoulder=rep;}
 /* blotches: on an arm or a leg, a small patch (under 2% of the piece) that lies wholly inside one other paint
    is a smear off the photo (skin on a boot, a dark spot on a glove): it takes the paint round it. Eyes and
    piping placed on purpose stay. */
@@ -519,7 +588,7 @@ function limbBlotches(active,hid){const rep=[];
     const seen=new Uint8Array(n);let nf=0;
     for(let s0=0;s0<n;s0++){if(seen[s0])continue;const L=S.label[o+s0];if(L<0)continue;const c=[s0];seen[s0]=1;let ar=0;const bd=new Map();
       for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L){if(!seen[u]){seen[u]=1;c.push(u);}}else bd.set(M,(bd.get(M)||0)+1);}}
-      if(ar>0.02*tot||bd.size!==1)continue;if(c.some(t=>S.keep&&S.keep[o+t]))continue;const M=[...bd.keys()][0];if(M<0)continue;
+      if(ar>0.08*tot||bd.size!==1)continue; /* (up to 8% of the piece, if wholly inside one paint) */if(c.some(t=>S.keep&&S.keep[o+t]))continue;const M=[...bd.keys()][0];if(M<0)continue;
       for(const t of c)S.label[o+t]=M;nf+=c.length;}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" "+nf);}
   (window._spcDbg=window._spcDbg||{}).blotch=rep;}
@@ -710,6 +779,7 @@ function cordPiping(active,regM,hid,L){const rep=[];const pl=S.regions.map(r=>C.
       {const gq=pieceGeo(pi,null),dd=new Float32Array(n).fill(Infinity);let fr2=k.c.slice();for(const t of fr2)dd[t]=0;
        for(let r=0;r<12&&fr2.length;r++){const nx=[];for(const t of fr2)for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!set[u])continue;const d=dd[t]+Math.hypot(gq.c[t*3]-gq.c[u*3],gq.c[t*3+1]-gq.c[u*3+1],gq.c[t*3+2]-gq.c[u*3+2]);if(d<dd[u]){dd[u]=d;nx.push(u);}}fr2=nx;}
        for(let t=0;t<n;t++)if(set[t]&&dd[t]>0.6)set[t]=0;}
+      S.pipeRegs=S.pipeRegs||new Set();S.pipeRegs.add(k.P);
       for(let t=0;t<n;t++)if(set[t]){S.label[o+t]=k.P;S.keep[o+t]=1;painted++;}}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" cords"+cords.length+" f"+painted+" cleared"+cleared);}
   (window._spcDbg=window._spcDbg||{}).cords=rep;}
@@ -2190,7 +2260,9 @@ function dropStrays(active,hid,photo){let moved=0;const R=S.regions.length;
   for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;
     const ar=new Float64Array(R),shown=new Float64Array(R);let tot=0;
     for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0)continue;tot+=A[i];ar[L]+=A[i];if(photo&&!hid[i]&&photo.w[i]>0.5&&photo.sure[i*2]>=0&&photo.sure[i*2+1]<12){const P=S._remap?S._remap[photo.sure[i*2]]:photo.sure[i*2];if(P===L)shown[L]+=A[i];}}
-    const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
+    /* a paint placed on purpose somewhere on the piece (piping, an eye) is no stray there: its other faces stay too */
+    const placed=new Uint8Array(R);if(S.pipeRegs)for(const L of S.pipeRegs)if(L<R)placed[L]=1;
+    const stray=[...Array(R).keys()].filter(L=>ar[L]>0&&!placed[L]&&ar[L]<Math.max(2,0.03*tot)&&shown[L]<0.25*ar[L]);
     if(!stray.length)continue;const isS=new Uint8Array(R);stray.forEach(L=>isS[L]=1);
     for(let pass=0;pass<30;pass++){let ch=0;
       for(let t=0;t<n;t++){const i=o+t,L=S.label[i];if(L<0||!isS[L]||(S.keep&&S.keep[i]))continue;const v=new Map(); /* eyes and piping placed on purpose stay */
