@@ -768,10 +768,14 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
      around(c0,HW+0.2,(u,d2)=>{if(!isG[u])return;let d=sub(C3(u),c0);d=add(d,nt,-dot(d,nt));const L=Math.hypot(...d);if(L<0.15)return;us.push(d.map(x=>x/L));ds.push(L);});
      if(us.length<2)continue;let hit=false;for(let i=0;i<us.length&&!hit;i++){let bm=Infinity;for(let j=0;j<us.length;j++){if(dot(us[i],us[j])<-0.6&&ds[j]<bm)bm=ds[j];}if(ds[i]+bm<2*HW)hit=true;}
      if(hit){mark[t]=1;nm++;}}
+   /* a groove goes shallow for a moment and the marking breaks: the marks are closed over 0.45 mm (a face joins when a third of its
+      neighbourhood is marked, and never a groove or the glove), so a run holds together along the cord */
+   {for(let pass=0;pass<2;pass++){const addl=[];for(let t=0;t<n;t++){if(mark[t]||!region[t]||isG[t]||(stopF&&stopF(t)))continue;let nM=0,nA=0;around(C3(t),0.45,u=>{nA++;if(mark[u])nM++;});if(nA&&nM/nA>=0.33)addl.push(t);}for(const t of addl)mark[t]=1;}
+    for(let pass=0;pass<1;pass++){const rem=[];for(let t=0;t<n;t++){if(!mark[t])continue;let nM=0,nA=0;around(C3(t),0.45,u=>{nA++;if(mark[u])nM++;});if(nA&&nM/nA<0.25)rem.push(t);}for(const t of rem)mark[t]=0;}}
    /* runs */
    const comp=new Int32Array(n).fill(-1),ca=[],cg=[];let nc=0;const inGuide=new Uint8Array(n);for(const t of guide)inGuide[t]=1;
    for(let t=0;t<n;t++){if(!mark[t]||comp[t]>=0)continue;let ar=0,ag=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=A[o+u];if(inGuide[u])ag+=A[o+u];around(C3(u),0.16,w=>{if(mark[w]&&comp[w]<0){comp[w]=nc;st.push(w);}});}ca.push(ar);cg.push(ag);nc++;}
-   let gtot=0;for(let c=0;c<nc;c++)gtot+=cg[c];const keep=new Uint8Array(nc);let kept=0,kf=0;for(let c=0;c<nc;c++)if(cg[c]>=1.0&&cg[c]>=0.02*gtot&&cg[c]>=0.25*ca[c]){keep[c]=1;kept++;}
+   let gtot=0;for(let c=0;c<nc;c++)gtot+=cg[c];const keep=new Uint8Array(nc);let kept=0,kf=0;for(let c=0;c<nc;c++)if(cg[c]>=0.5&&cg[c]>=0.01*gtot&&cg[c]>=0.15*ca[c]){keep[c]=1;kept++;}
    const bw=new Uint8Array(n);for(let t=0;t<n;t++)if(mark[t]&&keep[comp[t]]){bw[t]=1;kf++;}
    /* the run's edges follow single triangles along the groove: a majority vote over 0.3 mm smooths them, never into a groove or the glove */
    for(let pass=0;pass<2;pass++){const ed=[];for(let t=0;t<n;t++){if(!region[t]||hidF(t))continue;let nB=0,nAll=0,touch=false;const was=bw[t];around(C3(t),0.3,u=>{nAll++;if(bw[u]){nB++;if(!was)touch=true;}else if(was)touch=true;});if(!touch)continue;const f=nB/Math.max(1,nAll);if(was&&f<0.4)ed.push([t,0]);else if(!was&&f>0.6&&!isG[t]&&!(stopF&&stopF(t)))ed.push([t,1]);}for(const [t,v] of ed)bw[t]=v;}
