@@ -10362,7 +10362,13 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
   let hCore=0;{const hs=[];let c=0;for(let t=0;t<n;t++)if(band[t]&&((c++)%7===0))hs.push(hgt(t));hs.sort((x,y)=>x-y);hCore=hs.length?hs[hs.length>>1]:0;}
   /* distance to the traced centre line, against the band's own half width there */
   const offLine=q=>{let best=Infinity,hw=1;for(let i=0;i+1<mids.length;i++){const a=mids[i],b=mids[i+1],ab=sub(b,a),L2=dot(ab,ab)||1e-9;let tt=dot(sub(q,a),ab)/L2;tt=Math.max(0,Math.min(1,tt));const d=Math.hypot(...sub(q,add(a,ab,tt)));if(d<best){best=d;hw=(Math.hypot(...sub(Ls[i],Rs[i]))+Math.hypot(...sub(Ls[i+1],Rs[i+1])))/4;}}return best-hw;};
-  {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;if(offLine(C3(u))>0.25)return; /* (never wider than the cord: no bulge onto the muscle beside it) */band[u]=2;nf.push(u);});front=nf;}
+  /* the band is the cord's width either side of its centre line, and one piece: where the tracking wandered at an end it took a wide patch
+     or a scrap off the cord, and those go */
+  for(let t=0;t<n;t++)if(band[t]&&offLine(C3(t))>0.3)band[t]=0;
+  {const comp=new Int32Array(n).fill(-1);let best=-1,bestA=0,nc=0;for(let t=0;t<n;t++){if(!band[t]||comp[t]>=0)continue;let ar=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=A[o+u];around(C3(u),0.2,w=>{if(band[w]&&comp[w]<0){comp[w]=nc;st.push(w);}});}if(ar>bestA){bestA=ar;best=nc;}nc++;}
+   for(let t=0;t<n;t++)if(band[t]&&comp[t]!==best)band[t]=0;}
+  const stage=new Uint8Array(n);for(let t=0;t<n;t++)if(band[t])stage[t]=1;
+  {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;if(offLine(C3(u))>0.25)return; /* (never wider than the cord: no bulge onto the muscle beside it) */band[u]=2;stage[u]=2;nf.push(u);});front=nf;}
    for(let t=0;t<n;t++)if(band[t])band[t]=1;}
   /* to the very end of the cord, round its curves: from each end of the traced band the cord's inside is flooded,
      never crossing a groove and never more than the band's half width (plus a little) from the nearest groove face,
@@ -10371,12 +10377,19 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
     const gro=[];around(e,16,u=>{if(ras(u)<-0.004)gro.push(u);});if(gro.length<20)continue;
     const GG=0.5,gg=new Map();for(const u of gro){const kk=((Math.floor(g.c[u*3]/GG)+8192)*16384+(Math.floor(g.c[u*3+1]/GG)+8192))*16384+(Math.floor(g.c[u*3+2]/GG)+8192);let L=gg.get(kk);if(!L){L=[];gg.set(kk,L);}L.push(u);}
     const dG=q=>{const cx=Math.floor(q[0]/GG),cy=Math.floor(q[1]/GG),cz=Math.floor(q[2]/GG);let bd=Infinity;for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++)for(let kk=-3;kk<=3;kk++){const L=gg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+kk+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
+    /* the flood may only carry the cord on the way it is curving: a corridor along a quadratic fitted to the band's last 8 mm */
+    const tail=[];{let acc=0;for(let i=k;i>=0&&i<M.length;i+=end?-1:1){if(tail.length)acc+=Math.hypot(...sub(M[i],tail[tail.length-1][1]));tail.push([acc,M[i]]);if(acc>8)break;}}
+    let corPts=null;if(tail.length>=5){const fit=dim=>{let S0=0,S1=0,S2=0,S3=0,S4=0,T0=0,T1=0,T2=0;for(const [u,q] of tail){const x=-u,y=q[dim];S0++;S1+=x;S2+=x*x;S3+=x*x*x;S4+=x*x*x*x;T0+=y;T1+=x*y;T2+=x*x*y;}
+      const Mx=[[S4,S3,S2],[S3,S2,S1],[S2,S1,S0]],R=[T2,T1,T0];const det=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);const D=det(Mx)||1e-9;
+      const col=(c)=>Mx.map((r,i)=>r.map((v,j)=>j===c?R[i]:v));return [det(col(0))/D,det(col(1))/D,det(col(2))/D];};const cf=[fit(0),fit(1),fit(2)];
+      corPts=[];for(let x=-1;x<=15;x+=0.25){const xx=Math.min(x,6);corPts.push(cf.map(c=>c[0]*xx*xx+c[1]*xx+c[2]).map((v,d)=>x>6?v+(x-6)*(2*cf[d][0]*6+cf[d][1]):v));}}
+    const offCor=q=>{if(!corPts)return 0;let b=Infinity;for(let i=0;i+1<corPts.length;i++){const a=corPts[i],ab=sub(corPts[i+1],a),L2=dot(ab,ab)||1e-9;let tt=Math.max(0,Math.min(1,dot(sub(q,a),ab)/L2));b=Math.min(b,Math.hypot(...sub(q,add(a,ab,tt))));}return b;};
     const dist=new Map(),hq=[];for(let t=0;t<n;t++)if(band[t]&&Math.hypot(...sub(C3(t),e))<1.2){dist.set(t,0);hq.push([0,t]);}
     let added=0;while(hq.length){hq.sort((x,y)=>y[0]-x[0]);const [dc,t]=hq.pop();if(dc>(dist.get(t)??Infinity))continue;
-      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return; /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
+      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return;if(offCor(C3(u))>hwE+0.35)return; /* (on the cord's own course, not off into the hollow beside it) */ /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;stage[u]=3;added++;}hq.push([nd,u]);});
       if(added>3000)break;}}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
-  band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
+  band.mids=mids;band.Ls=Ls;band.Rs=Rs;band.stage=stage;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
   const arms=active.filter(pi=>/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name)&&regM[pi]);if(!arms.length)return;
@@ -10726,7 +10739,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
        return [ext(R[0],R[i0])].concat(R,[ext(R[k-1],R[i1])]);};
      (S.strokes=S.strokes||{})[pi]={list:runs.map(R=>({X:extE(R),r:W/2,s:P,base:B})),own,oS,oB};}
     /* the paint is the sculpted band between the cord's two grooves, when the sculpt has them */
-    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),/thigh|leg/i.test(S.parts[pi].name)); /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
+    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),/thigh|leg/i.test(S.parts[pi].name)); /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */if(GB&&GB.stage)(window._spcStage=window._spcStage||{})[S.parts[pi].name]=GB.stage;
       if(GB){let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])GB[t]=0;if(GB[t])nb2++;}
         if(nb2>50){BANDF=GB;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" GROOVES "+GB.info+" n"+nb2);
           /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
