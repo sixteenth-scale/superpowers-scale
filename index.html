@@ -10085,7 +10085,14 @@ async function run(){
     (window._spcDbg=window._spcDbg||{}).closeStar=cf;}
   /* last word on the shoulder lines: each is its one even line, and stripe paint off it (and off the emblem's
      outline) is the suit's paint */
-  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;const okT=F.BS?F.BS[t]:F.ok[t],ringT=F.BO?F.BO[t]:F.ring[t];if(okT||ringT&&F.BO||(F.rim[t]&&!F.starFit)){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if((F.starFit?!ringT:!F.outl[t])&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}(window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
+  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;const okT=F.BS?F.BS[t]:F.ok[t],ringT=F.BO?F.BO[t]:F.ring[t];if(okT||ringT&&F.BO||(F.rim[t]&&!F.starFit)){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if((F.starFit?!ringT:!F.outl[t])&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}
+    /* then the shoulder ridges' ragged ends: near the shoulder ridges, red that is gone after shrinking the red two faces in from its edge and does
+       not grow back within three faces is a fleck or a patch on a thin neck */
+    if(F.BS){const nb=S.nb[F.tor],isR=t=>S.label[o+t]===F.RED;const near=new Uint8Array(n);{let fr=[];for(let t=0;t<n;t++)if(F.BS[t]){near[t]=1;fr.push(t);}for(let r=0;r<20&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!near[w]){near[w]=1;nf.push(w);}}fr=nf;}}
+     let core=new Uint8Array(n);for(let t=0;t<n;t++)core[t]=isR(t)?1:0;for(let r=0;r<2;r++){const nx=core.slice();for(let t=0;t<n;t++){if(!core[t])continue;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w<0||!core[w]){nx[t]=0;break;}}}core=nx;}
+     const keep=core.slice();let fr=[];for(let t=0;t<n;t++)if(keep[t])fr.push(t);for(let r=0;r<3&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!keep[w]&&isR(w)){keep[w]=1;nf.push(w);}}fr=nf;}
+     let a3=0;for(let t=0;t<n;t++)if(near[t]&&isR(t)&&!keep[t]){S.label[o+t]=F.BASE;a3++;}a2+=a3;}
+    (window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
   /* last word on limb piping: stripe paint off the line (and off the glove or boot) is the suit's paint */
   if(S.lineF){let nr=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18){S.label[o+t]=F.B;nr++;}}}
     /* and bits of the stripe paint cut off from the stripe (a scrap at a knee crease) */
