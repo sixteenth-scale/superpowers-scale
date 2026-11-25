@@ -494,7 +494,13 @@ async function run(){
     if(F.BS){const nb=S.nb[F.tor],isR=t=>S.label[o+t]===F.RED;const near=new Uint8Array(n);{let fr=[];for(let t=0;t<n;t++)if(F.BS[t]){near[t]=1;fr.push(t);}for(let r=0;r<20&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!near[w]){near[w]=1;nf.push(w);}}fr=nf;}}
      let core=new Uint8Array(n);for(let t=0;t<n;t++)core[t]=isR(t)?1:0;for(let r=0;r<2;r++){const nx=core.slice();for(let t=0;t<n;t++){if(!core[t])continue;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w<0||!core[w]){nx[t]=0;break;}}}core=nx;}
      const keep=core.slice();let fr=[];for(let t=0;t<n;t++)if(keep[t])fr.push(t);for(let r=0;r<3&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!keep[w]&&isR(w)){keep[w]=1;nf.push(w);}}fr=nf;}
-     let a3=0;for(let t=0;t<n;t++)if(near[t]&&isR(t)&&!keep[t]){S.label[o+t]=F.BASE;a3++;}a2+=a3;}
+     let a3=0;for(let t=0;t<n;t++)if(near[t]&&isR(t)&&!keep[t]){S.label[o+t]=F.BASE;a3++;}a2+=a3;
+     /* and the fringe where a ridge ends on a coarse surface: long thin triangles fanned out from the ridge's end, which can only be painted whole
+        and read as red spikes. Slivers much longer than the ridge's own triangles go to the suit's paint */
+     {const m=S.parts[F.tor].m,V=m.v,Fc=m.f;const geo=t=>{const a=Fc[t*3]*3,b=Fc[t*3+1]*3,c=Fc[t*3+2]*3;const e=[[V[b]-V[a],V[b+1]-V[a+1],V[b+2]-V[a+2]],[V[c]-V[b],V[c+1]-V[b+1],V[c+2]-V[b+2]],[V[a]-V[c],V[a+1]-V[c+1],V[a+2]-V[c+2]]];
+        const L=Math.max(...e.map(x=>Math.hypot(...x)));const cr=[e[0][1]*e[2][2]-e[0][2]*e[2][1],e[0][2]*e[2][0]-e[0][0]*e[2][2],e[0][0]*e[2][1]-e[0][1]*e[2][0]];const A=Math.hypot(...cr)/2;return [L,A];};
+      const Ls=[];for(let t=0;t<n;t++)if(F.BS[t]&&isR(t))Ls.push(geo(t)[0]);Ls.sort((x,y)=>x-y);const med=Ls.length?Ls[Ls.length>>1]:0;let a4=0;
+      if(med>0)for(let t=0;t<n;t++){if(!near[t]||!isR(t))continue;const [L,A]=geo(t);if(L>2.5*med&&L*L/(2*Math.max(A,1e-9))>4){S.label[o+t]=F.BASE;a4++;}}a2+=a4;}}
     (window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
   /* last word on limb piping: stripe paint off the line (and off the glove or boot) is the suit's paint */
   if(S.lineF){let nr=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18){S.label[o+t]=F.B;nr++;}}}
@@ -519,6 +525,9 @@ async function run(){
   if(!window._spcNoStrays){dropStrays(active,hid,photo);sumAreas();}
   /* last of all: on a piped limb the stripe paint is the traced stripe and the glove or boot, nothing else */
   if(S.lineF){const rm=S._remap||null;let nz=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P,B=rm?rm[F.B]:F.B;if(P==null||P<0||B==null||B<0)continue;
+    /* the glove or boot is one piece: glove paint marked away from it (a patch near the cap) is not glove */
+    if(F.bl){const nb=S.nb[pi],comp=new Int32Array(n).fill(-1),ca=[];let nc=0;for(let t=0;t<n;t++){if(!F.bl[t]||comp[t]>=0)continue;let ar=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&F.bl[w]&&comp[w]<0){comp[w]=nc;st.push(w);}}}ca.push(ar);nc++;}
+     let bi=-1,ba=0;for(let c=0;c<nc;c++)if(ca[c]>ba){ba=ca[c];bi=c;}const bl=new Uint8Array(n);for(let t=0;t<n;t++)if(F.bl[t]&&(comp[t]===bi||ca[comp[t]]>=0.3*ba))bl[t]=1;F.bl=bl;}
     for(let t=0;t<n;t++){if(S.label[o+t]!==P||F.ok[t]||(F.bl&&F.bl[t]))continue;S.label[o+t]=B;nz++;}
     /* and islands: stripe paint not joined to the glove or boot and much smaller than the stripe itself is a stray patch */
     {const nb=S.nb[pi],comp=new Int32Array(n).fill(-1),ca=[],cb=[];let nc=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P||comp[t]>=0)continue;let ar=0,hasB=false;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];if(F.bl&&F.bl[u])hasB=true;for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&comp[w]<0&&S.label[o+w]===P){comp[w]=nc;st.push(w);}}}ca.push(ar);cb.push(hasB);nc++;}
