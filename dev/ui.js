@@ -1383,6 +1383,8 @@ function headFix(active,regM,hid,L){const rep=[];
     const F=most(t=>g.c[t*3+2]<z0+0.5*H_&&S.label[o+t]!==H&&L[(o+t)*3]>45&&chroma(o+t)>8);
     if(H<0||F<0||H===F){rep.push(S.parts[pi].name+" no hair/skin");continue;}
     S.skinReg=F;
+    /* the face takes the face filament when one is on the shelf */
+    {const j=C.PAL.findIndex(f=>f.skin&&f.owned!==false);if(j>=0&&S.regions[F]){S.regions[F].fil=j;S.regions[F].skin=true;rep.push('skin -> '+C.fname(C.PAL[j]));}}
     /* hair: joined to the crown, not skin */
     const hair=new Uint8Array(n),q=[];for(let t=0;t<n;t++)if(!hid[o+t]&&g.c[t*3+2]>z1-0.08*H_&&S.label[o+t]===H){hair[t]=1;q.push(t);}
     for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hair[u]||S.label[o+u]===F)continue;hair[u]=1;q.push(u);}}
@@ -2919,7 +2921,9 @@ function matchFilaments(slots){
   let allowed=owned.length?owned:C.PAL.map((_,i)=>i);
   /* a plain (PLA Basic) filament wins over a Matte, Translucent or TPU one of the same color; hair is never put on a colorless filament */
   const pen=i=>/^PLA Basic$/i.test(C.PAL[i].type||"")?0:2;
-  const assign=()=>S.regions.forEach(r=>{const l=C.lab(...r.rgb);let b=-1,bd=Infinity,bs=Infinity;for(const i of allowed){if(r.hair&&Math.hypot(PL[i][1],PL[i][2])<6)continue;const d=C.dE(l,PL[i]),sc=d+pen(i);if(sc<bs){bs=sc;bd=d;b=i;}}
+  /* the face and the hair take Rob's chosen filaments when they are on the shelf */
+  const pick=fl=>C.PAL.findIndex(f=>f[fl]&&f.owned!==false);
+  const assign=()=>S.regions.forEach(r=>{if(r.skin&&pick('skin')>=0){r.fil=pick('skin');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}if(r.hair&&pick('hairFil')>=0){r.fil=pick('hairFil');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}const l=C.lab(...r.rgb);let b=-1,bd=Infinity,bs=Infinity;for(const i of allowed){if(r.hair&&Math.hypot(PL[i][1],PL[i][2])<6)continue;const d=C.dE(l,PL[i]),sc=d+pen(i);if(sc<bs){bs=sc;bd=d;b=i;}}
     if(b<0)for(const i of allowed){const d=C.dE(l,PL[i]);if(d<bd){bd=d;b=i;}}r.fil=b;r.dE=bd;});
   assign();
   for(;;){const used=new Map();S.regions.forEach(r=>used.set(r.fil,(used.get(r.fil)||0)+r.area));

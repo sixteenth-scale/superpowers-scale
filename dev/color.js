@@ -38,11 +38,14 @@ const OWNED=[
 ["13301","PLA Translucent","Orange","#F74E02","GFA17"],["13210","PLA Translucent","Red","#B50011","GFA17"],
 ["53101","TPU for AMS","Black","#000000","GFU02"]
 ].map(([code,type,color,hex,fid])=>({code,type,color,hex,fid,vendor:"Bambu Lab",owned:true}));
+/* Rob's other brands. skin:true is the face filament: faces take it whenever it is in the palette. */
+{const dc=OWNED.find(f=>f.color==="Dark Chocolate");if(dc)dc.hairFil=true;} /* the hair filament */
+OWNED.push({code:"",type:"PLA Pro",color:"Beige",hex:"#E3C7B0",fid:"GFL99",vendor:"3DHoJor",owned:true,skin:true,ptype:"PLA"});
 const PRESET={GFA00:"Bambu PLA Basic",GFA01:"Bambu PLA Matte",GFA17:"Bambu PLA Translucent",
   GFU02:"Bambu TPU for AMS",GFA02:"Bambu PLA Metal",GFA05:"Bambu PLA Silk",GFA06:"Bambu PLA Silk+",
   GFA07:"Bambu PLA Marble",GFA08:"Bambu PLA Sparkle",GFA09:"Bambu PLA Tough",GFA11:"Bambu PLA Aero",
   GFA12:"Bambu PLA Glow",GFA13:"Bambu PLA Dynamic",GFA15:"Bambu PLA Galaxy",GFG00:"Bambu PETG Basic",
-  GFG01:"Bambu PETG Translucent",GFG02:"Bambu PETG HF"};
+  GFG01:"Bambu PETG Translucent",GFG02:"Bambu PETG HF",GFL99:"Generic PLA"};
 /* nozzle temperature per filament (first layer, other layers, low, high), so a slot carries its own
    filament's heat and not the heat of the filament it was copied from */
 const NOZ={GFA05:[230,230,210,240],GFA06:[230,230,210,240],GFA09:[220,220,190,240],GFA11:[250,250,230,260],
@@ -56,6 +59,9 @@ let PAL=[];
 function loadPalette(){
   let saved=null; try{saved=JSON.parse(localStorage.getItem(LS_PAL)||"null");}catch(e){}
   PAL=Array.isArray(saved)&&saved.length?saved:OWNED.map(f=>({...f}));
+  /* filaments added to the shelf since the palette was saved join it */
+  const k=f=>(f.vendor||"")+"|"+(f.type||"")+"|"+f.color;for(const f of OWNED)if(!PAL.some(p=>k(p)===k(f)))PAL.push({...f});
+  for(const f of OWNED)for(const fl of ['skin','hairFil'])if(f[fl]){const p=PAL.find(p=>k(p)===k(f));if(p)p[fl]=true;}
 }
 function savePalette(){try{localStorage.setItem(LS_PAL,JSON.stringify(PAL));}catch(e){}}
 let CATALOG=null;
