@@ -1063,6 +1063,17 @@ function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
     for(let t=0;t<gA.n;t++){if(!fA.ok[t])continue;const q=mapBA(t);const dOk=near(gB,okGB,q,1.6);if(dOk>0.45&&dOk<=1.5)cutA.push(t);}
     for(const t of cutB){fB.ok[t]=0;if(S.label[oB+t]===fB.P&&!(fB.bl&&fB.bl[t])){S.label[oB+t]=fB.B;S.keep[oB+t]=0;}}
     for(const t of cutA){fA.ok[t]=0;if(S.label[oA+t]===fA.P&&!(fA.bl&&fA.bl[t])){S.label[oA+t]=fA.B;S.keep[oA+t]=0;}}
+    /* and both stripes run the same length: along the arm, neither goes past where the other ends (a blob at one stripe's end where the
+       tracking wandered onto the cap is past the other's clean end) */
+    {let m0=[0,0,0];for(let t=0;t<gA.n;t++)for(let k=0;k<3;k++)m0[k]+=gA.c[t*3+k]/gA.n;const cv=[0,0,0,0,0,0];for(let t=0;t<gA.n;t++){const d=[gA.c[t*3]-m0[0],gA.c[t*3+1]-m0[1],gA.c[t*3+2]-m0[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
+     let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]];const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+     const prA=q=>(q[0]-m0[0])*ax[0]+(q[1]-m0[1])*ax[1]+(q[2]-m0[2])*ax[2];
+     let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;for(let t=0;t<gA.n;t++)if(fA.ok[t]){const x=prA([gA.c[t*3],gA.c[t*3+1],gA.c[t*3+2]]);a0=Math.min(a0,x);a1=Math.max(a1,x);}
+     const xB=new Float32Array(gB.n);for(let t=0;t<gB.n;t++){xB[t]=prA(mapAB(t));if(fB.ok[t]){b0=Math.min(b0,xB[t]);b1=Math.max(b1,xB[t]);}}
+     const lo=Math.max(a0,b0)-0.3,hi=Math.min(a1,b1)+0.3;let cA2=0,cB2=0;
+     for(let t=0;t<gA.n;t++){if(!fA.ok[t])continue;const x=prA([gA.c[t*3],gA.c[t*3+1],gA.c[t*3+2]]);if(x<lo||x>hi){fA.ok[t]=0;if(S.label[oA+t]===fA.P&&!(fA.bl&&fA.bl[t])){S.label[oA+t]=fA.B;S.keep[oA+t]=0;cA2++;}}}
+     for(let t=0;t<gB.n;t++){if(!fB.ok[t])continue;const x=xB[t];if(x<lo||x>hi){fB.ok[t]=0;if(S.label[oB+t]===fB.P&&!(fB.bl&&fB.bl[t])){S.label[oB+t]=fB.B;S.keep[oB+t]=0;cB2++;}}}
+     rep.push("len A"+a0.toFixed(1)+".."+a1.toFixed(1)+" B"+b0.toFixed(1)+".."+b1.toFixed(1)+" clip"+cA2+"/"+cB2);}
     rep.push("cutA"+cutA.length+" cutB"+cutB.length);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
