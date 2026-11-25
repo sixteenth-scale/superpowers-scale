@@ -707,7 +707,7 @@ function grooveBand(g,o,hidF,guide,A){const n=g.n;if(guide.length<20)return null
    the fine grooves either side of the cord show as two peaks of hollow faces across the stripe; the pair 0.7 to 2 mm
    apart is followed from the clearest section outward, and on past the painted stripe's ends while the grooves go on,
    stopping at the glove or boot. Every face between the two grooves is the piping. */
-function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)return null;
+function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.length<20)return null;
   const G1=1.0,gr=new Map();for(let t=0;t<n;t++){if(hidF(t))continue;const k=((Math.floor(g.c[t*3]/G1)+4096)*8192+(Math.floor(g.c[t*3+1]/G1)+4096))*8192+(Math.floor(g.c[t*3+2]/G1)+4096);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
   const around=(q,R,f)=>{const cx=Math.floor(q[0]/G1),cy=Math.floor(q[1]/G1),cz=Math.floor(q[2]/G1),r=Math.ceil(R/G1);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=gr.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const u of a){const d2=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d2<=R*R)f(u,d2);}}};
   const C3=t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]],dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],add=(a,b,k=1)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k],nrm=a=>{const l=Math.hypot(...a)||1;return a.map(x=>x/l);},cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -765,7 +765,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)retu
   /* to the very end of the cord, round its curves: from each end of the traced band the cord's inside is flooded,
      never crossing a groove and never more than the band's half width (plus a little) from the nearest groove face,
      for up to 15 mm. Off the cord the nearest groove is soon farther than that, so the flood stays on the cord. */
-  for(const end of [0,1]){const M=mids,k=end?M.length-1:0;const e=M[k];const hwE=Math.hypot(...sub(Ls[k],Rs[k]))/2;
+  if(capFlood)for(const end of [0,1]){const M=mids,k=end?M.length-1:0;const e=M[k];const hwE=Math.hypot(...sub(Ls[k],Rs[k]))/2;
     const gro=[];around(e,16,u=>{if(ras(u)<-0.004)gro.push(u);});if(gro.length<20)continue;
     const GG=0.5,gg=new Map();for(const u of gro){const kk=((Math.floor(g.c[u*3]/GG)+8192)*16384+(Math.floor(g.c[u*3+1]/GG)+8192))*16384+(Math.floor(g.c[u*3+2]/GG)+8192);let L=gg.get(kk);if(!L){L=[];gg.set(kk,L);}L.push(u);}
     const dG=q=>{const cx=Math.floor(q[0]/GG),cy=Math.floor(q[1]/GG),cz=Math.floor(q[2]/GG);let bd=Infinity;for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++)for(let kk=-3;kk<=3;kk++){const L=gg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+kk+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
@@ -1124,7 +1124,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
        return [ext(R[0],R[i0])].concat(R,[ext(R[k-1],R[i1])]);};
      (S.strokes=S.strokes||{})[pi]={list:runs.map(R=>({X:extE(R),r:W/2,s:P,base:B})),own,oS,oB};}
     /* the paint is the sculpted band between the cord's two grooves, when the sculpt has them */
-    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]));
+    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),/thigh|leg/i.test(S.parts[pi].name)); /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
       if(GB){let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])GB[t]=0;if(GB[t])nb2++;}
         if(nb2>50){BANDF=GB;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" GROOVES "+GB.info+" n"+nb2);
           /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
