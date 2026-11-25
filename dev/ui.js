@@ -836,7 +836,20 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
       around(C3(t),0.3,u=>{nAll++;if(band[u]){nB++;if(!was)touch=true;}else if(was)touch=true;});if(!touch)continue;const f=nB/Math.max(1,nAll);
       if(was&&f<0.4)edge.push([t,0]);else if(!was&&f>0.6&&ras(t)>=-0.004&&!(stopF&&stopF(t)))edge.push([t,1]);}
     for(const [t,v] of edge)band[t]=v;}
-  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
+  /* on every piped limb the stripe is one even band: the faces within the cord's median half width of the traced centre line, smoothed over 2 mm,
+     carried on down to the glove. No pinch, no flare at the cap */
+  if(mids.length>4){const hws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))/2).sort((x,y)=>x-y);const hwM=hws[hws.length>>1];
+    const cum=[0];for(let i=1;i<mids.length;i++)cum.push(cum[i-1]+Math.hypot(...sub(mids[i],mids[i-1])));
+    let sm=mids.map((q,i)=>{let acc=[0,0,0],w=0;for(let j=0;j<mids.length;j++){if(Math.abs(cum[j]-cum[i])>1.0)continue;acc=add(acc,mids[j]);w++;}return acc.map(x=>x/w);});
+    /* which end meets the glove: carry the line on from it, along its own heading, until it reaches glove paint (at most 8 mm) */
+    if(stopF){const ends=[[sm[0],nrm(sub(sm[0],sm[Math.min(4,sm.length-1)]))],[sm[sm.length-1],nrm(sub(sm[sm.length-1],sm[Math.max(0,sm.length-5)]))]];
+      let bestE=null;for(const [e,d] of ends){let hitAt=-1;for(let k=1;k<=32;k++){const q=add(e,d,k*0.25);let hit=false;around(q,0.6,u=>{if(stopF(u))hit=true;});if(hit){hitAt=k;break;}}if(hitAt>0&&(!bestE||hitAt<bestE.k))bestE={e,d,k:hitAt,first:e===sm[0]};}
+      if(bestE){const ext=[];for(let k=1;k<=bestE.k+2;k++)ext.push(add(bestE.e,bestE.d,k*0.25));sm=bestE.first?ext.reverse().concat(sm):sm.concat(ext);}}
+    const off=q=>{let bd=Infinity;for(let i=0;i+1<sm.length;i++){const a=sm[i],ab=sub(sm[i+1],a),L2=dot(ab,ab)||1e-9;let tt=Math.max(0,Math.min(1,dot(sub(q,a),ab)/L2));bd=Math.min(bd,Math.hypot(...sub(q,add(a,ab,tt))));}return bd;};
+    /* the line itself is projected onto the surface each time: the band is the faces near it, measured across the surface's front */
+    const nb2=new Uint8Array(n);for(let t=0;t<n;t++){if(hidF(t)||(stopF&&stopF(t)))continue;const q=C3(t);if(off(q)<=hwM)nb2[t]=1;}
+    let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;}
+  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
