@@ -10635,7 +10635,7 @@ function mirrorLegs(active,hid){const rep=[];if(!S.lineF)return;
    is redrawn to match it exactly */
 function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
   const key=x=>x.toLowerCase().replace(/\.stl$/,'').replace(/_\d+_/,'_');
-  for(const a0 of active){const na=S.parts[a0].name;if(!/left/i.test(na)||!/arm/i.test(na))continue;const want=key(na).replace('left','right');const b0=active.find(x=>key(S.parts[x].name)===want);
+  for(const a0 of active){const na=S.parts[a0].name;if(!/left/i.test(na)||!/(^|[^a-z])arm/i.test(na))continue;const want=key(na).replace('left','right');const b0=active.find(x=>key(S.parts[x].name)===want);
     if(b0==null||!S.lineF[a0]||!S.lineF[b0])continue;
     const okArea=pi=>{const F=S.lineF[pi],o=S.offs[pi];let s=0;for(let t=0;t<F.ok.length;t++)if(F.ok[t])s+=S.area[o+t];return s;};
     const [a,b]=okArea(a0)<=okArea(b0)?[a0,b0]:[b0,a0];
@@ -10815,7 +10815,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
        return [ext(R[0],R[i0])].concat(R,[ext(R[k-1],R[i1])]);};
      (S.strokes=S.strokes||{})[pi]={list:runs.map(R=>({X:extE(R),r:W/2,s:P,base:B})),own,oS,oB};}
     /* the paint is the sculpted band between the cord's two grooves, when the sculpt has them */
-    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),false,/arm/i.test(S.parts[pi].name)); /* (no flood past the band's end: it wrapped red over the joint end) */ /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
+    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),false,/(^|[^a-z])arm[_ ]?(left|right)?/i.test(S.parts[pi].name.replace(/starman/i,""))); /* (no flood past the band's end: it wrapped red over the joint end) */ /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
       if(GB){let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])GB[t]=0;if(GB[t])nb2++;}
         if(nb2>50){BANDF=GB;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" GROOVES "+GB.info+" n"+nb2);
           /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
