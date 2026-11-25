@@ -696,7 +696,7 @@ function minimalSettings(fils){
    Encoding (TriangleSelector::serialize): per node 2 bits split count; split nodes add 2 bits special side and
    their children last-to-first; leaves add 2 bits state (or 0b11 + 4 bits state-3). Bits are read 4 at a time
    (first bit lowest) into hex digits, written last digit first. */
-function paintStrings(p,states,M){
+function paintStrings(p,states,M){const _t0=performance.now();let _pa=0;
   const base=p.m0||p.m, lv=p.m0?(p.lv||0):0, W=p.m, wv=M?xf(M,W.v):W.v, bv=M?xf(M,base.v):base.v;
   const nW=W.f.length/3, V=W.v.length/3;
   /* weld corners that sit at the same point, so neighbours are found even in a mesh saved one triangle at a time */
@@ -768,16 +768,36 @@ function paintStrings(p,states,M){
      exactly by the distance to that line (within half the width it is the stroke's paint; on the faces the stroke
      owns, anything else is the paint round it), so its edges are true parallel curves at any resolution. */
   const STK=globalThis._spcStrokes&&globalThis._spcStrokes.get(p);let sgrid=null,sDist=null;
+  /* a stroke with an axis (an emblem's outline seen from the front) is measured as seen along that axis, and only on
+     faces that look that way, so it runs on unbroken over a step or a seam in the surface */
+  const frontF=new Map();const fnW=t=>{const i=W.f[t*3]*3,j=W.f[t*3+1]*3,k=W.f[t*3+2]*3;const ux=wv[j]-wv[i],uy=wv[j+1]-wv[i+1],uz=wv[j+2]-wv[i+2],vx=wv[k]-wv[i],vy=wv[k+1]-wv[i+1],vz=wv[k+2]-wv[i+2];const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx,l=Math.hypot(nx,ny,nz)||1;return [nx/l,ny/l,nz/l];};
+  const basis=ax=>{const a=Math.abs(ax[0])<0.9?[1,0,0]:[0,1,0];let u=[ax[1]*a[2]-ax[2]*a[1],ax[2]*a[0]-ax[0]*a[2],ax[0]*a[1]-ax[1]*a[0]];const l=Math.hypot(...u);u=u.map(x=>x/l);const v=[ax[1]*u[2]-ax[2]*u[1],ax[2]*u[0]-ax[0]*u[2],ax[0]*u[1]-ax[1]*u[0]];return [u,v];};
+  const P2=(B,q)=>[q[0]*B[0][0]+q[1]*B[0][1]+q[2]*B[0][2],q[0]*B[1][0]+q[1]*B[1][1]+q[2]*B[1][2]];
+  const seg2=(q,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy)/l2;u=u<0?0:u>1?1:u;return Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy);};
+  const isFront=(sk,t)=>{const k=sk;let m=frontF.get(k);if(!m){m=new Map();frontF.set(k,m);}let v=m.get(t);if(v===undefined){const n=fnW(t);v=n[0]*sk.ax[0]+n[1]*sk.ax[1]+n[2]*sk.ax[2]>-0.3;m.set(t,v);}return v;};
   if(STK&&STK.list.length){const G=1.0,gk=(x,y,z)=>((Math.floor(x/G)+4096)*8192+(Math.floor(y/G)+4096))*8192+(Math.floor(z/G)+4096);sgrid=new Map();const SEG=[];
-    for(const sk of STK.list){for(let i=1;i<sk.X.length;i++){const a=sk.X[i-1],b=sk.X[i];const id=SEG.length;SEG.push([a,b,sk]);const R=sk.r+1.5;
+    const axS=[];
+    for(const sk of STK.list){if(sk.ax){sk.B=basis(sk.ax);sk.X2=sk.X.map(q=>P2(sk.B,q));if(sk.inner)sk.I2=sk.inner.map(q=>P2(sk.B,q));
+        const g2=new Map();for(let i=1;i<sk.X2.length;i++){const a=sk.X2[i-1],b=sk.X2[i],R=sk.r+3.2;for(let x=Math.floor((Math.min(a[0],b[0])-R)/G);x<=Math.floor((Math.max(a[0],b[0])+R)/G);x++)for(let y=Math.floor((Math.min(a[1],b[1])-R)/G);y<=Math.floor((Math.max(a[1],b[1])+R)/G);y++){const k=(x+8192)*16384+(y+8192);let L=g2.get(k);if(!L){L=[];g2.set(k,L);}L.push(i);}}sk.g2=g2;
+        if(sk.I2){const gi=new Map();for(let i=1;i<sk.I2.length;i++){const a=sk.I2[i-1],b=sk.I2[i],R=4.5;for(let x=Math.floor((Math.min(a[0],b[0])-R)/G);x<=Math.floor((Math.max(a[0],b[0])+R)/G);x++)for(let y=Math.floor((Math.min(a[1],b[1])-R)/G);y<=Math.floor((Math.max(a[1],b[1])+R)/G);y++){const k=(x+8192)*16384+(y+8192);let L=gi.get(k);if(!L){L=[];gi.set(k,L);}L.push(i);}}sk.gi=gi;}
+        axS.push(sk);continue;}
+      for(let i=1;i<sk.X.length;i++){const a=sk.X[i-1],b=sk.X[i];const id=SEG.length;SEG.push([a,b,sk]);const R=sk.r+(sk.inner?3.2:1.5);
       const lo=[0,1,2].map(c=>Math.floor((Math.min(a[c],b[c])-R)/G)),hi=[0,1,2].map(c=>Math.floor((Math.max(a[c],b[c])+R)/G));
       for(let x=lo[0];x<=hi[0];x++)for(let y=lo[1];y<=hi[1];y++)for(let z=lo[2];z<=hi[2];z++){const k=((x+4096)*8192+(y+4096))*8192+(z+4096);let L=sgrid.get(k);if(!L){L=[];sgrid.set(k,L);}L.push(id);}}}
     /* the nearest stroke: [distance, stroke] */
-    sDist=q=>{const L=sgrid.get(gk(q[0],q[1],q[2]));if(!L)return null;let bd=Infinity,bs=null;for(const id of L){const [a,b,sk]=SEG[id];const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy+(q[2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy,q[2]-a[2]-u*dz)-sk.r;if(d<bd){bd=d;bs=sk;}}return bs?[bd,bs]:null;};}
+    sDist=(q,t)=>{let bd=Infinity,bs=null;const L=sgrid.get(gk(q[0],q[1],q[2]));if(L)for(const id of L){const [a,b,sk]=SEG[id];const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy+(q[2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy,q[2]-a[2]-u*dz)-sk.r;if(d<bd){bd=d;bs=sk;}}
+      for(const sk of axS){if(t==null||!isFront(sk,t))continue;const q2=P2(sk.B,q);const L2=sk.g2.get((Math.floor(q2[0])+8192)*16384+(Math.floor(q2[1])+8192));if(!L2)continue;for(const i of L2){const d=seg2(q2,sk.X2[i-1],sk.X2[i])-sk.r;if(d<bd){bd=d;bs=sk;}}}
+      return bs?[bd,bs]:null;};}
   const stkOwn=t=>STK&&STK.own&&STK.own[t];
-  function paintAt(q,t){if(sDist){const r=sDist(q);if(r&&r[0]<=0)return r[1].s;if(stkOwn(t)){const l=SL.at(q,t);return l===STK.ownS[t]?STK.ownBase[t]:l;}}return SL.at(q,t);}
+  /* a band with an inner edge (an emblem's outline): past the band on the inner curve's side is the emblem */
+  const inD=sk=>{if(!sk.inner)return null;if(sk.gi)return q=>{const q2=P2(sk.B,q);const L=sk.gi.get((Math.floor(q2[0])+8192)*16384+(Math.floor(q2[1])+8192));if(!L)return Infinity;let bd=Infinity;for(const i of L){const d=seg2(q2,sk.I2[i-1],sk.I2[i]);if(d<bd)bd=d;}return bd;};
+    if(!sk._g){const G=1.0,g=new Map();for(let i=1;i<sk.inner.length;i++){const a=sk.inner[i-1],b=sk.inner[i];const lo=[0,1,2].map(c=>Math.floor((Math.min(a[c],b[c])-4.5)/G)),hi=[0,1,2].map(c=>Math.floor((Math.max(a[c],b[c])+4.5)/G));for(let x=lo[0];x<=hi[0];x++)for(let y=lo[1];y<=hi[1];y++)for(let z=lo[2];z<=hi[2];z++){const k=((x+4096)*8192+(y+4096))*8192+(z+4096);let L=g.get(k);if(!L){L=[];g.set(k,L);}L.push(i);}}sk._g=g;}
+    return q=>{const L=sk._g.get(((Math.floor(q[0])+4096)*8192+(Math.floor(q[1])+4096))*8192+(Math.floor(q[2])+4096));if(!L)return Infinity;let bd=Infinity;for(const i of L){const a=sk.inner[i-1],b=sk.inner[i],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy+(q[2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy,q[2]-a[2]-u*dz);if(d<bd)bd=d;}return bd;};};
+  const inFn=new Map();
+  let _paF=0,_curT=-1;function paintAt(q,t){_pa++;if(sDist){const r=sDist(q,t);if(r&&r[0]<=0)return r[1].s;
+    if(r&&r[1].inner&&r[0]<3.0&&!globalThis._noInner){let f=inFn.get(r[1]);if(!f){f=inD(r[1]);inFn.set(r[1],f);}const di=f(q);if(di<r[0]+r[1].r)return (r[1].ax||states[t]===r[1].innerS)?r[1].innerS:r[1].base; /* (only where the face is the emblem's: a surface close by in space but outside the star stays suit) */if(stkOwn(t))return r[1].base;}if(stkOwn(t)){const l=SL.at(q,t);return l===STK.ownS[t]?STK.ownBase[t]:l;}}return SL.at(q,t);}
   const LFINE=+(globalThis._spcLineFine||0.06),LMAXD=9;
-  function refine(tri,wt,wf,depth){
+  let _rc=0;function refine(tri,wt,wf,depth){
     const pc=paintAt(cen(tri),wf);
     const e=Math.max(len(sub(tri[0],tri[1])),len(sub(tri[1],tri[2])),len(sub(tri[2],tri[0])));
     if(depth>=LMAXD||e<=LFINE)return {leaf:pc};
@@ -790,10 +810,10 @@ function paintStrings(p,states,M){
     return {kids};}
   paintStrings.lineInfo={chains:SL.chains,segs:SL.segs};
   /* node of the original triangle: down through the working-mesh subdivision, then refinement */
-  function node(triP,triO,level,idx,depth){
+  let _nc=0;function node(triP,triO,level,idx,depth){
     if(level===lv){const t=idx;const wt=[P(WF[t*3]),P(WF[t*3+1]),P(WF[t*3+2])];
       if(onPlane(t))return refinePlane(triP,depth);
-      if(!needs(t)&&!(sDist&&(stkOwn(t)||(()=>{const c=cen(wt),r=sDist(c);return r&&r[0]<1.2;})())))return {leaf:states[t]};
+      if(!needs(t)&&!(sDist&&(stkOwn(t)||(()=>{const c=cen(wt),r=sDist(c,t);return r&&r[0]<1.2;})())))return {leaf:states[t]};
       /* the working face's corners in its own order; triP covers the same triangle */
       return refine(triP,wt,t,depth);}
     const ko=kidsOurs(triO),kp=kidsPrusa(triP);

@@ -467,9 +467,24 @@ async function run(){
      const hairL=(()=>{const m=new Map();for(let t=0;t<n;t++){const l=S.label[o+t];if(l>=0&&hairR[l])m.set(l,(m.get(l)||0)+1);}let b=-1,bv=0;for(const [k,v] of m)if(v>bv){bv=v;b=k;}return b;})();
      if(hairL>=0)for(const t of ch){S.label[o+t]=hairL;hk++;}}
    (window._spcDbg=window._spcDbg||{}).headSkin=hk;}
+  /* close up the star's outline: a gap of black narrower than 1.6 mm pinched between outline paint (inside a star
+     tip) is outline paint (a closing: grow the red 0.8 mm, then shrink it back 0.8 mm) */
+  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length,g=pieceGeo(F.tor,null),R=0.8;
+    const G=0.8,K=(x,y,z)=>((Math.floor(x/G)+8192)*16384+(Math.floor(y/G)+8192))*16384+(Math.floor(z/G)+8192),gr=new Map();for(let t=0;t<n;t++){const k=K(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
+    const near=(t,pred)=>{const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/G),cy=Math.floor(y/G),cz=Math.floor(z/G);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const a=gr.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+k+8192));if(!a)continue;for(const u of a){if(!pred(u))continue;if((g.c[u*3]-x)**2+(g.c[u*3+1]-y)**2+(g.c[u*3+2]-z)**2<=R*R)return true;}}return false;};
+    const red=t=>S.label[o+t]===F.RED;const dil=new Uint8Array(n);for(let t=0;t<n;t++)if(F.outl[t]&&(red(t)||near(t,red)))dil[t]=1;
+    let cf=0;for(let t=0;t<n;t++){if(!dil[t]||red(t)||S.label[o+t]!==F.BASE||!F.outl[t])continue;if(!near(t,u=>!dil[u])){S.label[o+t]=F.RED;cf++;}}/* the emblem is the fitted star: emblem paint outside it (out past the outline) is suit, and suit or outline paint
+       well inside it is emblem (front faces near it only) */
+    if(F.starFit){const V=F.starFit.VO,inP=(x,z)=>{let c=false;for(let i=0,j=V.length-1;i<V.length;j=i++){const a=V[i],b=V[j];if(((a[1]>z)!==(b[1]>z))&&(x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0]))c=!c;}return c;};
+      const V2=F.starFit.V,inI=(x,z)=>{let c=false;for(let i=0,j=V2.length-1;i<V2.length;j=i++){const a=V2[i],b=V2[j];if(((a[1]>z)!==(b[1]>z))&&(x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0]))c=!c;}return c;};
+      const gR=pieceGeo(F.tor,null);/* (the fit was made in the registered frame: test in that frame) */const gF=S.shoulderF._g||null;
+      const GG=F.gReg||gR;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0)continue;const x=GG.c[t*3],z=GG.c[t*3+2];
+        if(F.isEmb(l)&&(!inP(x,z)||GG.fn[t*3+1]>0.2)){S.label[o+t]=F.BASE;cf++;}else if(!F.isEmb(l)&&GG.fn[t*3+1]<0.3&&GG.c[t*3+1]<F.yMid&&inI(x,z)){S.label[o+t]=F.EMB;cf++;}}}
+    /* and no skin paint on the suit (flecks off the photo) */if(S.skinReg>=0){const sl=C.lab(...S.regions[S.skinReg].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l>=0&&!F.isEmb(l)&&C.dE(C.lab(...S.regions[l].rgb),sl)<12){S.label[o+t]=F.BASE;cf++;}}}
+    (window._spcDbg=window._spcDbg||{}).closeStar=cf;}
   /* last word on the shoulder lines: each is its one even line, and stripe paint off it (and off the emblem's
      outline) is the suit's paint */
-  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;if(F.ok[t]||F.rim[t]){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if(!F.outl[t]&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}(window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
+  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;if(F.ok[t]||(F.rim[t]&&!F.starFit)){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if((F.starFit?!F.ring[t]:!F.outl[t])&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}(window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
   /* last word on limb piping: stripe paint off the line (and off the glove or boot) is the suit's paint */
   if(S.lineF){let nr=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18){S.label[o+t]=F.B;nr++;}}}
     /* and bits of the stripe paint cut off from the stripe (a scrap at a knee crease) */
@@ -620,7 +635,7 @@ function planarLine(g,X,hidF){const n=X.length;if(n<4)return X;let m=[0,0,0];for
   let a=nrm([1,0.3,0.2]);for(let i=0;i<60;i++)a=nrm(mul(a));let b=[0.2,1,0.3];{const d=b[0]*a[0]+b[1]*a[1]+b[2]*a[2];b=nrm(b.map((x,i)=>x-d*a[i]));}for(let i=0;i<60;i++){let v=mul(b);const d=v[0]*a[0]+v[1]*a[1]+v[2]*a[2];b=nrm(v.map((x,i)=>x-d*a[i]));}
   const N=nrm([a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]);const toP=q=>{const d=(q[0]-m[0])*N[0]+(q[1]-m[1])*N[1]+(q[2]-m[2])*N[2];return [q[0]-d*N[0],q[1]-d*N[1],q[2]-d*N[2]];};
   let Y=X;for(let r=0;r<4;r++){Y=onSurface(g,Y.map(toP),hidF);}return Y;}
-function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
+function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
   const arms=active.filter(pi=>/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name)&&regM[pi]);if(!arms.length)return;
   const g=pieceGeo(tor,regM),o=S.offs[tor],n=g.n,nb=S.nb[tor],A=S.area;
@@ -680,11 +695,15 @@ function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
     /* straighten it, keeping it on the surface (each round: smooth, then back onto the nearest face) */
     /* the line runs out along the top of the shoulder; where its end turns down the side (along the edge of the
        shoulder's flat), that end is cut off */
-    /* and it starts where the outline's paint ends (from inside the outline it would knot over the star's tip) */
-    {let k=path.length-1;while(k>8&&dE[path[k]]<1.1)k--;path.length=k+1;}
     {let zm=-Infinity;for(const t of path)zm=Math.max(zm,g.c[t*3+2]);let k=0;while(k<path.length-8&&g.c[path[k]*3+2]<zm-0.4)k++;if(k>0)path.splice(0,k);}
     let X=path.map(t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]]).reverse();
     X=RID?cordSmooth(g,X,RID,A,o,t=>hid[o+t]):onSurface(g,X,t=>hid[o+t]);
+    /* it starts at the star's tip itself (the highest point of the outline on this side), so the tip comes to a point
+       and the line runs on out of it; and it is laid in one plane, so it has no wobble or hook */
+    {let ap=-1,bz=-Infinity;for(const t of outline){if(Math.sign(g.c[t*3]-tcx)!==sideA)continue;if(g.c[t*3+2]>bz){bz=g.c[t*3+2];ap=t;}}
+     if(ap>=0){const P0=[g.c[ap*3],g.c[ap*3+1],g.c[ap*3+2]];let k=0,bd2=Infinity;for(let i=0;i<X.length;i++){const d=Math.hypot(X[i][0]-P0[0],X[i][1]-P0[1],X[i][2]-P0[2]);if(d<bd2){bd2=d;k=i;}}
+       X=X.slice(k);const a=X[0],seg=[];const L0=Math.hypot(a[0]-P0[0],a[1]-P0[1],a[2]-P0[2]);const ns=Math.max(1,Math.ceil(L0/0.25));for(let i=0;i<ns;i++){const f=i/ns;seg.push([P0[0]+(a[0]-P0[0])*f,P0[1]+(a[1]-P0[1])*f,P0[2]+(a[2]-P0[2])*f]);}X=onSurface(g,seg.concat(X),t=>hid[o+t]);}
+     X=planarLine(g,X,t=>hid[o+t]);}
     /* (it stops 0.8 mm short of the shoulder's edge: a round end on the corner would spill over both faces) */
     {let L2=0,k=X.length-1;while(k>1&&L2<1.5){L2+=Math.hypot(X[k][0]-X[k-1][0],X[k][1]-X[k-1][1],X[k][2]-X[k-1][2]);k--;}X=X.slice(0,k+1);}
     const near=(t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
@@ -696,10 +715,87 @@ function shoulderPiping(active,regM,hid){const rep=[];const W_=1.4;
   /* then everything of the stripe paint that is neither the emblem's outline nor a shoulder stripe goes */
   let cl2=0;if(paths.length&&BASE>=0)for(let t=0;t<n;t++){if(S.label[o+t]!==RED||dE[t]<=2.0)continue;let ok=false;for(const f2 of paths)if(f2(t)<=W_/2+0.1){ok=true;break;}if(!ok){S.label[o+t]=BASE;S.keep[o+t]=0;cl2++;}}
   rep.push("cl2:"+cl2);
+  /* the star's outline as one even band: the emblem's edge (the longest loop of it), smoothed, and the band laid
+     along it from that edge outward. Its outer edge is a true parallel curve and its inner edge is the smoothed
+     emblem edge, so both are clean. */
+  let OUT=null,starFit=null;if(BASE>=0){const key=i=>Math.round(g.v[i*3]*1e4)+","+Math.round(g.v[i*3+1]*1e4)+","+Math.round(g.v[i*3+2]*1e4);const vid=new Map(),VI=i=>{const k=key(i);let x=vid.get(k);if(x===undefined){x=i;vid.set(k,i);}return x;};
+    const ec=new Map();for(let t=0;t<n;t++){if(dE[t]!==0)continue;for(let e=0;e<3;e++){const a=VI(g.f[t*3+e]),b=VI(g.f[t*3+(e+1)%3]);const k=a<b?a+"_"+b:b+"_"+a;ec.set(k,(ec.get(k)||0)+1);}}
+    const adj=new Map();for(const [k,c] of ec){if(c!==1)continue;const [a,b]=k.split("_").map(Number);if(!adj.has(a))adj.set(a,[]);if(!adj.has(b))adj.set(b,[]);adj.get(a).push(b);adj.get(b).push(a);}
+    /* every run of the emblem's edge (walked from its ends first, so a branch point does not cut a loop short) */
+    const used=new Set(),chains=[];const deg=v=>(adj.get(v)||[]).length;
+    const walk=s0=>{const L=[s0];used.add(s0);let cur=s0,prev=-1;for(;;){const nx=(adj.get(cur)||[]).find(v=>v!==prev&&!used.has(v));if(nx===undefined)break;L.push(nx);used.add(nx);prev=cur;cur=nx;}return L;};
+    for(const v of adj.keys())if(!used.has(v)&&deg(v)!==2)chains.push(walk(v));for(const v of adj.keys())if(!used.has(v))chains.push(walk(v));
+    /* runs of the edge broken apart (a branch point, a gap of a face or two) are joined end to end when their ends
+       lie within 1.5 mm */
+    {const V3=i=>[g.v[i*3],g.v[i*3+1],g.v[i*3+2]],dd=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);let ch=chains.filter(c=>c.length>=5);let merged=true;
+      while(merged){merged=false;ch.sort((a,b)=>b.length-a.length);outer:for(let i=0;i<ch.length;i++)for(let j=0;j<ch.length;j++){if(i===j)continue;const A=ch[i],B=ch[j];
+        const opts=[[dd(V3(A[A.length-1]),V3(B[0])),()=>A.concat(B)],[dd(V3(A[A.length-1]),V3(B[B.length-1])),()=>A.concat(B.slice().reverse())],[dd(V3(A[0]),V3(B[B.length-1])),()=>B.concat(A)],[dd(V3(A[0]),V3(B[0])),()=>B.slice().reverse().concat(A)]];
+        opts.sort((x,y)=>x[0]-y[0]);if(opts[0][0]<1.5){const N=opts[0][1]();ch=ch.filter((_,k)=>k!==i&&k!==j);ch.push(N);merged=true;break outer;}}}
+      chains.length=0;chains.push(...ch);}
+    OUT=[];let WO=1.2;{let Lt=0;for(const L of chains)Lt+=L.length;}
+    for(const best of chains){if(best.length<30)continue;let P=best.map(i=>[g.v[i*3],g.v[i*3+1],g.v[i*3+2]]);const closed=Math.hypot(P[0][0]-P[P.length-1][0],P[0][1]-P[P.length-1][1],P[0][2]-P[P.length-1][2])<1.5;
+      {      /* even spacing, closed */const rs=(Q,st)=>{const R=[Q[0]];let acc=0;for(let i=1;i<(closed?Q.length+1:Q.length);i++){let a=Q[i-1];const b=Q[i%Q.length];let l=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);while(acc+l>=st){const f=(st-acc)/l;a=[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f];R.push(a);l=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);acc=0;}acc+=l;}return R;};
+      P=rs(P,0.2);const m=P.length;const nbI=(i,d)=>closed?(i+d+m)%m:Math.max(0,Math.min(m-1,i+d));/* the star's points stay sharp: corners (where the edge turns more than 40 degrees within a millimetre) are held,
+         and each side between them is smoothed hard into a clean line */
+      for(let it=0;it<10;it++)for(const lam of [0.5,-0.53]){const Y=P.map(x=>x.slice());for(let i=(closed?0:1);i<(closed?m:m-1);i++)for(let c=0;c<3;c++)Y[i][c]=P[i][c]+lam*((P[nbI(i,-1)][c]+P[nbI(i,1)][c])/2-P[i][c]);P=Y;}
+      const fix=new Uint8Array(m);if(!closed){fix[0]=1;fix[m-1]=1;}{const ang=new Float64Array(m);for(let i=0;i<m;i++){const a=P[nbI(i,-8)],b=P[nbI(i,8)],q=P[i];const u=[q[0]-a[0],q[1]-a[1],q[2]-a[2]],v=[b[0]-q[0],b[1]-q[1],b[2]-q[2]];const cu=(u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/((Math.hypot(...u)*Math.hypot(...v))||1);ang[i]=Math.acos(Math.max(-1,Math.min(1,cu)));}
+        for(let i=0;i<m;i++){if(ang[i]<1.0)continue;let mx=true;for(let d=-10;d<=10;d++){const j=nbI(i,d);if(j!==i&&ang[j]>ang[i])mx=false;}if(mx)fix[i]=1;}}
+      rep.push('corners'+fix.reduce((a,b)=>a+b,0));for(let it=0;it<150;it++)for(const lam of [0.5,-0.53]){const Y=P.map(x=>x.slice());for(let i=(closed?0:1);i<(closed?m:m-1);i++){if(fix[i])continue;for(let c=0;c<3;c++)Y[i][c]=P[i][c]+lam*((P[nbI(i,-1)][c]+P[nbI(i,1)][c])/2-P[i][c]);}P=Y;}
+      P=onSurface(g,P,t=>hid[o+t]);
+      /* the band's width: the outline's own typical width (its paint's area over the edge's length), 1.0 to 1.6 mm */
+      let Lp=0;for(let i=0;i<m-1;i++){const a=P[i],b=P[i+1];Lp+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}let ar=0;for(let t=0;t<n;t++)if(S.label[o+t]===RED&&dE[t]>0&&dE[t]<=2.0)ar+=A[o+t];if(OUT.length===0){/* the outline's width in the photos: about 3.4% of the star's width */let x0=Infinity,x1=-Infinity;for(let t=0;t<n;t++)if(dE[t]===0){x0=Math.min(x0,g.c[t*3]);x1=Math.max(x1,g.c[t*3]);}WO=Math.max(0.9,Math.min(1.4,0.034*(x1-x0)));}
+      /* outward: across the edge on the surface, toward the side away from the emblem */
+      const cg2=new Map(),G2=1.0;for(let t=0;t<n;t++){if(hid[o+t])continue;const k=((Math.floor(g.c[t*3]/G2)+4096)*8192+(Math.floor(g.c[t*3+1]/G2)+4096))*8192+(Math.floor(g.c[t*3+2]/G2)+4096);let a=cg2.get(k);if(!a){a=[];cg2.set(k,a);}a.push(t);}
+      const nearF=q=>{const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let b=-1,bd=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const a=cg2.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const t of a){const d=(g.c[t*3]-q[0])**2+(g.c[t*3+1]-q[1])**2+(g.c[t*3+2]-q[2])**2;if(d<bd){bd=d;b=t;}}}return b;};
+      let C2=[];for(let i=0;i<m;i++){const a=P[nbI(i,-1)],b=P[nbI(i,1)],q=P[i];const tg=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];const f=nearF(q);if(f<0){C2.push(q);continue;}const N=[g.fn[f*3],g.fn[f*3+1],g.fn[f*3+2]];let d=[N[1]*tg[2]-N[2]*tg[1],N[2]*tg[0]-N[0]*tg[2],N[0]*tg[1]-N[1]*tg[0]];const l=Math.hypot(...d)||1;d=d.map(x=>x/l);
+        const tp=nearF([q[0]+d[0]*0.6,q[1]+d[1]*0.6,q[2]+d[2]*0.6]);if(tp>=0&&dE[tp]===0)d=d.map(x=>-x);C2.push([q[0]+d[0]*WO/2,q[1]+d[1]*WO/2,q[2]+d[2]*WO/2]);}
+      C2=onSurface(g,C2,t=>hid[o+t]);for(let it=0;it<3;it++)for(const lam of [0.5,-0.53]){const Y=C2.map(x=>x.slice());for(let i=(closed?0:1);i<(closed?m:m-1);i++)for(let c=0;c<3;c++)Y[i][c]=C2[i][c]+lam*((C2[nbI(i,-1)][c]+C2[nbI(i,1)][c])/2-C2[i][c]);C2=Y;}C2=onSurface(g,C2,t=>hid[o+t]);
+      /* a star: seen from the front it is ten straight edges. Its tips and inner corners are found on the edge
+         (the farthest and nearest points from its middle, five of each), a straight line is fitted to the edge
+         between each pair, and the star is redrawn from those lines, with its outline as the same star grown by
+         the outline's width; both are laid back onto the surface. */
+      if(closed){const cx=P.reduce((a,q)=>a+q[0],0)/m,cz=P.reduce((a,q)=>a+q[2],0)/m;const th=P.map(q=>Math.atan2(q[2]-cz,q[0]-cx)),rr=P.map(q=>Math.hypot(q[0]-cx,q[2]-cz));
+        const ext=(sgn)=>{const idx=[];for(let i=0;i<m;i++){let ok=true;for(let d=-25;d<=25&&ok;d++){if(d&&sgn*rr[nbI(i,d)]>sgn*rr[i])ok=false;}if(ok)idx.push(i);}return idx;};
+        const tips=ext(1),inns=ext(-1);
+        if(tips.length===5&&inns.length===5){const cor=[...tips.map(i=>[i,1]),...inns.map(i=>[i,0])].sort((a,b)=>a[0]-b[0]);let alt=true;for(let k=0;k<10;k++)if(cor[k][1]===cor[(k+1)%10][1])alt=false;
+          if(alt){/* a line per edge, fitted to its middle 70% (x,z) */const lines=[];for(let k=0;k<10;k++){const i0=cor[k][0],i1=cor[(k+1)%10][0];const L=(i1-i0+m)%m;const pts=[];for(let j=Math.floor(L*0.15);j<=Math.ceil(L*0.85);j++){const q=P[(i0+j)%m];pts.push([q[0],q[2]]);}
+              const mx=pts.reduce((a,q)=>a+q[0],0)/pts.length,mz=pts.reduce((a,q)=>a+q[1],0)/pts.length;let sxx=0,sxz=0,szz=0;for(const q of pts){const a=q[0]-mx,b=q[1]-mz;sxx+=a*a;sxz+=a*b;szz+=b*b;}const an=0.5*Math.atan2(2*sxz,sxx-szz);lines.push({p:[mx,mz],d:[Math.cos(an),Math.sin(an)]});}
+            const isect=(A,B)=>{const det=A.d[0]*(-B.d[1])-A.d[1]*(-B.d[0]);if(Math.abs(det)<1e-6)return null;const rx=B.p[0]-A.p[0],rz=B.p[1]-A.p[1];const t=(rx*(-B.d[1])-rz*(-B.d[0]))/det;return [A.p[0]+A.d[0]*t,A.p[1]+A.d[1]*t];};
+            const V=[];let bad=false;for(let k=0;k<10;k++){const v=isect(lines[(k+9)%10],lines[k]);if(!v){bad=true;break;}const q=P[cor[k][0]];if(Math.hypot(v[0]-q[0],v[1]-q[2])>3)bad=true;V.push(v);}
+            if(!bad){/* grown by the outline's width (each edge moved out, corners re-met) */const off=(dd)=>{const Ls=lines.map(l=>{let nx=-l.d[1],nz=l.d[0];const mxp=l.p[0]+nx*0.5,mzp=l.p[1]+nz*0.5;if(Math.hypot(mxp-cx,mzp-cz)<Math.hypot(l.p[0]-cx,l.p[1]-cz)){nx=-nx;nz=-nz;}return {p:[l.p[0]+nx*dd,l.p[1]+nz*dd],d:l.d};});const W=[];for(let k=0;k<10;k++)W.push(isect(Ls[(k+9)%10],Ls[k]));return W;};
+              const samp=(VV)=>{const R=[];for(let k=0;k<10;k++){const a=VV[k],b=VV[(k+1)%10];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);const ns=Math.max(2,Math.ceil(l/0.2));for(let j=0;j<ns;j++){const f=j/ns;R.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}}return R;};
+              /* back onto the front of the surface: the nearest point of the old edge gives the depth */const P0=P;const lift=(R2)=>{const R3=R2.map(q=>{let b=0,bd=Infinity;for(let i=0;i<m;i++){const d=(P0[i][0]-q[0])**2+(P0[i][2]-q[1])**2;if(d<bd){bd=d;b=i;}}return [q[0],P0[b][1],q[1]];});
+                let Y=R3;for(let r2=0;r2<3;r2++){Y=onSurface(g,Y,t=>hid[o+t]).map((q,i)=>[R3[i][0],q[1],R3[i][2]]);}return onSurface(g,Y,t=>hid[o+t]);};
+              const VO=off(WO/2);const Pn=lift(samp(V)),Cn=lift(samp(VO));P=Pn;C2=Cn;rep.push("star fitted");
+              /* the star (the fitted one, grown to the outline's outer edge) for the paint itself, and its outer tips for the
+                 shoulder lines to leave from */
+              starFit={V,VO:off(WO),tips:lift(cor.map((c,k)=>c[1]?VO[k]:null).filter(Boolean))};}}}}
+      if(!closed&&m>4){const ex=(A,i0,i1)=>{const a=A[i0],b=A[i1],d=[a[0]-b[0],a[1]-b[1],a[2]-b[2]],l=Math.hypot(...d)||1;return [a[0]+d[0]/l*0.5,a[1]+d[1]/l*0.5,a[2]+d[2]/l*0.5];};C2=[ex(C2,0,2)].concat(C2,[ex(C2,m-1,m-3)]);P=[ex(P,0,2)].concat(P,[ex(P,m-1,m-3)]);}
+      (window._spcDbg=window._spcDbg||{}).shX=[{X:C2,P,fix:[...fix.keys()].filter(i=>fix[i])}];
+      OUT.push({X:closed?C2.concat([C2[0]]):C2,inner:closed?P.concat([P[0]]):P,r:WO/2});rep.push("outline W"+WO.toFixed(2)+" n"+m+(closed?" closed":" open"));}}
+    if(!OUT.length)OUT=null;}
   if(paths.length&&BASE>=0){/* the strokes for the saved file, in the piece's own frame */const Mi=C.inv4(regM[tor]);const own=new Uint8Array(n),oS=new Int16Array(n).fill(-1),oB=new Int16Array(n).fill(-1);
+    /* each shoulder line leaves from the star's outer tip on its side: the line runs from the tip to the first point of
+       its own course more than 2 mm off it */
+    if(starFit&&starFit.tips.length)for(let k=0;k<shX.length;k++){const X=shX[k];let tp=null,bd=Infinity;for(const q of starFit.tips){const d=Math.hypot(q[0]-X[0][0],q[1]-X[0][1],q[2]-X[0][2]);if(d<bd){bd=d;tp=q;}}
+      if(tp&&bd<4){let j=0;while(j<X.length-2&&Math.hypot(X[j][0]-tp[0],X[j][1]-tp[1],X[j][2]-tp[2])<2)j++;const a=tp,b=X[j],seg=[];const l=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]),ns=Math.max(2,Math.ceil(l/0.25));for(let i=0;i<ns;i++){const f=i/ns;seg.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f]);}
+        let Y=planarLine(g,onSurface(g,seg.concat(X.slice(j)),t=>hid[o+t]),t=>hid[o+t]);
+        /* (it starts 1 mm out from the tip: the outline's own pointed tip covers the join, and a round end on the tip
+           would spill over the step there) */
+        {let i=0;while(i<Y.length-3&&Math.hypot(Y[i][0]-tp[0],Y[i][1]-tp[1],Y[i][2]-tp[2])<1.0)i++;Y=Y.slice(i);}shX[k]=Y;}}
+    if(!starFit){    /* each shoulder line starts 1 mm back inside the outline band, so the two meet with no gap */
+    for(let k=0;k<shX.length;k++){const X=shX[k];if(X.length<3)continue;let j=1;while(j<X.length-1&&Math.hypot(X[j][0]-X[0][0],X[j][1]-X[0][1],X[j][2]-X[0][2])<1)j++;const a=X[0],b=X[j],d=[a[0]-b[0],a[1]-b[1],a[2]-b[2]],l=Math.hypot(...d)||1;shX[k]=[[a[0]+d[0]/l,a[1]+d[1]/l,a[2]+d[2]/l]].concat(X);}}
+    /* the lines' paint follows the lines as finally drawn */
+    {const mk=X=>t=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
+     paths.length=0;for(const X of shX)paths.push(mk(X));if(OUT)W_=2*OUT[0].r;}
     for(let t=0;t<n;t++){if(hid[o+t]||dE[t]<=2.0||isEmb(S.label[o+t]))continue;for(const f2 of paths)if(f2(t)<=W_/2+1.8){own[t]=1;oS[t]=RED;oB[t]=BASE;break;}}
-    const prev=S.strokes&&S.strokes[tor];(S.strokes=S.strokes||{})[tor]={list:shX.map(X=>{const fl=C.xf(Mi,X.flat());const R=[];for(let i=0;i<fl.length;i+=3)R.push([fl[i],fl[i+1],fl[i+2]]);return {X:R,r:W_/2,s:RED,base:BASE};}),own,oS,oB};}
-  if(paths.length&&BASE>=0)S.shoulderF={tor,RED,BASE,W:W_,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++){for(const f2 of paths)if(f2(t)<=W_/2){a[t]=1;break;}}return a;})(),outl:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]<=2.0)a[t]=1;return a;})(),rim:(()=>{/* the outline's own ring: everything within 0.9 mm of the emblem (that isn't the emblem) is outline paint, so no black gets in between */const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]>0&&dE[t]<=0.9&&!hid[o+t])a[t]=1;return a;})(),isEmb};
+    const toL=X=>{const fl=C.xf(Mi,X.flat());const R=[];for(let i=0;i<fl.length;i+=3)R.push([fl[i],fl[i+1],fl[i+2]]);return R;};const list=shX.map(X=>({X:toL(X),r:OUT?OUT[0].r:W_/2,s:RED,base:BASE})); /* (the shoulder lines are as wide as the star's outline, as on the figure) */
+    if(OUT)for(const OU of OUT){list.push({X:toL(OU.X),r:OU.r,s:RED,base:BASE,ax:(()=>{const a=C.xf(Mi,[0,0,0,0,-1,0]);const v=[a[3]-a[0],a[4]-a[1],a[5]-a[2]],l=Math.hypot(...v);return v.map(x=>x/l);})(),inner:toL(OU.inner),innerFace:(()=>{for(let t=0;t<n;t++)if(dE[t]===0&&!hid[o+t])return t;return -1;})()});
+      /* the band owns the faces within 1.6 mm of it on either side */
+      const segD=(X,t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(g.c[t*3]-a[0]-u*dx,g.c[t*3+1]-a[1]-u*dy,g.c[t*3+2]-a[2]-u*dz);if(d<b)b=d;}return b;};
+      for(let t=0;t<n;t++){if(hid[o+t]||dE[t]>4.5)continue;if(own[t])continue;if(segD(OU.X,t)<=OU.r+3.0){own[t]=1;oS[t]=RED;oB[t]=BASE;}}}
+    (S.strokes=S.strokes||{})[tor]={list,own,oS,oB};}
+  if(paths.length&&BASE>=0)S.shoulderF={tor,RED,BASE,EMB,starFit,gReg:g,yMid:(()=>{let a=0;for(let t=0;t<n;t++)a+=g.c[t*3+1];return a/n;})(),ring:(()=>{const a=new Uint8Array(n);if(!starFit)return a;const pin=(V,x,z)=>{let c=false;for(let i=0,j=V.length-1;i<V.length;j=i++){const p=V[i],q=V[j];if(((p[1]>z)!==(q[1]>z))&&(x<(q[0]-p[0])*(z-p[1])/(q[1]-p[1])+p[0]))c=!c;}return c;};const VO=starFit.VO2||starFit.VO;for(let t=0;t<n;t++){if(g.fn[t*3+1]>-0.05)continue;if(pin(VO,g.c[t*3],g.c[t*3+2])&&!pin(starFit.V,g.c[t*3],g.c[t*3+2]))a[t]=1;}return a;})(),W:W_,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++){for(const f2 of paths)if(f2(t)<=W_/2){a[t]=1;break;}}return a;})(),outl:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]<=3.0)a[t]=1;return a;})(),rim:(()=>{/* the outline's own ring: everything within 0.9 mm of the emblem (that isn't the emblem) is outline paint, so no black gets in between */const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]>0&&dE[t]<=0.9&&!hid[o+t])a[t]=1;return a;})(),isEmb};
   rep.push("cleared"+cleared+" outline"+outline.length+" RED"+RED+" EMB"+EMB+" BASE"+BASE+" cand"+JSON.stringify([...tm]));(window._spcDbg=window._spcDbg||{}).shoulder=rep;}
 /* piping drawn as one even stripe: each limb stripe found on the sculpt is replaced by a stripe of one width
    along its own centre line. The centre line runs end to end over the stripe (by distance over the surface from
@@ -2772,8 +2868,8 @@ q("spcSave").onclick=async()=>{
       if(k<0){fils.push({...p,hex,type:p.type||p.ptype||"PLA"});k=fils.length-1;}
       slot.set(pf,k+1);});
     /* the strokes, in filament slots */
-    {const m=new Map();if(S.strokes)for(const pi in S.strokes){const sk=S.strokes[pi],p=S.parts[pi],sl=r=>r>=0?slot.get(S.regions[r].fil):0;if(!p)continue;const n=sk.own.length,ownS=new Int16Array(n),ownBase=new Int16Array(n);for(let t=0;t<n;t++)if(sk.own[t]){ownS[t]=sl(sk.oS[t]);ownBase[t]=sl(sk.oB[t]);}
-      m.set(p,{list:sk.list.map(x=>({X:x.X,r:x.r,s:sl(x.s),base:sl(x.base)})),own:sk.own,ownS,ownBase});}globalThis._spcStrokes=m;(window._spcDbg=window._spcDbg||{}).stk=[...m].map(([p,v])=>p.name.slice(-10)+':'+v.list.map(x=>x.X.length+'/'+x.r.toFixed(2)+'/s'+x.s+'b'+x.base).join(',')+' own'+v.own.reduce((a,b)=>a+b,0));}
+    try{const m=new Map();if(S.strokes)for(const pi in S.strokes){const sk=S.strokes[pi],p=S.parts[pi],sl=r=>r>=0?slot.get(S.regions[r].fil):0;if(!p)continue;const n=sk.own.length,ownS=new Int16Array(n),ownBase=new Int16Array(n);for(let t=0;t<n;t++)if(sk.own[t]){ownS[t]=sl(sk.oS[t]);ownBase[t]=sl(sk.oB[t]);}
+      m.set(p,{list:sk.list.map(x=>({X:x.X,r:x.r,s:sl(x.s),base:sl(x.base),ax:x.ax,inner:x.inner,innerS:x.innerFace!=null&&x.innerFace>=0?slot.get(S.regions[S.label[S.offs[pi]+x.innerFace]].fil):undefined})),own:sk.own,ownS,ownBase});}globalThis._spcStrokes=m;(window._spcDbg=window._spcDbg||{}).stk=[...m].map(([p,v])=>p.name.slice(-10)+':'+v.list.map(x=>x.X.length+'/'+x.r.toFixed(2)+'/s'+x.s+'b'+x.base).join(',')+' own'+v.own.reduce((a,b)=>a+b,0));}catch(e){console.log('PS ERR '+e.message+' '+e.stack);throw e;}
     /* creases pull only the emblem's own edges (a thin line laid on its own path stays as drawn) */
     {const ws=new Set();for(const [pf,k] of slot){const c=C.labHex(C.PAL[pf].hex);if(c[0]>70&&Math.hypot(c[1],c[2])<15)ws.add(k);}globalThis._spcSnapStates=ws;}
     if(fils.length>16)throw new Error(`${fils.length} filaments — Bambu painting stops at 16. Merge some regions first.`);
