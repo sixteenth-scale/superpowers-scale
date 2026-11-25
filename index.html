@@ -10097,7 +10097,9 @@ async function run(){
      {const m=S.parts[F.tor].m,V=m.v,Fc=m.f;const geo=t=>{const a=Fc[t*3]*3,b=Fc[t*3+1]*3,c=Fc[t*3+2]*3;const e=[[V[b]-V[a],V[b+1]-V[a+1],V[b+2]-V[a+2]],[V[c]-V[b],V[c+1]-V[b+1],V[c+2]-V[b+2]],[V[a]-V[c],V[a+1]-V[c+1],V[a+2]-V[c+2]]];
         const L=Math.max(...e.map(x=>Math.hypot(...x)));const cr=[e[0][1]*e[2][2]-e[0][2]*e[2][1],e[0][2]*e[2][0]-e[0][0]*e[2][2],e[0][0]*e[2][1]-e[0][1]*e[2][0]];const A=Math.hypot(...cr)/2;return [L,A];};
       const Ls=[];for(let t=0;t<n;t++)if(F.BS[t]&&isR(t))Ls.push(geo(t)[0]);Ls.sort((x,y)=>x-y);const med=Ls.length?Ls[Ls.length>>1]:0;let a4=0;
-      if(med>0)for(let t=0;t<n;t++){if(!near[t]||!isR(t))continue;const [L,A]=geo(t);if(L>2.5*med&&L*L/(2*Math.max(A,1e-9))>4){S.label[o+t]=F.BASE;a4++;}}a2+=a4;}}
+      /* (a sliver takes the paint of most of the faces along its edges: black at a fringe, red inside the ridge) */
+      if(med>0){const sl=[];for(let t=0;t<n;t++){if(!near[t])continue;const [L,A]=geo(t);if(L>2.5*med&&L*L/(2*Math.max(A,1e-9))>4)sl.push(t);}
+       for(let it=0;it<3;it++)for(const t of sl){let r=0,k=0;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w<0)continue;k++;if(isR(w))r++;}if(!k)continue;const want=r*2>k;if(want&&!isR(t)){S.label[o+t]=F.RED;a4++;}else if(!want&&isR(t)){S.label[o+t]=F.BASE;a4++;}}}a2+=a4;}}
     (window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
   /* last word on limb piping: stripe paint off the line (and off the glove or boot) is the suit's paint */
   if(S.lineF){let nr=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18){S.label[o+t]=F.B;nr++;}}}
@@ -10125,6 +10127,15 @@ async function run(){
     /* the glove or boot is one piece: glove paint marked away from it (a patch near the cap) is not glove */
     if(F.bl){const nb=S.nb[pi],comp=new Int32Array(n).fill(-1),ca=[];let nc=0;for(let t=0;t<n;t++){if(!F.bl[t]||comp[t]>=0)continue;let ar=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&F.bl[w]&&comp[w]<0){comp[w]=nc;st.push(w);}}}ca.push(ar);nc++;}
      let bi=-1,ba=0;for(let c=0;c<nc;c++)if(ca[c]>ba){ba=ca[c];bi=c;}const bl=new Uint8Array(n);for(let t=0;t<n;t++)if(F.bl[t]&&(comp[t]===bi||ca[comp[t]]>=0.3*ba))bl[t]=1;F.bl=bl;}
+    /* and it ends at its cuff: along the limb, glove paint is the glove only up to where the glove stops covering the limb all round */
+    if(F.bl){const gq=pieceGeo(pi,null),c=gq.c;let m0=[0,0,0],aw=0;for(let t=0;t<n;t++){const w=S.area[o+t];aw+=w;m0[0]+=c[t*3]*w;m0[1]+=c[t*3+1]*w;m0[2]+=c[t*3+2]*w;}m0=m0.map(x=>x/aw);
+     const cv=[0,0,0,0,0,0];for(let t=0;t<n;t++){const w=S.area[o+t],d=[c[t*3]-m0[0],c[t*3+1]-m0[1],c[t*3+2]-m0[2]];cv[0]+=w*d[0]*d[0];cv[1]+=w*d[0]*d[1];cv[2]+=w*d[0]*d[2];cv[3]+=w*d[1]*d[1];cv[4]+=w*d[1]*d[2];cv[5]+=w*d[2]*d[2];}
+     let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]];const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+     const pr=new Float32Array(n);let lo=Infinity,hi=-Infinity;for(let t=0;t<n;t++){pr[t]=(c[t*3]-m0[0])*ax[0]+(c[t*3+1]-m0[1])*ax[1]+(c[t*3+2]-m0[2])*ax[2];lo=Math.min(lo,pr[t]);hi=Math.max(hi,pr[t]);}
+     const BW=0.5,nbin=Math.ceil((hi-lo)/BW)+1,ta=new Float64Array(nbin),ba2=new Float64Array(nbin);for(let t=0;t<n;t++){const k=Math.floor((pr[t]-lo)/BW);ta[k]+=S.area[o+t];if(F.bl[t])ba2[k]+=S.area[o+t];}
+     const fr=k=>ta[k]>0?ba2[k]/ta[k]:0;let sLo=0,sHi=0;for(let k=0;k<Math.min(10,nbin);k++){sLo+=fr(k);sHi+=fr(nbin-1-k);}const fromLo=sLo>=sHi;
+     let cuff=null;for(let i=0;i<nbin-1;i++){const k=fromLo?i:nbin-1-i,k2=fromLo?i+1:nbin-2-i;if(fr(k)<0.5&&fr(k2)<0.5){cuff=fromLo?lo+i*BW:lo+(nbin-i)*BW;break;}}
+     if(cuff!=null){let cut=0;for(let t=0;t<n;t++){if(!F.bl[t])continue;if(fromLo?pr[t]>cuff+0.3:pr[t]<cuff-0.3){F.bl[t]=0;cut++;}}(window._spcDbg=window._spcDbg||{}).cuffCut=((window._spcDbg||{}).cuffCut||'')+' '+S.parts[pi].name.slice(-10)+':'+cut;}}
     for(let t=0;t<n;t++){if(S.label[o+t]!==P||F.ok[t]||(F.bl&&F.bl[t]))continue;S.label[o+t]=B;nz++;}
     /* and islands: stripe paint not joined to the glove or boot and much smaller than the stripe itself is a stray patch */
     {const nb=S.nb[pi],comp=new Int32Array(n).fill(-1),ca=[],cb=[];let nc=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P||comp[t]>=0)continue;let ar=0,hasB=false;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];if(F.bl&&F.bl[u])hasB=true;for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&comp[w]<0&&S.label[o+w]===P){comp[w]=nc;st.push(w);}}}ca.push(ar);cb.push(hasB);nc++;}
