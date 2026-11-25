@@ -774,9 +774,16 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
     const gro=[];around(e,16,u=>{if(ras(u)<-0.004)gro.push(u);});if(gro.length<20)continue;
     const GG=0.5,gg=new Map();for(const u of gro){const kk=((Math.floor(g.c[u*3]/GG)+8192)*16384+(Math.floor(g.c[u*3+1]/GG)+8192))*16384+(Math.floor(g.c[u*3+2]/GG)+8192);let L=gg.get(kk);if(!L){L=[];gg.set(kk,L);}L.push(u);}
     const dG=q=>{const cx=Math.floor(q[0]/GG),cy=Math.floor(q[1]/GG),cz=Math.floor(q[2]/GG);let bd=Infinity;for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++)for(let kk=-3;kk<=3;kk++){const L=gg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+kk+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
+    /* the flood may only carry the cord on the way it is curving: a corridor along a quadratic fitted to the band's last 8 mm */
+    const tailM=[];{let acc=0;for(let i=k;i>=0&&i<M.length;i+=end?-1:1){if(tailM.length)acc+=Math.hypot(...sub(M[i],tailM[tailM.length-1][1]));tailM.push([acc,M[i]]);if(acc>8)break;}}
+    let corPts=null;if(tailM.length>=5){const fit=dim=>{let S0=0,S1=0,S2=0,S3=0,S4=0,T0=0,T1=0,T2=0;for(const [u,q] of tailM){const x=-u,y=q[dim];S0++;S1+=x;S2+=x*x;S3+=x*x*x;S4+=x*x*x*x;T0+=y;T1+=x*y;T2+=x*x*y;}
+      const Mx=[[S4,S3,S2],[S3,S2,S1],[S2,S1,S0]],R=[T2,T1,T0];const det=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);const D=det(Mx)||1e-9;
+      const col=(c)=>Mx.map((r,i)=>r.map((v,j)=>j===c?R[i]:v));return [det(col(0))/D,det(col(1))/D,det(col(2))/D];};const cf=[fit(0),fit(1),fit(2)];
+      corPts=[];for(let x=-1;x<=15;x+=0.25){const xx=Math.min(x,6);corPts.push(cf.map(c=>c[0]*xx*xx+c[1]*xx+c[2]).map((v,d)=>x>6?v+(x-6)*(2*cf[d][0]*6+cf[d][1]):v));}}
+    const offCor=q=>{if(!corPts)return 0;let b=Infinity;for(let i=0;i+1<corPts.length;i++){const a=corPts[i],ab=sub(corPts[i+1],a),L2=dot(ab,ab)||1e-9;let tt=Math.max(0,Math.min(1,dot(sub(q,a),ab)/L2));b=Math.min(b,Math.hypot(...sub(q,add(a,ab,tt))));}return b;};
     const dist=new Map(),hq=[];for(let t=0;t<n;t++)if(band[t]&&Math.hypot(...sub(C3(t),e))<1.2){dist.set(t,0);hq.push([0,t]);}
     let added=0;while(hq.length){hq.sort((x,y)=>y[0]-x[0]);const [dc,t]=hq.pop();if(dc>(dist.get(t)??Infinity))continue;
-      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return; /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
+      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return;if(offCor(C3(u))>hwE+0.5)return; /* (on the cord's own course, not off into the hollow beside it) */if(offCor(C3(u))>hwE+0.5)return; /* (on the cord's own course, not off into the hollow beside it) */ /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
       if(added>3000)break;}}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
