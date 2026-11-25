@@ -748,7 +748,7 @@ function grooveBand(g,o,hidF,guide,A){const n=g.n;if(guide.length<20)return null
    the fine grooves either side of the cord show as two peaks of hollow faces across the stripe; the pair 0.7 to 2 mm
    apart is followed from the clearest section outward, and on past the painted stripe's ends while the grooves go on,
    stopping at the glove or boot. Every face between the two grooves is the piping. */
-function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.length<20)return null;
+function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;if(guide.length<20)return null;
   const G1=1.0,gr=new Map();for(let t=0;t<n;t++){if(hidF(t))continue;const k=((Math.floor(g.c[t*3]/G1)+4096)*8192+(Math.floor(g.c[t*3+1]/G1)+4096))*8192+(Math.floor(g.c[t*3+2]/G1)+4096);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
   const around=(q,R,f)=>{const cx=Math.floor(q[0]/G1),cy=Math.floor(q[1]/G1),cz=Math.floor(q[2]/G1),r=Math.ceil(R/G1);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=gr.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const u of a){const d2=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d2<=R*R)f(u,d2);}}};
   const C3=t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]],dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],add=(a,b,k=1)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k],nrm=a=>{const l=Math.hypot(...a)||1;return a.map(x=>x/l);},cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -806,14 +806,10 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
   let hCore=0;{const hs=[];let c=0;for(let t=0;t<n;t++)if(band[t]&&((c++)%7===0))hs.push(hgt(t));hs.sort((x,y)=>x-y);hCore=hs.length?hs[hs.length>>1]:0;}
   /* distance to the traced centre line, against the band's own half width there */
   const offLine=q=>{let best=Infinity,hw=1;for(let i=0;i+1<mids.length;i++){const a=mids[i],b=mids[i+1],ab=sub(b,a),L2=dot(ab,ab)||1e-9;let tt=dot(sub(q,a),ab)/L2;tt=Math.max(0,Math.min(1,tt));const d=Math.hypot(...sub(q,add(a,ab,tt)));if(d<best){best=d;hw=(Math.hypot(...sub(Ls[i],Rs[i]))+Math.hypot(...sub(Ls[i+1],Rs[i+1])))/4;}}return best-hw;};
-  /* stray bits only: a scrap cut off from the band, or a patch well off the cord where the tracking wandered. The cord itself is never trimmed,
-     except at the band's two ends, where it must keep to the cord's width: no wedge where the cord ends */
-  for(let t=0;t<n;t++)if(band[t]&&offLine(C3(t))>1.0)band[t]=0;
-  {const cum=[0];for(let i=1;i<mids.length;i++)cum.push(cum[i-1]+Math.hypot(...sub(mids[i],mids[i-1])));const Lt=cum[cum.length-1];
-   const nearEnd=q=>{let bi=0,bd=Infinity;for(let i=0;i<mids.length;i++){const d=Math.hypot(...sub(q,mids[i]));if(d<bd){bd=d;bi=i;}}return cum[bi]<4||Lt-cum[bi]<4;};
+  /* on an arm, the band's last 3 mm at each end keeps to the cord's width: no wedge where the tracking runs out at the cap */
+  if(stayNearGuide){const cum=[0];for(let k=1;k<mids.length;k++)cum.push(cum[k-1]+Math.hypot(...sub(mids[k],mids[k-1])));const Lt=cum[cum.length-1];
+   const nearEnd=q=>{let bi=0,bd=Infinity;for(let k=0;k<mids.length;k++){const d=Math.hypot(...sub(q,mids[k]));if(d<bd){bd=d;bi=k;}}return cum[bi]<3||Lt-cum[bi]<3;};
    for(let t=0;t<n;t++)if(band[t]){const q=C3(t);if(nearEnd(q)&&offLine(q)>0.3)band[t]=0;}}
-  {const comp=new Int32Array(n).fill(-1),ca=[];let nc=0;for(let t=0;t<n;t++){if(!band[t]||comp[t]>=0)continue;let ar=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=A[o+u];around(C3(u),0.2,w=>{if(band[w]&&comp[w]<0){comp[w]=nc;st.push(w);}});}ca.push(ar);nc++;}
-   const mx=Math.max(0,...ca);for(let t=0;t<n;t++)if(band[t]&&ca[comp[t]]<0.15*mx)band[t]=0;}
   {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;if(offLine(C3(u))>0.25)return; /* (never wider than the cord: no bulge onto the muscle beside it) */band[u]=2;nf.push(u);});front=nf;}
    for(let t=0;t<n;t++)if(band[t])band[t]=1;}
   /* to the very end of the cord, round its curves: from each end of the traced band the cord's inside is flooded,
@@ -1191,7 +1187,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
        return [ext(R[0],R[i0])].concat(R,[ext(R[k-1],R[i1])]);};
      (S.strokes=S.strokes||{})[pi]={list:runs.map(R=>({X:extE(R),r:W/2,s:P,base:B})),own,oS,oB};}
     /* the paint is the sculpted band between the cord's two grooves, when the sculpt has them */
-    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),false); /* (no flood past the band's end: it wrapped red over the joint end) */ /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
+    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]),false,/arm/i.test(S.parts[pi].name)); /* (no flood past the band's end: it wrapped red over the joint end) */ /* (only a leg's cord curls round at its end, over the hip; on an arm the flood ran out over the deltoid's own creases) */
       if(GB){let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])GB[t]=0;if(GB[t])nb2++;}
         if(nb2>50){BANDF=GB;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" GROOVES "+GB.info+" n"+nb2);
           /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
