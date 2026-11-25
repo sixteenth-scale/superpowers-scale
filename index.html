@@ -10357,25 +10357,23 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
      opposite one another and together no farther apart than a cord is wide. Every such face is marked, the marked faces are gathered
      into connected runs, and the runs under the photo's stripe are the band. No tracking, no extrapolation: a gap where one groove is
      shallow only breaks the run, and the runs on either side are both kept. */
-  {const HW=1.3,THR=-0.005;const region=new Uint8Array(n);{const gg=new Map(),GG=2.0;for(const t of guide){const kk=((Math.floor(g.c[t*3]/GG)+4096)*8192+(Math.floor(g.c[t*3+1]/GG)+4096))*8192+(Math.floor(g.c[t*3+2]/GG)+4096);gg.set(kk,1);}
-     for(let t=0;t<n;t++){if(hidF(t))continue;const cx=Math.floor(g.c[t*3]/GG),cy=Math.floor(g.c[t*3+1]/GG),cz=Math.floor(g.c[t*3+2]/GG);let hit=false;for(let i=-4;i<=4&&!hit;i++)for(let j=-4;j<=4&&!hit;j++)for(let k=-4;k<=4&&!hit;k++)if(gg.has(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096)))hit=true;if(hit)region[t]=1;}}
-   const isG=new Int8Array(n);for(let t=0;t<n;t++)if(region[t])isG[t]=ras(t)<THR?1:0;
+  {const HW=1.3,THR=-0.005;const region=new Uint8Array(n);for(let t=0;t<n;t++)if(!hidF(t))region[t]=1; /* (the whole piece: the photo's stripe covers only patches of the cord, the cord runs end to end) */
+   /* the hollow measure is speckled face by face; smoothed over 0.3 mm the grooves are clean lines and the cord top is whole */
+   const rasS=new Float32Array(n).fill(NaN);const rs=t=>{if(!isNaN(rasS[t]))return rasS[t];let sw=0,sv=0;around(C3(t),0.3,u=>{const w=A[o+u];sw+=w;sv+=ras(u)*w;});return rasS[t]=sw?sv/sw:0;};
+   const isG=new Int8Array(n);for(let t=0;t<n;t++)if(region[t])isG[t]=rs(t)<THR*0.8?1:0;
    const mark=new Uint8Array(n);let nm=0;
    for(let t=0;t<n;t++){if(!region[t]||isG[t]||(stopF&&stopF(t)))continue;const c0=C3(t),nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];const us=[],ds=[];
      around(c0,HW+0.2,(u,d2)=>{if(!isG[u])return;let d=sub(C3(u),c0);d=add(d,nt,-dot(d,nt));const L=Math.hypot(...d);if(L<0.15)return;us.push(d.map(x=>x/L));ds.push(L);});
-     if(us.length<2)continue;let hit=false;for(let i=0;i<us.length&&!hit;i++){let bm=Infinity;for(let j=0;j<us.length;j++){if(dot(us[i],us[j])<-0.6&&ds[j]<bm)bm=ds[j];}if(ds[i]+bm<2*HW)hit=true;}
+     if(us.length<2)continue;let hit=false;for(let i=0;i<us.length&&!hit;i++){let bm=Infinity;for(let j=0;j<us.length;j++){if(dot(us[i],us[j])<-0.5&&ds[j]<bm)bm=ds[j];}if(ds[i]+bm<2*HW)hit=true;}
      if(hit){mark[t]=1;nm++;}}
-   /* a groove goes shallow for a moment and the marking breaks: the marks are closed over 0.45 mm (a face joins when a third of its
-      neighbourhood is marked, and never a groove or the glove), so a run holds together along the cord */
-   {for(let pass=0;pass<2;pass++){const addl=[];for(let t=0;t<n;t++){if(mark[t]||!region[t]||isG[t]||(stopF&&stopF(t)))continue;let nM=0,nA=0;around(C3(t),0.45,u=>{nA++;if(mark[u])nM++;});if(nA&&nM/nA>=0.33)addl.push(t);}for(const t of addl)mark[t]=1;}
-    for(let pass=0;pass<1;pass++){const rem=[];for(let t=0;t<n;t++){if(!mark[t])continue;let nM=0,nA=0;around(C3(t),0.45,u=>{nA++;if(mark[u])nM++;});if(nA&&nM/nA<0.25)rem.push(t);}for(const t of rem)mark[t]=0;}}
    /* runs */
    const comp=new Int32Array(n).fill(-1),ca=[],cg=[];let nc=0;const inGuide=new Uint8Array(n);for(const t of guide)inGuide[t]=1;
-   for(let t=0;t<n;t++){if(!mark[t]||comp[t]>=0)continue;let ar=0,ag=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=A[o+u];if(inGuide[u])ag+=A[o+u];around(C3(u),0.16,w=>{if(mark[w]&&comp[w]<0){comp[w]=nc;st.push(w);}});}ca.push(ar);cg.push(ag);nc++;}
-   let gtot=0;for(let c=0;c<nc;c++)gtot+=cg[c];const keep=new Uint8Array(nc);let kept=0,kf=0;for(let c=0;c<nc;c++)if(cg[c]>=0.5&&cg[c]>=0.01*gtot&&cg[c]>=0.15*ca[c]){keep[c]=1;kept++;}
+   for(let t=0;t<n;t++){if(!mark[t]||comp[t]>=0)continue;let ar=0,ag=0;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=A[o+u];if(inGuide[u])ag+=A[o+u];around(C3(u),0.22,w=>{if(mark[w]&&comp[w]<0){comp[w]=nc;st.push(w);}});}ca.push(ar);cg.push(ag);nc++;}
+   let gbest=0;for(let c=0;c<nc;c++)gbest=Math.max(gbest,cg[c]);const keep=new Uint8Array(nc);let kept=0,kf=0;for(let c=0;c<nc;c++)if(cg[c]>=0.5&&cg[c]>=0.3*gbest&&cg[c]>=0.05*ca[c]){keep[c]=1;kept++;} /* (the runs the photo's stripe lies on, and those alone) */
    const bw=new Uint8Array(n);for(let t=0;t<n;t++)if(mark[t]&&keep[comp[t]]){bw[t]=1;kf++;}
    /* the run's edges follow single triangles along the groove: a majority vote over 0.3 mm smooths them, never into a groove or the glove */
    for(let pass=0;pass<2;pass++){const ed=[];for(let t=0;t<n;t++){if(!region[t]||hidF(t))continue;let nB=0,nAll=0,touch=false;const was=bw[t];around(C3(t),0.3,u=>{nAll++;if(bw[u]){nB++;if(!was)touch=true;}else if(was)touch=true;});if(!touch)continue;const f=nB/Math.max(1,nAll);if(was&&f<0.4)ed.push([t,0]);else if(!was&&f>0.6&&!isG[t]&&!(stopF&&stopF(t)))ed.push([t,1]);}for(const [t,v] of ed)bw[t]=v;}
+   {const dg=new Uint8Array(n);for(let t=0;t<n;t++)dg[t]=bw[t]?2:mark[t]?1:isG[t]?3:0;(window._spcStage=window._spcStage||{})[S.parts[g.pi].name]=dg;}
    if(kf>50){bw.info="BETWEEN mark"+nm+" runs"+nc+" kept"+kept+" f"+kf;bw.mids=[];bw.Ls=[];bw.Rs=[];bw.stage=null;return bw;}
    (window._spcDbg=window._spcDbg||{}).betweenMiss=((window._spcDbg||{}).betweenMiss||'')+' mark'+nm+' runs'+nc+' kept'+kept+' f'+kf;}
   /* one section: candidate groove pairs [score,L,R] */
