@@ -10357,7 +10357,12 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
     const L=Ls[bi],R=Rs[bi],v=sub(R,L),l2=dot(v,v)||1e-9,uu=dot(sub(C3(u),L),v)/l2;if(uu<0||uu>1)return;const f=add(L,v,uu);if(Math.hypot(...sub(C3(u),f))<0.6)band[u]=1;});
   /* then out to the grooves: grown a little at a time over the band's own surface, stopping at the hollow of a groove,
      so a band traced a little narrow still fills its cord edge to edge */
-  {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;band[u]=2;nf.push(u);});front=nf;}
+  /* how far a face stands above its surroundings, at a scale wider than the cord: the cord's top stands up, the hollow inside a curled cord end and the flat of a muscle do not */
+  const hgtC=new Float32Array(n).fill(NaN),hgt=t=>{if(!isNaN(hgtC[t]))return hgtC[t];let sw=0,mm=[0,0,0];const nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];around(C3(t),1.0,u=>{if(g.fn[u*3]*nt[0]+g.fn[u*3+1]*nt[1]+g.fn[u*3+2]*nt[2]<0.5)return;const w=A[o+u];sw+=w;mm[0]+=g.c[u*3]*w;mm[1]+=g.c[u*3+1]*w;mm[2]+=g.c[u*3+2]*w;});return hgtC[t]=sw?(g.c[t*3]-mm[0]/sw)*nt[0]+(g.c[t*3+1]-mm[1]/sw)*nt[1]+(g.c[t*3+2]-mm[2]/sw)*nt[2]:0;};
+  let hCore=0;{const hs=[];let c=0;for(let t=0;t<n;t++)if(band[t]&&((c++)%7===0))hs.push(hgt(t));hs.sort((x,y)=>x-y);hCore=hs.length?hs[hs.length>>1]:0;}
+  /* distance to the traced centre line, against the band's own half width there */
+  const offLine=q=>{let best=Infinity,hw=1;for(let i=0;i+1<mids.length;i++){const a=mids[i],b=mids[i+1],ab=sub(b,a),L2=dot(ab,ab)||1e-9;let tt=dot(sub(q,a),ab)/L2;tt=Math.max(0,Math.min(1,tt));const d=Math.hypot(...sub(q,add(a,ab,tt)));if(d<best){best=d;hw=(Math.hypot(...sub(Ls[i],Rs[i]))+Math.hypot(...sub(Ls[i+1],Rs[i+1])))/4;}}return best-hw;};
+  {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;if(offLine(C3(u))>0.25)return; /* (never wider than the cord: no bulge onto the muscle beside it) */band[u]=2;nf.push(u);});front=nf;}
    for(let t=0;t<n;t++)if(band[t])band[t]=1;}
   /* to the very end of the cord, round its curves: from each end of the traced band the cord's inside is flooded,
      never crossing a groove and never more than the band's half width (plus a little) from the nearest groove face,
@@ -10368,7 +10373,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
     const dG=q=>{const cx=Math.floor(q[0]/GG),cy=Math.floor(q[1]/GG),cz=Math.floor(q[2]/GG);let bd=Infinity;for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++)for(let kk=-3;kk<=3;kk++){const L=gg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+kk+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
     const dist=new Map(),hq=[];for(let t=0;t<n;t++)if(band[t]&&Math.hypot(...sub(C3(t),e))<1.2){dist.set(t,0);hq.push([0,t]);}
     let added=0;while(hq.length){hq.sort((x,y)=>y[0]-x[0]);const [dc,t]=hq.pop();if(dc>(dist.get(t)??Infinity))continue;
-      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
+      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return; /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
       if(added>3000)break;}}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
