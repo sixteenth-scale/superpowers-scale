@@ -1049,10 +1049,21 @@ function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
     let best=null;for(const M of [[-1,1,1],[1,-1,1]]){let sh=[0,0,0];for(let it=0;it<8;it++){const off=[0,0,0];let k2=0;const ds=[];for(let t=0;t<gB.n;t+=53){const q=[0,1,2].map(k=>M[k]*(gB.c[t*3+k]-cB[k])+cA[k]+sh[k]);const [u,d]=nearA(q);if(u<0)continue;ds.push(d);if(d<1.0){for(let k=0;k<3;k++)off[k]+=gA.c[u*3+k]-q[k];k2++;}}
         if(k2)for(let k=0;k<3;k++)sh[k]+=off[k]/k2;ds.sort((x,y)=>x-y);const md=ds[ds.length>>1];if(it===7&&(!best||md<best.md))best={M,sh,md};}}
     rep.push(S.parts[a].name.slice(-10)+"->"+S.parts[b].name.slice(-10)+" md"+best.md.toFixed(3));if(best.md>0.2)continue;
-    const fA=S.lineF[a],fB=S.lineF[b];const nok=new Uint8Array(fB.ok.length);let put=0,clr=0;
-    for(let t=0;t<gB.n;t++){if(hid[oB+t]||(fB.bl&&fB.bl[t]))continue;const q=[0,1,2].map(k=>best.M[k]*(gB.c[t*3+k]-cB[k])+cA[k]+best.sh[k]);const [u,d]=nearA(q);if(u>=0&&d<=0.4&&fA.ok[u])nok[t]=1;}
-    for(let t=0;t<gB.n;t++){if(hid[oB+t]||(fB.bl&&fB.bl[t]))continue;if(nok[t]){if(S.label[oB+t]!==fB.P){S.label[oB+t]=fB.P;put++;}S.keep[oB+t]=1;}else if(S.label[oB+t]===fB.P){S.label[oB+t]=fB.B;S.keep[oB+t]=0;clr++;}}
-    fB.ok=nok;rep.push("put"+put+" clr"+clr);}
+    /* each arm keeps only stripe that the other arm also has at the mirrored spot, unless the other arm has no stripe near there at all:
+       a patch on one arm next to the stripe is cut, a stretch where the other arm's tracing gave out is kept */
+    const fA=S.lineF[a],fB=S.lineF[b];
+    const mapAB=t=>[0,1,2].map(k=>best.M[k]*(gB.c[t*3+k]-cB[k])+cA[k]+best.sh[k]);
+    const okGrid=(g,F)=>{const m=new Map();for(let t=0;t<g.n;t++){if(!F.ok[t])continue;const k=((Math.floor(g.c[t*3]/G)+8192)*16384+(Math.floor(g.c[t*3+1]/G)+8192))*16384+(Math.floor(g.c[t*3+2]/G)+8192);let L=m.get(k);if(!L){L=[];m.set(k,L);}L.push(t);}return m;};
+    const near=(g,m,q,R)=>{const cx=Math.floor(q[0]/G),cy=Math.floor(q[1]/G),cz=Math.floor(q[2]/G),r=Math.ceil(R/G);let bd=Infinity;for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const L=m.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
+    const okGA=okGrid(gA,fA),okGB=okGrid(gB,fB);
+    /* B's faces mapped into A's frame; for A's faces, map back by the inverse (B = M*(A - cA - sh) + cB) */
+    const mapBA=t=>[0,1,2].map(k=>best.M[k]*(gA.c[t*3+k]-cA[k]-best.sh[k])+cB[k]);
+    const cutA=[],cutB=[];
+    for(let t=0;t<gB.n;t++){if(!fB.ok[t])continue;const q=mapAB(t);const dOk=near(gA,okGA,q,1.6);if(dOk>0.45&&dOk<=1.5)cutB.push(t);}
+    for(let t=0;t<gA.n;t++){if(!fA.ok[t])continue;const q=mapBA(t);const dOk=near(gB,okGB,q,1.6);if(dOk>0.45&&dOk<=1.5)cutA.push(t);}
+    for(const t of cutB){fB.ok[t]=0;if(S.label[oB+t]===fB.P&&!(fB.bl&&fB.bl[t])){S.label[oB+t]=fB.B;S.keep[oB+t]=0;}}
+    for(const t of cutA){fA.ok[t]=0;if(S.label[oA+t]===fA.P&&!(fA.bl&&fA.bl[t])){S.label[oA+t]=fA.B;S.keep[oA+t]=0;}}
+    rep.push("cutA"+cutA.length+" cutB"+cutB.length);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
   const done=new Set();
