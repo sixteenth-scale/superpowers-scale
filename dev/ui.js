@@ -407,6 +407,7 @@ async function run(){
   if(!window._spcNoBridge)try{bridgeStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('bridge');
   if(!window._spcNoRedraw)try{redrawStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  try{mirrorLegs(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoShoulder)try{shoulderPiping(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('shoulder');
   if(!window._spcNoBlotch)try{limbBlotches(active,hid);}catch(e){console.warn(e);}
@@ -466,6 +467,9 @@ async function run(){
        let hit=false;for(let d=0.6;d<=2.5&&!hit;d+=0.2){if(occ.has(K(g.c[t*3]+nx*d,g.c[t*3+1]+ny*d,g.c[t*3+2]+nz*d)))hit=true;}const f=hf(t);if((hit&&f>=0.45)||f>=0.75)ch.push(t);}
      const hairL=(()=>{const m=new Map();for(let t=0;t<n;t++){const l=S.label[o+t];if(l>=0&&hairR[l])m.set(l,(m.get(l)||0)+1);}let b=-1,bv=0;for(const [k,v] of m)if(v>bv){bv=v;b=k;}return b;})();
      if(hairL>=0)for(const t of ch){S.label[o+t]=hairL;hk++;}}
+   /* white on the head is the eyes alone: white anywhere else (flecks off the photo) is skin */
+   for(const pi of active){if(!/head/i.test(S.parts[pi].name)||S.skinReg<0)continue;const o=S.offs[pi],n=S.parts[pi].m.f.length/3;
+     for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||l===S.skinReg||S.regions[l].hair)continue;const c=C.lab(...S.regions[l].rgb);if(c[0]>75&&Math.hypot(c[1],c[2])<12&&!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=S.skinReg;hk++;}}}
    (window._spcDbg=window._spcDbg||{}).headSkin=hk;}
   /* close up the star's outline: a gap of black narrower than 1.6 mm pinched between outline paint (inside a star
      tip) is outline paint (a closing: grow the red 0.8 mm, then shrink it back 0.8 mm) */
@@ -479,12 +483,12 @@ async function run(){
       const V2=F.starFit.V,inI=(x,z)=>{let c=false;for(let i=0,j=V2.length-1;i<V2.length;j=i++){const a=V2[i],b=V2[j];if(((a[1]>z)!==(b[1]>z))&&(x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0]))c=!c;}return c;};
       const gR=pieceGeo(F.tor,null);/* (the fit was made in the registered frame: test in that frame) */const gF=S.shoulderF._g||null;
       const GG=F.gReg||gR;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0)continue;const x=GG.c[t*3],z=GG.c[t*3+2];
-        if(F.isEmb(l)&&(!inP(x,z)||GG.fn[t*3+1]>0.2)){S.label[o+t]=F.BASE;cf++;}else if(!F.isEmb(l)&&GG.fn[t*3+1]<0.3&&GG.c[t*3+1]<F.yMid&&inI(x,z)){S.label[o+t]=F.EMB;cf++;}}}
+        if(F.isEmb(l)&&(!inP(x,z)||GG.fn[t*3+1]>0.2)){S.label[o+t]=F.BASE;cf++;}else if(!F.isEmb(l)&&!(F.BO&&F.BO[t])&&GG.fn[t*3+1]<0.3&&GG.c[t*3+1]<F.yMid&&inI(x,z)){S.label[o+t]=F.EMB;cf++;}}}
     /* and no skin paint on the suit (flecks off the photo) */if(S.skinReg>=0){const sl=C.lab(...S.regions[S.skinReg].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l>=0&&!F.isEmb(l)&&C.dE(C.lab(...S.regions[l].rgb),sl)<12){S.label[o+t]=F.BASE;cf++;}}}
     (window._spcDbg=window._spcDbg||{}).closeStar=cf;}
   /* last word on the shoulder lines: each is its one even line, and stripe paint off it (and off the emblem's
      outline) is the suit's paint */
-  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;if(F.ok[t]||(F.rim[t]&&!F.starFit)){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if((F.starFit?!F.ring[t]:!F.outl[t])&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}(window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
+  if(S.shoulderF){const F=S.shoulderF,o=S.offs[F.tor],n=F.ok.length;let a1=0,a2=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.isEmb(l))continue;const okT=F.BS?F.BS[t]:F.ok[t],ringT=F.BO?F.BO[t]:F.ring[t];if(okT||ringT&&F.BO||(F.rim[t]&&!F.starFit)){if(l!==F.RED){S.label[o+t]=F.RED;a1++;}}else if((F.starFit?!ringT:!F.outl[t])&&C.dE(C.lab(...S.regions[l].rgb),C.lab(...S.regions[F.RED].rgb))<18){S.label[o+t]=F.BASE;a2++;}}(window._spcDbg=window._spcDbg||{}).shFix=a1+"/"+a2;}
   /* last word on limb piping: stripe paint off the line (and off the glove or boot) is the suit's paint */
   if(S.lineF){let nr=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18){S.label[o+t]=F.B;nr++;}}}
     /* and bits of the stripe paint cut off from the stripe (a scrap at a knee crease) */
@@ -621,7 +625,7 @@ function cordSmooth(g,X,RID,A,o,hidF,WIN=0.9){const G=1.0,gr=new Map(),K=(x,y,z)
   for(let t=0;t<g.n;t++){if(RID[t]<=0.03||(hidF&&hidF(t)))continue;const k=K(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
   const centre=()=>{const Y=X.map(q=>q.slice());for(let i=0;i<X.length;i++){const q=X[i],a=X[Math.max(0,i-3)],b=X[Math.min(X.length-1,i+3)];let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];const l=Math.hypot(...d)||1;d=d.map(v=>v/l);
       const cx=Math.floor(q[0]/G),cy=Math.floor(q[1]/G),cz=Math.floor(q[2]/G);let sw=0,m=[0,0,0];for(let ii=-1;ii<=1;ii++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const aa=gr.get(((cx+ii+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!aa)continue;
-        for(const t of aa){const v=[g.c[t*3]-q[0],g.c[t*3+1]-q[1],g.c[t*3+2]-q[2]];const al=v[0]*d[0]+v[1]*d[1]+v[2]*d[2];const pr=[v[0]-al*d[0],v[1]-al*d[1],v[2]-al*d[2]];if(Math.abs(al)>0.4||Math.hypot(...pr)>WIN)continue;const w=A[o+t];sw+=w;m[0]+=pr[0]*w;m[1]+=pr[1]*w;m[2]+=pr[2]*w;}}
+        for(const t of aa){const v=[g.c[t*3]-q[0],g.c[t*3+1]-q[1],g.c[t*3+2]-q[2]];const al=v[0]*d[0]+v[1]*d[1]+v[2]*d[2];const pr=[v[0]-al*d[0],v[1]-al*d[1],v[2]-al*d[2]];if(Math.abs(al)>0.4||Math.hypot(...pr)>WIN)continue;const w=A[o+t]; /* (the middle of the raised band: a flat cord shows as two edge lines, and the line goes between them) */sw+=w;m[0]+=pr[0]*w;m[1]+=pr[1]*w;m[2]+=pr[2]*w;}}
       if(sw)Y[i]=[q[0]+m[0]/sw,q[1]+m[1]/sw,q[2]+m[2]/sw];}X=Y;};
   const smooth=it=>{for(let r=0;r<it;r++)for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}};
   /* even spacing first (0.25 mm), so the smoothing acts the same all along */
@@ -635,6 +639,124 @@ function planarLine(g,X,hidF){const n=X.length;if(n<4)return X;let m=[0,0,0];for
   let a=nrm([1,0.3,0.2]);for(let i=0;i<60;i++)a=nrm(mul(a));let b=[0.2,1,0.3];{const d=b[0]*a[0]+b[1]*a[1]+b[2]*a[2];b=nrm(b.map((x,i)=>x-d*a[i]));}for(let i=0;i<60;i++){let v=mul(b);const d=v[0]*a[0]+v[1]*a[1]+v[2]*a[2];b=nrm(v.map((x,i)=>x-d*a[i]));}
   const N=nrm([a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]);const toP=q=>{const d=(q[0]-m[0])*N[0]+(q[1]-m[1])*N[1]+(q[2]-m[2])*N[2];return [q[0]-d*N[0],q[1]-d*N[1],q[2]-d*N[2]];};
   let Y=X;for(let r=0;r<4;r++){Y=onSurface(g,Y.map(toP),hidF);}return Y;}
+/* the cord faces that run along a direction: a run of cord going across it (a knee seam, a cap rim) is dropped */
+function alongBand(g,BAND,dir,A,o){const n=g.n,G=1.0,gr=new Map(),K=(x,y,z)=>((Math.floor(x/G)+4096)*8192+(Math.floor(y/G)+4096))*8192+(Math.floor(z/G)+4096);
+  for(let t=0;t<n;t++){if(!BAND[t])continue;const k=K(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
+  const out=new Uint8Array(n);for(let t=0;t<n;t++){if(!BAND[t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/G),cy=Math.floor(y/G),cz=Math.floor(z/G);const nn=[];
+    for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)for(let k=-2;k<=2;k++){const a=gr.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const u of a){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz<=4)nn.push(u);}}
+    if(nn.length<6){continue;}let mx=0,my=0,mz=0;for(const u of nn){mx+=g.c[u*3];my+=g.c[u*3+1];mz+=g.c[u*3+2];}mx/=nn.length;my/=nn.length;mz/=nn.length;const cv=[0,0,0,0,0,0];for(const u of nn){const a=g.c[u*3]-mx,b=g.c[u*3+1]-my,c=g.c[u*3+2]-mz;cv[0]+=a*a;cv[1]+=a*b;cv[2]+=a*c;cv[3]+=b*b;cv[4]+=b*c;cv[5]+=c*c;}
+    let v=dir.slice();for(let it=0;it<25;it++){const w=[cv[0]*v[0]+cv[1]*v[1]+cv[2]*v[2],cv[1]*v[0]+cv[3]*v[1]+cv[4]*v[2],cv[2]*v[0]+cv[4]*v[1]+cv[5]*v[2]],m=Math.hypot(...w)||1;v=w.map(q=>q/m);}
+    if(Math.abs(v[0]*dir[0]+v[1]*dir[1]+v[2]*dir[2])>=0.6)out[t]=1;}
+  return out;}
+/* the raised band a ridge line runs along: everything joined to the line, out to the grooves on either side (a groove
+   is where the surface dips: RID under the groove level), and never more than maxHalf from the line. The paint
+   then covers the sculpted band exactly and stops in its grooves. */
+function ridgeBand(g,RID,curves,hidF,nb,maxHalf,grooveT){const n=g.n,G=1.0,gr=new Map(),SEG=[];
+  for(const X of curves)for(let i=1;i<X.length;i++){const a=X[i-1],b=X[i];const id=SEG.length;SEG.push([a,b]);const R=maxHalf+0.2;
+    for(let x=Math.floor((Math.min(a[0],b[0])-R)/G);x<=Math.floor((Math.max(a[0],b[0])+R)/G);x++)for(let y=Math.floor((Math.min(a[1],b[1])-R)/G);y<=Math.floor((Math.max(a[1],b[1])+R)/G);y++)for(let z=Math.floor((Math.min(a[2],b[2])-R)/G);z<=Math.floor((Math.max(a[2],b[2])+R)/G);z++){const k=((x+4096)*8192+(y+4096))*8192+(z+4096);let L=gr.get(k);if(!L){L=[];gr.set(k,L);}L.push(id);}}
+  const dist=t=>{const q=[g.c[t*3],g.c[t*3+1],g.c[t*3+2]];const L=gr.get(((Math.floor(q[0])+4096)*8192+(Math.floor(q[1])+4096))*8192+(Math.floor(q[2])+4096));if(!L)return Infinity;let bd=Infinity;for(const id of L){const [a,b]=SEG[id];const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((q[0]-a[0])*dx+(q[1]-a[1])*dy+(q[2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(q[0]-a[0]-u*dx,q[1]-a[1]-u*dy,q[2]-a[2]-u*dz);if(d<bd)bd=d;}return bd;};
+  const D=new Float32Array(n).fill(-1),dd=t=>D[t]>=0?D[t]:(D[t]=Math.min(dist(t),1e6));const band=new Uint8Array(n),q=[];
+  for(const [k,L] of gr){}/* (seeds: faces on the line) */
+  const cand=new Set();for(const L of gr.values())for(const id of L)cand.add(id);
+  for(let t=0;t<n;t++){if(hidF(t))continue;const c=gr.get(((Math.floor(g.c[t*3])+4096)*8192+(Math.floor(g.c[t*3+1])+4096))*8192+(Math.floor(g.c[t*3+2])+4096));if(!c)continue;if(dd(t)<=0.3){band[t]=1;q.push(t);}}
+  for(let h=0;h<q.length;h++){const t=q[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||band[u]||hidF(u))continue;if(RID[u]<=grooveT)continue;if(dd(u)>maxHalf)continue;band[u]=1;q.push(u);}}
+  /* close pinholes: a face whose neighbours are all band is band */
+  for(let t=0;t<n;t++){if(band[t]||hidF(t))continue;let k=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&band[u])k++;}if(k>=2&&dd(t)<=maxHalf)band[t]=2;}
+  for(let t=0;t<n;t++)if(band[t]===2)band[t]=1;
+  return band;}
+/* piping found from the sculpt itself: a piping cord is a raised band with a fine groove cut along each side.
+   The grooves are traced as long runs of hollow faces (dipping 5 microns below the surface 0.2 mm round them),
+   the two long runs that lie closest to the painted stripe and 0.7 to 2 mm apart are taken, and every face lying
+   between them (and on the band) is the piping. Returns the band, or null when no such pair is found. */
+function grooveBand(g,o,hidF,guide,A){const n=g.n;if(guide.length<20)return null;
+  const G1=1.0,K=(x,y,z)=>((Math.floor(x/G1)+4096)*8192+(Math.floor(y/G1)+4096))*8192+(Math.floor(z/G1)+4096),gr=new Map();
+  for(let t=0;t<n;t++){if(hidF(t))continue;const k=K(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
+  const around=(q,R,f)=>{const cx=Math.floor(q[0]/G1),cy=Math.floor(q[1]/G1),cz=Math.floor(q[2]/G1),r=Math.ceil(R/G1);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=gr.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const u of a){const d2=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d2<=R*R)f(u,d2);}}};
+  const C3=t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]];
+  /* the stripe's direction */
+  let m=[0,0,0];for(const t of guide)for(let k=0;k<3;k++)m[k]+=g.c[t*3+k]/guide.length;const cv=[0,0,0,0,0,0];for(const t of guide){const a=g.c[t*3]-m[0],b=g.c[t*3+1]-m[1],c=g.c[t*3+2]-m[2];cv[0]+=a*a;cv[1]+=a*b;cv[2]+=a*c;cv[3]+=b*b;cv[4]+=b*c;cv[5]+=c*c;}
+  let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]],l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+  const H=t=>g.c[t*3]*ax[0]+g.c[t*3+1]*ax[1]+g.c[t*3+2]*ax[2];
+  /* faces near the stripe, and how hollow each is */
+  const near=new Uint8Array(n);for(let i=0;i<guide.length;i+=3)around(C3(guide[i]),3.0,u=>{near[u]=1;});
+  const ras=new Float32Array(n);for(let t=0;t<n;t++){if(!near[t])continue;let sw=0,mx=0,my=0,mz=0;const nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];around(C3(t),0.2,u=>{if(g.fn[u*3]*nt[0]+g.fn[u*3+1]*nt[1]+g.fn[u*3+2]*nt[2]<0.3)return;const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;});if(sw)ras[t]=(g.c[t*3]-mx/sw)*nt[0]+(g.c[t*3+1]-my/sw)*nt[1]+(g.c[t*3+2]-mz/sw)*nt[2];}
+  /* runs of hollow faces (joined across gaps up to 0.35 mm) */
+  const gro=[];for(let t=0;t<n;t++)if(near[t]&&ras[t]<-0.005)gro.push(t);if(gro.length<60)return null;
+  const isG=new Int32Array(n).fill(-1);gro.forEach((t,i)=>isG[t]=i);const par=gro.map((_,i)=>i),fd=i=>{while(par[i]!==i){par[i]=par[par[i]];i=par[i];}return i;};
+  for(const t of gro)around(C3(t),0.35,u=>{if(isG[u]>=0){const a=fd(isG[t]),b=fd(isG[u]);if(a!==b)par[a]=b;}});
+  const comps=new Map();gro.forEach((t,i)=>{const r=fd(i);let c=comps.get(r);if(!c){c=[];comps.set(r,c);}c.push(t);});
+  const poly=fs=>{let lo=Infinity,hi=-Infinity;for(const t of fs){const h=H(t);lo=Math.min(lo,h);hi=Math.max(hi,h);}const nb=Math.max(1,Math.ceil((hi-lo)/0.3)),acc=Array.from({length:nb},()=>[0,0,0,0]);
+    for(const t of fs){const b=Math.min(nb-1,Math.floor((H(t)-lo)/0.3));acc[b][0]+=g.c[t*3];acc[b][1]+=g.c[t*3+1];acc[b][2]+=g.c[t*3+2];acc[b][3]++;}
+    const hs=[],ps=[];acc.forEach((a,i)=>{if(a[3]){hs.push(lo+(i+0.5)*0.3);ps.push([a[0]/a[3],a[1]/a[3],a[2]/a[3]]);}});
+    for(let r=0;r<2;r++){const Y=ps.map(p=>p.slice());for(let i=1;i<ps.length-1;i++)for(let k=0;k<3;k++)Y[i][k]=(ps[i-1][k]+2*ps[i][k]+ps[i+1][k])/4;ps.splice(0,ps.length,...Y);}
+    return {hs,ps,lo:hs[0],hi:hs[hs.length-1]};};
+  const at=(P,h)=>{const hs=P.hs;if(h<=hs[0])return P.ps[0];if(h>=hs[hs.length-1])return P.ps[hs.length-1];let i=0;while(hs[i+1]<h)i++;const f=(h-hs[i])/(hs[i+1]-hs[i]);return [0,1,2].map(k=>P.ps[i][k]+(P.ps[i+1][k]-P.ps[i][k])*f);};
+  const cs=[...comps.values()].filter(c=>c.length>=30).map(c=>poly(c)).filter(P=>P.hi-P.lo>4).sort((a,b)=>(b.hi-b.lo)-(a.hi-a.lo)).slice(0,8);
+  const gset=guide.map(C3),gd=q=>{let b=Infinity;for(let i=0;i<gset.length;i+=2){const p=gset[i],d=(p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(d<b)b=d;}return Math.sqrt(b);};
+  let best=null;for(let a=0;a<cs.length;a++)for(let b=a+1;b<cs.length;b++){const lo=Math.max(cs[a].lo,cs[b].lo),hi=Math.min(cs[a].hi,cs[b].hi);if(hi-lo<4)continue;
+    const ws=[],ds=[];for(let h=lo;h<=hi;h+=0.6){const pa=at(cs[a],h),pb=at(cs[b],h);ws.push(Math.hypot(pa[0]-pb[0],pa[1]-pb[1],pa[2]-pb[2]));ds.push(gd([(pa[0]+pb[0])/2,(pa[1]+pb[1])/2,(pa[2]+pb[2])/2]));}
+    ws.sort((x,y)=>x-y);ds.sort((x,y)=>x-y);const w=ws[ws.length>>1],d=ds[ds.length>>1];if(w<0.7||w>2.0)continue;const sc=(hi-lo)-3*d;if(!best||sc>best.sc)best={sc,a:cs[a],b:cs[b],lo,hi,w,d};}
+  if(!best||best.d>1.5)return null;
+  const band=new Uint8Array(n);for(let t=0;t<n;t++){if(!near[t])continue;const h=H(t);if(h<best.lo||h>best.hi)continue;const L=at(best.a,h),R=at(best.b,h),v=[R[0]-L[0],R[1]-L[1],R[2]-L[2]],l2=v[0]*v[0]+v[1]*v[1]+v[2]*v[2]||1e-9;
+    const u=((g.c[t*3]-L[0])*v[0]+(g.c[t*3+1]-L[1])*v[1]+(g.c[t*3+2]-L[2])*v[2])/l2;if(u<0||u>1)continue;const f=[L[0]+v[0]*u,L[1]+v[1]*u,L[2]+v[2]*u];if(Math.hypot(g.c[t*3]-f[0],g.c[t*3+1]-f[1],g.c[t*3+2]-f[2])<0.6)band[t]=1;}
+  band.info="w"+best.w.toFixed(2)+" d"+best.d.toFixed(2)+" L"+(best.hi-best.lo).toFixed(1);return band;}
+/* piping traced from the sculpt (second form): the limb is cut into sections 0.3 mm apart along the stripe; in each,
+   the fine grooves either side of the cord show as two peaks of hollow faces across the stripe; the pair 0.7 to 2 mm
+   apart is followed from the clearest section outward, and on past the painted stripe's ends while the grooves go on,
+   stopping at the glove or boot. Every face between the two grooves is the piping. */
+function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)return null;
+  const G1=1.0,gr=new Map();for(let t=0;t<n;t++){if(hidF(t))continue;const k=((Math.floor(g.c[t*3]/G1)+4096)*8192+(Math.floor(g.c[t*3+1]/G1)+4096))*8192+(Math.floor(g.c[t*3+2]/G1)+4096);let a=gr.get(k);if(!a){a=[];gr.set(k,a);}a.push(t);}
+  const around=(q,R,f)=>{const cx=Math.floor(q[0]/G1),cy=Math.floor(q[1]/G1),cz=Math.floor(q[2]/G1),r=Math.ceil(R/G1);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=gr.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const u of a){const d2=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d2<=R*R)f(u,d2);}}};
+  const C3=t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]],dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],add=(a,b,k=1)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k],nrm=a=>{const l=Math.hypot(...a)||1;return a.map(x=>x/l);},cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  let m=[0,0,0];for(const t of guide)for(let k=0;k<3;k++)m[k]+=g.c[t*3+k]/guide.length;const cv=[0,0,0,0,0,0];for(const t of guide){const a=g.c[t*3]-m[0],b=g.c[t*3+1]-m[1],c=g.c[t*3+2]-m[2];cv[0]+=a*a;cv[1]+=a*b;cv[2]+=a*c;cv[3]+=b*b;cv[4]+=b*c;cv[5]+=c*c;}
+  let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]];ax=nrm(w);}
+  const lat=v=>add(v,ax,-dot(v,ax));
+  const rasC=new Float32Array(n).fill(NaN),ras=t=>{if(!isNaN(rasC[t]))return rasC[t];let sw=0,mm=[0,0,0];const nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];around(C3(t),0.2,u=>{if(g.fn[u*3]*nt[0]+g.fn[u*3+1]*nt[1]+g.fn[u*3+2]*nt[2]<0.3)return;const w=A[o+u];sw+=w;mm[0]+=g.c[u*3]*w;mm[1]+=g.c[u*3+1]*w;mm[2]+=g.c[u*3+2]*w;});return rasC[t]=sw?(g.c[t*3]-mm[0]/sw)*nt[0]+(g.c[t*3+1]-mm[1]/sw)*nt[1]+(g.c[t*3+2]-mm[2]/sw)*nt[2]:0;};
+  /* one section: candidate groove pairs [score,L,R] */
+  const NB=150,ST=0.04;const section=(c0,t)=>{let nn=[0,0,0],k0=0;around(c0,0.8,u=>{nn=add(nn,[g.fn[u*3],g.fn[u*3+1],g.fn[u*3+2]]);k0++;});if(k0<3)return null;nn=nrm(add(nn,t,-dot(nn,t)));const b=cross(nn,t);
+    const hs=new Float64Array(NB);let stop=false;around(c0,3.2,(u)=>{const d=sub(C3(u),c0);if(Math.abs(dot(d,t))>0.2)return;if(stopF&&stopF(u)&&Math.hypot(...d)<1.0)stop=true;const r=ras(u);if(r>=-0.004)return;const sv=dot(d,b);const i=Math.floor((sv+3)/ST);if(i>=0&&i<NB)hs[i]+=-r*A[o+u];});
+    const sm=new Float64Array(NB);for(let i=0;i<NB;i++){let a=0,w=0;for(let j=-5;j<=5;j++){const k=i+j;if(k<0||k>=NB)continue;const ww=Math.exp(-j*j/8);a+=hs[k]*ww;w+=ww;}sm[i]=a/w;}
+    let mx=0;for(const v of sm)mx=Math.max(mx,v);if(mx<=0)return {cs:[],stop};const pk=[];for(let i=0;i<NB;i++){if(sm[i]<0.15*mx)continue;let ok=true;for(let j=-6;j<=6&&ok;j++){const k=i+j;if(j&&k>=0&&k<NB&&sm[k]>sm[i])ok=false;}if(ok)pk.push(i);}
+    const cs=[];for(const a of pk)for(const bb of pk){const w=(bb-a)*ST;if(w>=0.7&&w<=2.0)cs.push([Math.min(sm[a],sm[bb])/mx,add(c0,b,-3+(a+0.5)*ST),add(c0,b,-3+(bb+0.5)*ST)]);}
+    cs.sort((x,y)=>y[0]-x[0]);return {cs:cs.slice(0,6),stop};};
+  /* sections along the painted stripe */
+  const hG=guide.map(t=>dot(C3(t),ax));let h0=Infinity,h1=-Infinity;for(const h of hG){h0=Math.min(h0,h);h1=Math.max(h1,h);}
+  const cen=[];for(let h=h0;h<=h1;h+=0.3){let s3=[0,0,0],k=0;guide.forEach((t,i)=>{if(Math.abs(hG[i]-h)<0.6){s3=add(s3,C3(t));k++;}});cen.push(k>2?s3.map(x=>x/k):null);}
+  for(let i=0;i<cen.length;i++)if(!cen[i]){let j=i;while(j<cen.length&&!cen[j])j++;const a=cen[i-1]||cen[j],b=cen[j]||cen[i-1];for(let k=i;k<j;k++)cen[k]=a&&b?a.map((x,c)=>x+(b[c]-x)*(k-i+1)/(j-i+1)):null;i=j;}
+  if(cen.some(x=>!x))return null;
+  for(let r=0;r<3;r++){const Y=cen.map(x=>x.slice());for(let i=1;i<cen.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=(cen[i-1][c]+2*cen[i][c]+cen[i+1][c])/4;cen.splice(0,cen.length,...Y);}
+  /* sections carried on past the painted stripe's ends, straight on along the limb over the surface, up to 25 mm
+     or the glove or boot (the grooves may run on where the paint gave out) */
+  for(const end of [1,-1]){const L0=cen.length;const a=end>0?cen[L0-1]:cen[0],b=end>0?cen[Math.max(0,L0-11)]:cen[Math.min(L0-1,10)];let td=nrm(sub(a,b)),p=a.slice();const add2=[];
+    for(let k=0;k<85;k++){const q0=add(p,td,0.3);let q=null,bd=Infinity,stp=false;around(q0,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);stp=!!(stopF&&stopF(u));}});if(!q||stp)break;add2.push(q);td=nrm(add(td,nrm(sub(q,p)),0.3));p=q;}
+    if(end>0)cen.push(...add2);else cen.unshift(...add2.reverse());}
+  const tan=i=>nrm(sub(cen[Math.min(i+2,cen.length-1)],cen[Math.max(i-2,0)]));
+  const SEC=cen.map((c0,i)=>section(c0,tan(i)));
+  let st=-1,bs=-1;SEC.forEach((S2,i)=>{if(S2&&S2.cs.length&&S2.cs[0][0]>bs){bs=S2.cs[0][0];st=i;}});if(st<0)return null;
+  const match=(cs,last,miss)=>{let best=null;for(const x of cs){const j1=Math.hypot(...lat(sub(x[1],last[1])))+Math.hypot(...lat(sub(x[2],last[2]))),j2=Math.hypot(...lat(sub(x[1],last[2])))+Math.hypot(...lat(sub(x[2],last[1])));const jm=Math.min(j1,j2);if(jm<0.5+0.3*miss&&(!best||jm<best[0]))best=[jm,j1<=j2?x:[x[0],x[2],x[1]]];}return best&&best[1];};
+  const path=new Array(cen.length).fill(null);path[st]=SEC[st].cs[0];
+  const ext={a:[],b:[]};
+  for(const dir of [1,-1]){let last=path[st],miss=0,i=st+dir;for(;i>=0&&i<cen.length;i+=dir){const x=SEC[i]?match(SEC[i].cs,last,miss):null;if(x){path[i]=x;last=x;miss=0;}else miss++;}
+    /* and on past the stripe's end while the grooves go on */
+    let lm=(last[1].map((v,c)=>(v+last[2][c])/2));let prevMid=null;{const k=path.map((p,j)=>p?j:-1).filter(j=>j>=0);const j0=dir>0?k[k.length-1]:k[0],j1=dir>0?k[Math.max(0,k.length-6)]:k[Math.min(k.length-1,5)];const p0=path[j0],p1=path[j1];prevMid=[(p1[1][0]+p1[2][0])/2,(p1[1][1]+p1[2][1])/2,(p1[1][2]+p1[2][2])/2];lm=[(p0[1][0]+p0[2][0])/2,(p0[1][1]+p0[2][1])/2,(p0[1][2]+p0[2][2])/2];last=p0;}
+    let td=nrm(sub(lm,prevMid));miss=0;for(let s2=0;s2<160&&miss<14;s2++){const c1=add(lm,td,0.3);let q=c1,bd=Infinity;around(c1,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);}});if(bd===Infinity){lm=c1;miss++;continue;}const S2=section(q,td);if(!S2||S2.stop)break;const x=match(S2.cs,last,miss);if(x){const nm=[(x[1][0]+x[2][0])/2,(x[1][1]+x[2][1])/2,(x[1][2]+x[2][2])/2];td=nrm(add(td,nrm(sub(nm,lm)),0.5));lm=nm;last=x;miss=0;(dir>0?ext.b:ext.a).push(x);}else{lm=q;miss++;}}}
+  /* stretches the tracking lost (a knee seam breaks the grooves): tracked again from their own clearest section */
+  for(let pass=0;pass<4;pass++){let bi=-1,bv=-1;for(let i=0;i<cen.length;i++){if(path[i]||!SEC[i]||!SEC[i].cs.length)continue;let near2=false;for(let j=Math.max(0,i-4);j<=Math.min(cen.length-1,i+4);j++)if(path[j])near2=true;if(near2)continue;if(SEC[i].cs[0][0]>bv){bv=SEC[i].cs[0][0];bi=i;}}
+    if(bi<0)break;path[bi]=SEC[bi].cs[0];for(const dir of [1,-1]){let last=path[bi],miss=0;for(let i=bi+dir;i>=0&&i<cen.length&&!path[i];i+=dir){const x=SEC[i]?match(SEC[i].cs,last,miss):null;if(x){path[i]=x;last=x;miss=0;}else miss++;}}}
+  /* gaps up to 5 mm between tracked stretches are bridged straight (the cord runs on across them) */
+  {let lastI=-1;for(let i=0;i<cen.length;i++){if(!path[i])continue;if(lastI>=0&&i-lastI>1&&i-lastI<=17){const a=path[lastI],b0=path[i];let b=b0;if(Math.hypot(...lat(sub(a[1],b0[1])))>Math.hypot(...lat(sub(a[1],b0[2]))))b=[b0[0],b0[2],b0[1]];
+      for(let k=lastI+1;k<i;k++){const f=(k-lastI)/(i-lastI);path[k]=[0,a[1].map((v,c)=>v+(b[1][c]-v)*f),a[2].map((v,c)=>v+(b[2][c]-v)*f)];}}lastI=i;}}
+  /* keep left and right consistent along the length */
+  {let prev=null;for(let i=0;i<path.length;i++){if(!path[i])continue;if(prev&&Math.hypot(...lat(sub(path[i][1],prev[1])))>Math.hypot(...lat(sub(path[i][1],prev[2]))))path[i]=[path[i][0],path[i][2],path[i][1]];prev=path[i];}}
+  const seq=[...ext.a.reverse(),...path.filter(Boolean),...ext.b];if(seq.length<15)return null;
+  /* smoothed */
+  const Ls=seq.map(x=>x[1]),Rs=seq.map(x=>x[2]);for(const Z of [Ls,Rs])for(let r=0;r<4;r++){const Y=Z.map(x=>x.slice());for(let i=1;i<Z.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=(Z[i-1][c]+2*Z[i][c]+Z[i+1][c])/4;Z.splice(0,Z.length,...Y);}
+  const mids=Ls.map((l,i)=>l.map((v,c)=>(v+Rs[i][c])/2));
+  const band=new Uint8Array(n);const seen=new Uint8Array(n);
+  for(let i=0;i<mids.length;i++)around(mids[i],1.6,u=>{if(seen[u])return;seen[u]=1;let bi=-1,bd=Infinity;for(let j=Math.max(0,i-12);j<Math.min(mids.length,i+13);j++){const d=(mids[j][0]-g.c[u*3])**2+(mids[j][1]-g.c[u*3+1])**2+(mids[j][2]-g.c[u*3+2])**2;if(d<bd){bd=d;bi=j;}}
+    const L=Ls[bi],R=Rs[bi],v=sub(R,L),l2=dot(v,v)||1e-9,uu=dot(sub(C3(u),L),v)/l2;if(uu<0||uu>1)return;const f=add(L,v,uu);if(Math.hypot(...sub(C3(u),f))<0.6)band[u]=1;});
+  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
+  band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
   const arms=active.filter(pi=>/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name)&&regM[pi]);if(!arms.length)return;
@@ -688,7 +810,7 @@ function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
     bd=0;const dd=new Map(),prev=new Map(),h=[];for(const t of outline){if(Math.sign(g.c[t*3]-tcx)!==sideA)continue;dd.set(t,0);hpush(h,[0,t]);}
     if(!h.length)continue;let found=false;
     while(h.length){const [d,t]=hpop(h);if(d>(dd.get(t)??Infinity))continue;if(tgt.has(t)){end=t;found=true;break;}if(d>400)break;
-      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const nd=d+dist(t,u)*(BAND[u]?1:20)*(dE[u]<=1.8?25:1);if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}}
+      for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||hid[o+u])continue;const nd=d+dist(t,u)*(BAND[u]?1:20)*(dE[u]<=1.8?25:1)*(Math.abs(g.c[u*3]-tcx)<Math.abs(g.c[t*3]-tcx)-0.02?8:1); /* (the shoulder ridge runs outward from the tip; the head-cut lines run in toward the neck) */if(nd<(dd.get(u)??Infinity)){dd.set(u,nd);prev.set(u,t);hpush(h,[nd,u]);}}}
     if(!found){rep.push(S.parts[pi].name+" no path");continue;}
     const path=[];for(let t=end;t!==undefined;t=prev.get(t))path.push(t);
     /* straighten the path (it hugs triangle centres), then paint everything within 0.7 mm of it */
@@ -703,7 +825,7 @@ function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
     {let ap=-1,bz=-Infinity;for(const t of outline){if(Math.sign(g.c[t*3]-tcx)!==sideA)continue;if(g.c[t*3+2]>bz){bz=g.c[t*3+2];ap=t;}}
      if(ap>=0){const P0=[g.c[ap*3],g.c[ap*3+1],g.c[ap*3+2]];let k=0,bd2=Infinity;for(let i=0;i<X.length;i++){const d=Math.hypot(X[i][0]-P0[0],X[i][1]-P0[1],X[i][2]-P0[2]);if(d<bd2){bd2=d;k=i;}}
        X=X.slice(k);const a=X[0],seg=[];const L0=Math.hypot(a[0]-P0[0],a[1]-P0[1],a[2]-P0[2]);const ns=Math.max(1,Math.ceil(L0/0.25));for(let i=0;i<ns;i++){const f=i/ns;seg.push([P0[0]+(a[0]-P0[0])*f,P0[1]+(a[1]-P0[1])*f,P0[2]+(a[2]-P0[2])*f]);}X=onSurface(g,seg.concat(X),t=>hid[o+t]);}
-     X=planarLine(g,X,t=>hid[o+t]);}
+     X=RID?cordSmooth(g,X,RID,A,o,t=>hid[o+t],1.0):X;} /* (back onto the cord's crest after the start was moved) */
     /* (it stops 0.8 mm short of the shoulder's edge: a round end on the corner would spill over both faces) */
     {let L2=0,k=X.length-1;while(k>1&&L2<1.5){L2+=Math.hypot(X[k][0]-X[k-1][0],X[k][1]-X[k-1][1],X[k][2]-X[k-1][2]);k--;}X=X.slice(0,k+1);}
     const near=(t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let s2=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;s2=Math.max(0,Math.min(1,s2));const d=Math.hypot(g.c[t*3]-a[0]-s2*dx,g.c[t*3+1]-a[1]-s2*dy,g.c[t*3+2]-a[2]-s2*dz);if(d<b)b=d;}return b;};
@@ -779,7 +901,7 @@ function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
        its own course more than 2 mm off it */
     if(starFit&&starFit.tips.length)for(let k=0;k<shX.length;k++){const X=shX[k];let tp=null,bd=Infinity;for(const q of starFit.tips){const d=Math.hypot(q[0]-X[0][0],q[1]-X[0][1],q[2]-X[0][2]);if(d<bd){bd=d;tp=q;}}
       if(tp&&bd<4){let j=0;while(j<X.length-2&&Math.hypot(X[j][0]-tp[0],X[j][1]-tp[1],X[j][2]-tp[2])<2)j++;const a=tp,b=X[j],seg=[];const l=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]),ns=Math.max(2,Math.ceil(l/0.25));for(let i=0;i<ns;i++){const f=i/ns;seg.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f]);}
-        let Y=planarLine(g,onSurface(g,seg.concat(X.slice(j)),t=>hid[o+t]),t=>hid[o+t]);
+        let Y=onSurface(g,seg.concat(X.slice(j)),t=>hid[o+t]);
         /* (it starts 1 mm out from the tip: the outline's own pointed tip covers the join, and a round end on the tip
            would spill over the step there) */
         {let i=0;while(i<Y.length-3&&Math.hypot(Y[i][0]-tp[0],Y[i][1]-tp[1],Y[i][2]-tp[2])<1.0)i++;Y=Y.slice(i);}shX[k]=Y;}}
@@ -795,12 +917,42 @@ function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
       const segD=(X,t)=>{let b=Infinity;for(let i=1;i<X.length;i++){const a=X[i-1],c=X[i],dx=c[0]-a[0],dy=c[1]-a[1],dz=c[2]-a[2],l2=dx*dx+dy*dy+dz*dz||1e-12;let u=((g.c[t*3]-a[0])*dx+(g.c[t*3+1]-a[1])*dy+(g.c[t*3+2]-a[2])*dz)/l2;u=u<0?0:u>1?1:u;const d=Math.hypot(g.c[t*3]-a[0]-u*dx,g.c[t*3+1]-a[1]-u*dy,g.c[t*3+2]-a[2]-u*dz);if(d<b)b=d;}return b;};
       for(let t=0;t<n;t++){if(hid[o+t]||dE[t]>4.5)continue;if(own[t])continue;if(segD(OU.X,t)<=OU.r+3.0){own[t]=1;oS[t]=RED;oB[t]=BASE;}}}
     (S.strokes=S.strokes||{})[tor]={list,own,oS,oB};}
-  if(paths.length&&BASE>=0)S.shoulderF={tor,RED,BASE,EMB,starFit,gReg:g,yMid:(()=>{let a=0;for(let t=0;t<n;t++)a+=g.c[t*3+1];return a/n;})(),ring:(()=>{const a=new Uint8Array(n);if(!starFit)return a;const pin=(V,x,z)=>{let c=false;for(let i=0,j=V.length-1;i<V.length;j=i++){const p=V[i],q=V[j];if(((p[1]>z)!==(q[1]>z))&&(x<(q[0]-p[0])*(z-p[1])/(q[1]-p[1])+p[0]))c=!c;}return c;};const VO=starFit.VO2||starFit.VO;for(let t=0;t<n;t++){if(g.fn[t*3+1]>-0.05)continue;if(pin(VO,g.c[t*3],g.c[t*3+2])&&!pin(starFit.V,g.c[t*3],g.c[t*3+2]))a[t]=1;}return a;})(),W:W_,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++){for(const f2 of paths)if(f2(t)<=W_/2){a[t]=1;break;}}return a;})(),outl:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]<=3.0)a[t]=1;return a;})(),rim:(()=>{/* the outline's own ring: everything within 0.9 mm of the emblem (that isn't the emblem) is outline paint, so no black gets in between */const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]>0&&dE[t]<=0.9&&!hid[o+t])a[t]=1;return a;})(),isEmb};
+  /* the paint is the sculpted ridges: the star's raised outline and the shoulder ridges, groove to groove */
+  let BO=null,BS=null;if(RID&&BASE>=0){if(OUT){BO=ridgeBand(g,RID,OUT.map(x=>x.X),t=>!!hid[o+t],nb,1.3,-0.02);}if(shX.length)BS=ridgeBand(g,RID,shX,t=>!!hid[o+t],nb,1.0,-0.02);
+    /* the shoulder ridges traced between their grooves: from each upper star tip straight out across the top of the
+       shoulder to its edge */
+    if(starFit&&starFit.tips.length){let tcx2=0;for(let t=0;t<n;t++)tcx2+=g.c[t*3];tcx2/=n;let hw2=0;for(let t=0;t<n;t++)if(!hid[o+t])hw2=Math.max(hw2,Math.abs(g.c[t*3]-tcx2));
+      const tips=starFit.tips.slice().sort((a,b)=>b[2]-a[2]).slice(0,2);const SB=new Uint8Array(n);let any=false;
+      for(const tp of tips){const sd=Math.sign(tp[0]-tcx2);const guide=[];for(let t=0;t<n;t++){if(hid[o+t]||g.fn[t*3+2]<0.3)continue;const dx=(g.c[t*3]-tp[0])*sd;if(dx<2.5||dx>14)continue;if(Math.hypot(g.c[t*3+1]-tp[1],(g.c[t*3+2]-tp[2])*0.3)<4.0&&g.c[t*3+2]>tp[2]-1.0)guide.push(t);}
+        const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,null);rep.push("shoulderGB "+(GB?GB.info:"none")+" g"+guide.length+" tip"+tp.map(v=>v.toFixed(1)).join("/")+" c"+tcx2.toFixed(1)+" hw"+hw2.toFixed(1));if(GB){for(let t=0;t<n;t++)if(GB[t]&&(g.c[t*3]-tp[0])*sd>0.3)SB[t]=1;any=true;
+          /* and the short ridge joining it to the star tip */
+          let im=GB.mids[0],bd=Infinity;for(const q of GB.mids){const d=Math.hypot(q[0]-tp[0],q[1]-tp[1],q[2]-tp[2]);if(d<bd){bd=d;im=q;}}
+          /* (the sculpt between them is broken by the head cut: the join is a straight strip of the band's width) */
+          {const hwB=Math.hypot(GB.Ls[0][0]-GB.Rs[0][0],GB.Ls[0][1]-GB.Rs[0][1],GB.Ls[0][2]-GB.Rs[0][2])/2;const v=[im[0]-tp[0],im[1]-tp[1],im[2]-tp[2]],l2=v[0]**2+v[1]**2+v[2]**2||1e-9;let k3=0;
+           for(let t=0;t<n;t++){if(hid[o+t])continue;const u=((g.c[t*3]-tp[0])*v[0]+(g.c[t*3+1]-tp[1])*v[1]+(g.c[t*3+2]-tp[2])*v[2])/l2;if(u<0||u>1)continue;const f=[tp[0]+v[0]*u,tp[1]+v[1]*u,tp[2]+v[2]*u];if(Math.hypot(g.c[t*3]-f[0],g.c[t*3+1]-f[1],g.c[t*3+2]-f[2])<Math.min(hwB,0.8)){SB[t]=1;k3++;}}rep.push("join d"+bd.toFixed(1)+" f"+k3);}}}
+      if(any)BS=SB;}
+    if(S.strokes)delete S.strokes[tor];rep.push("bands "+(BO?BO.reduce((a,b)=>a+b,0):0)+"/"+(BS?BS.reduce((a,b)=>a+b,0):0));}
+  if(paths.length&&BASE>=0)S.shoulderF={tor,RED,BASE,EMB,starFit,gReg:g,BO,BS,yMid:(()=>{let a=0;for(let t=0;t<n;t++)a+=g.c[t*3+1];return a/n;})(),ring:(()=>{const a=new Uint8Array(n);if(!starFit)return a;const pin=(V,x,z)=>{let c=false;for(let i=0,j=V.length-1;i<V.length;j=i++){const p=V[i],q=V[j];if(((p[1]>z)!==(q[1]>z))&&(x<(q[0]-p[0])*(z-p[1])/(q[1]-p[1])+p[0]))c=!c;}return c;};const VO=starFit.VO2||starFit.VO;for(let t=0;t<n;t++){if(g.fn[t*3+1]>-0.05)continue;if(pin(VO,g.c[t*3],g.c[t*3+2])&&!pin(starFit.V,g.c[t*3],g.c[t*3+2]))a[t]=1;}return a;})(),W:W_,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++){for(const f2 of paths)if(f2(t)<=W_/2){a[t]=1;break;}}return a;})(),outl:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]<=3.0)a[t]=1;return a;})(),rim:(()=>{/* the outline's own ring: everything within 0.9 mm of the emblem (that isn't the emblem) is outline paint, so no black gets in between */const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]>0&&dE[t]<=0.9&&!hid[o+t])a[t]=1;return a;})(),isEmb};
   rep.push("cleared"+cleared+" outline"+outline.length+" RED"+RED+" EMB"+EMB+" BASE"+BASE+" cand"+JSON.stringify([...tm]));(window._spcDbg=window._spcDbg||{}).shoulder=rep;}
 /* piping drawn as one even stripe: each limb stripe found on the sculpt is replaced by a stripe of one width
    along its own centre line. The centre line runs end to end over the stripe (by distance over the surface from
    its far end, each half millimetre averaged, then smoothed), so prongs, notches and blobs along it go. Its
    width is the stripe's typical width, 1.1 to 1.6 mm. Only the plain paint round the stripe is painted over. */
+/* the legs are mirror twins: where one leg's piping was traced and its twin's was not (a stretch the grooves could not
+   be followed on), the twin takes the mirror of it. Only when the two pieces match as mirror images to 0.1 mm. */
+function mirrorLegs(active,hid){const rep=[];if(!S.lineF)return;
+  for(const a of active){const na=S.parts[a].name;if(!/left/i.test(na)||!/(leg|thigh|calf)/i.test(na))continue;const key=x=>x.toLowerCase().replace(/\.stl$/,'').replace(/_\d+_/,'_');const want=key(na).replace('left','right');const b=active.find(x=>key(S.parts[x].name)===want);
+    if(b==null||!S.lineF[a]||!S.lineF[b])continue;const gA=pieceGeo(a,null),gB=pieceGeo(b,null),oA=S.offs[a],oB=S.offs[b];
+    const cen=g=>{let m=[0,0,0];for(let t=0;t<g.n;t++)for(let k=0;k<3;k++)m[k]+=g.c[t*3+k]/g.n;return m;};const cA=cen(gA),cB=cen(gB);
+    const G=0.5,gr=new Map();for(let t=0;t<gA.n;t++){const k=((Math.floor(gA.c[t*3]/G)+8192)*16384+(Math.floor(gA.c[t*3+1]/G)+8192))*16384+(Math.floor(gA.c[t*3+2]/G)+8192);let L=gr.get(k);if(!L){L=[];gr.set(k,L);}L.push(t);}
+    const nearA=q=>{const cx=Math.floor(q[0]/G),cy=Math.floor(q[1]/G),cz=Math.floor(q[2]/G);let b0=-1,bd=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const L=gr.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gA.c[u*3]-q[0])**2+(gA.c[u*3+1]-q[1])**2+(gA.c[u*3+2]-q[2])**2;if(d<bd){bd=d;b0=u;}}}return [b0,Math.sqrt(bd)];};
+    const Ms=[[-1,1,1],[1,-1,1]];let best=null;for(const M of Ms){const ds=[];for(let t=0;t<gB.n;t+=97){const q=[0,1,2].map(k=>M[k]*(gB.c[t*3+k]-cB[k])+cA[k]);ds.push(nearA(q)[1]);}ds.sort((x,y)=>x-y);const md=ds[ds.length>>1];if(!best||md<best.md)best={M,md};}
+    rep.push(na.slice(-14)+" md"+best.md.toFixed(3));if(best.md>0.1)continue;
+    const fA=S.lineF[a],fB=S.lineF[b];let addB=0,addA=0;
+    const pass=(gX,oX,fX,gY,oY,fY,M,cX,cY,near)=>{let k2=0;for(let t=0;t<gY.n;t++){if(fY.ok[t]||hid[oY+t]||(fY.bl&&fY.bl[t]))continue;const q=[0,1,2].map(k=>M[k]*(gY.c[t*3+k]-cY[k])+cX[k]);const [u,d]=near(q);if(u<0||d>0.2||!fX.ok[u])continue;if(S.label[oY+t]===fY.B){S.label[oY+t]=fY.P;S.keep[oY+t]=1;fY.ok[t]=1;k2++;}}return k2;};
+    addB=pass(gA,oA,fA,gB,oB,fB,best.M,cA,cB,nearA);
+    rep.push("addB"+addB);}
+  (window._spcDbg=window._spcDbg||{}).mirror=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
   const done=new Set();
   for(const st of S.stripes){const pi=st.pi;if(!active.includes(pi)||done.has(pi+":"+st.P))continue;done.add(pi+":"+st.P);
@@ -841,7 +993,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
     /* its two far ends, and the way between them (side bits off it are left out) */
     /* seed in the biggest connected piece of it (a stray face alone would find no way anywhere) */
     let s0=-1;const cp=new Int32Array(n).fill(-1);{let best=0;for(let a0=0;a0<n;a0++){if(!inS[a0]||cp[a0]>=0)continue;const c=[a0];cp[a0]=a0;for(let h=0;h<c.length;h++){const t=c[h];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&inS[u]&&cp[u]<0){cp[u]=a0;c.push(u);}}}if(c.length>best){best=c.length;s0=a0;}}}
-    /* the stripe is the biggest connected run; stray bits elsewhere go */for(let t=0;t<n;t++)if(inS[t]&&cp[t]!==s0&&!st.keepAll){inS[t]=0;}
+    const inSall=inS.slice();/* the stripe is the biggest connected run; stray bits elsewhere go */for(let t=0;t<n;t++)if(inS[t]&&cp[t]!==s0&&!st.keepAll){inS[t]=0;}
     let r=geo(s0),Aend=s0;for(let t=0;t<n;t++)if(inS[t]&&isFinite(r.d[t])&&r.d[t]>r.d[Aend])Aend=t;
     r=geo(Aend);let Bend=Aend;for(let t=0;t<n;t++)if(inS[t]&&isFinite(r.d[t])&&r.d[t]>r.d[Bend])Bend=t;
     const L=r.d[Bend];r=geo(Aend,true);
@@ -867,7 +1019,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
     /* on an arm the piping is the sculpted cord, top to glove: the cord the line found is followed up to where the
        sculptor ended it (the top of the shoulder cap) and down to the glove, keeping to the cord the whole way */
     let onCord=false;const isArm=/(^|[^a-z])arm([^a-z]|$)/i.test(S.parts[pi].name);
-    if(isArm&&RID&&blw){const BAND=cordBand(g,RID,t=>hid[o+t]);
+    if(isArm&&RID&&blw){const BAND=alongBand(g,cordBand(g,RID,t=>hid[o+t]),LA,A,o);
       const cp2=new Int32Array(n).fill(-1);let best=-1,bs=0;const inP=new Uint8Array(n);for(const t of path)inP[t]=1;
       for(let a0=0;a0<n;a0++){if(!BAND[a0]||cp2[a0]>=0||blw[a0])continue;const c=[a0];cp2[a0]=a0;let ov=0;for(let h=0;h<c.length;h++){const t=c[h];if(inP[t])ov++;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&BAND[u]&&cp2[u]<0&&!blw[u]&&!hid[o+u]){cp2[u]=a0;c.push(u);}}}if(ov>bs){bs=ov;best=a0;}}
       if(best>=0){/* away from the glove along the arm */let gx=0,gy=0,gz=0,gn=0,ax=0,ay=0,az=0,an=0;for(let t=0;t<n;t++){if(hid[o+t])continue;if(blw[t]){gx+=g.c[t*3];gy+=g.c[t*3+1];gz+=g.c[t*3+2];gn++;}else{ax+=g.c[t*3];ay+=g.c[t*3+1];az+=g.c[t*3+2];an++;}}
@@ -883,13 +1035,23 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
            /* and where the surface under it turns to face up the arm (the top of the cap, where the cut seam runs) */
            const un=Math.hypot(...up)||1;while(pp.length>10){const t=pp[pp.length-1];if(Math.abs(g.fn[t*3]*up[0]+g.fn[t*3+1]*up[1]+g.fn[t*3+2]*up[2])/un<0.75)break;pp.pop();}}
           if(pp.length>10){path=pp;cut=new Array(pp.length).fill(false);onCord=true;}}}}
+    /* on a leg likewise: the sculpted cord the line found is followed end to end, keeping to it */
+    if(!onCord&&!isArm&&RID){const BAND=alongBand(g,cordBand(g,RID,t=>hid[o+t]),LA,A,o);const inP=new Uint8Array(n);for(const t of path)inP[t]=1;
+      const cp2=new Int32Array(n).fill(-1);let best=-1,bs=0;for(let a0=0;a0<n;a0++){if(!BAND[a0]||cp2[a0]>=0||(blw&&blw[a0]))continue;const c=[a0];cp2[a0]=a0;let ov=0;for(let h=0;h<c.length;h++){const t=c[h];if(inP[t])ov++;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&BAND[u]&&cp2[u]<0&&!(blw&&blw[u])&&!hid[o+u]){cp2[u]=a0;c.push(u);}}}if(ov>bs){bs=ov;best=a0;}}
+      if(best>=0&&bs>path.length*0.4){const gd=src=>{const d=new Float64Array(n).fill(Infinity),pv=new Int32Array(n).fill(-1),h=[];d[src]=0;hpush(h,[0,src]);while(h.length){const [dc,t]=hpop(h);if(dc>d[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||cp2[u]!==best)continue;const nd=dc+D(t,u);if(nd<d[u]){d[u]=nd;pv[u]=t;hpush(h,[nd,u]);}}}return {d,pv};};
+        let r1=gd(best),a1=best;for(let t=0;t<n;t++)if(cp2[t]===best&&r1.d[t]>r1.d[a1])a1=t;const r2=gd(a1);let b1=a1;for(let t=0;t<n;t++)if(cp2[t]===best&&r2.d[t]>r2.d[b1])b1=t;
+        const pp=[];for(let t=b1;t>=0;t=r2.pv[t])pp.push(t);
+        /* it runs along the leg: ends where it turns across (round a hip top or a knee) are cut */
+        const al=(i,j)=>{const dx=g.c[pp[j]*3]-g.c[pp[i]*3],dy=g.c[pp[j]*3+1]-g.c[pp[i]*3+1],dz=g.c[pp[j]*3+2]-g.c[pp[i]*3+2],l=Math.hypot(dx,dy,dz)||1;return Math.abs(dx*LA[0]+dy*LA[1]+dz*LA[2])/l;};
+        let a0=0;while(a0<pp.length-10){let j=a0;while(j<pp.length-1&&D(pp[a0],pp[j])<1.5)j++;if(al(a0,j)>=0.6)break;a0=j;}let e0=pp.length-1;while(e0>a0+10){let j=e0;while(j>0&&D(pp[e0],pp[j])<1.5)j--;if(al(j,e0)>=0.6)break;e0=j;}
+        const q=pp.slice(a0,e0+1);if(q.length>10){path=q;cut=new Array(q.length).fill(false);onCord=true;}}}
     /* the stripe runs all the way to the glove or boot: where the paint gave out before the rim (a seam or a
        crease broke it), the line goes on along the sculpted cord down to the rim */
     /* nothing crosses the top of a shoulder cap or a hip: the line ends where the surface under it turns to face
        along the limb */
     if(!onCord){const fa=t=>Math.abs(g.fn[t*3]*LA[0]+g.fn[t*3+1]*LA[1]+g.fn[t*3+2]*LA[2]);let a0=0,b0=path.length-1;while(a0<b0-6&&fa(path[a0])>0.6)a0++;while(b0>a0+6&&fa(path[b0])>0.6)b0--;
      if(a0>0||b0<path.length-1){path=path.slice(a0,b0+1);if(cut)cut=cut.slice(a0,b0+1);}}
-    let ext=0;if(blw&&path.length>=6&&!onCord){
+    let ext=0;if(blw&&path.length>=6&&(!onCord||!isArm)){
       /* march straight on from the end, along the line's own heading, staying on the surface, until the rim */
       const projI=q=>{const cx=Math.floor(q[0]/cell),cy=Math.floor(q[1]/cell),cz=Math.floor(q[2]/cell);let b=-1,bd2=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const bb=grid.get(K(cx+i,cy+j,cz+k));if(!bb)continue;for(const t of bb){const d=(g.c[t*3]-q[0])**2+(g.c[t*3+1]-q[1])**2+(g.c[t*3+2]-q[2])**2;if(d<bd2){bd2=d;b=t;}}}return b;};
       const C3=t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]];
@@ -907,7 +1069,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
     let ar=0;for(let t=0;t<n;t++)if(inS[t])ar+=A[o+t];const W=Math.max(1.1,Math.min(1.6,ar/Math.max(L,1)));
     /* straighten, staying on the surface */
     let X=path.map(t=>[g.c[t*3],g.c[t*3+1],g.c[t*3+2]]);
-    if(onCord){X=cordSmooth(g,X,RID,A,o,t=>hid[o+t],1.4);/* then smoothed much more (a sculpted cord wanders a little; the paint line does not), back on the surface */for(let r2=0;r2<3;r2++){for(let it=0;it<20;it++)for(const lam of [0.5,-0.53]){const Y=X.map(x=>x.slice());for(let i=1;i<X.length-1;i++)for(let c=0;c<3;c++)Y[i][c]=X[i][c]+lam*((X[i-1][c]+X[i+1][c])/2-X[i][c]);X=Y;}X=onSurface(g,X,t=>hid[o+t]);}X=planarLine(g,X,t=>hid[o+t]);}else{
+    if(onCord){/* the paint follows the sculpted cord's crest, wherever it goes (no straightening) */X=cordSmooth(g,X,RID,A,o,t=>hid[o+t],1.0);}else{
     const proj=q=>{const cx=Math.floor(q[0]/cell),cy=Math.floor(q[1]/cell),cz=Math.floor(q[2]/cell);let b=null,bd2=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const bb=grid.get(K(cx+i,cy+j,cz+k));if(!bb)continue;for(const t of bb){const d=(g.c[t*3]-q[0])**2+(g.c[t*3+1]-q[1])**2+(g.c[t*3+2]-q[2])**2;if(d<bd2){bd2=d;b=t;}}}return b==null?q:[g.c[b*3],g.c[b*3+1],g.c[b*3+2]];};
     /* onto the middle of the cord (a flat cord shows as two edge lines): each point to the middle of the raised
        faces within 0.9 mm */
@@ -927,6 +1089,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
     let B=-1,bv=0;for(const [k,v] of bm)if(v>bv){bv=v;B=k;}if(B<0){rep.push('noB');continue;}
     /* clear the old stripe (and any bits of it within 4 mm of the line), then paint the even stripe */
     let cl=0,pa=0;const dCache=new Float32Array(n).fill(-1);const DL=t=>dCache[t]>=0?dCache[t]:(dCache[t]=dl(t));
+    const inS0=inS.slice();
     for(let t=0;t<n;t++)if(inS[t]){ /* every thin run of the stripe paint goes; only the one even line comes back */S.label[o+t]=B;S.keep[o+t]=0;cl++;}
     const seen=new Uint8Array(n),fr=[...path];for(const t of fr)seen[t]=1;
     for(let h=0;h<fr.length;h++){const t=fr[h];const d=DL(t);if(d>W/2+0.8)continue;
@@ -942,7 +1105,21 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
        let i0=1;while(i0<k-1&&Math.hypot(R[i0][0]-R[0][0],R[i0][1]-R[0][1],R[i0][2]-R[0][2])<1)i0++;let i1=k-2;while(i1>0&&Math.hypot(R[i1][0]-R[k-1][0],R[i1][1]-R[k-1][1],R[i1][2]-R[k-1][2])<1)i1--;
        return [ext(R[0],R[i0])].concat(R,[ext(R[k-1],R[i1])]);};
      (S.strokes=S.strokes||{})[pi]={list:runs.map(R=>({X:extE(R),r:W/2,s:P,base:B})),own,oS,oB};}
-    (S.lineF=S.lineF||{})[pi]={P,B,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(DL(t)<=W/2+0.1)a[t]=1;return a;})(),bl:bl2};
+    /* the paint is the sculpted band between the cord's two grooves, when the sculpt has them */
+    let BANDF=null;{const guide=[];for(let t=0;t<n;t++)if((inS0[t]||inSall[t])&&!hid[o+t])guide.push(t);const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,t=>!!(bl2&&bl2[t]));
+      if(GB){let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])GB[t]=0;if(GB[t])nb2++;}
+        if(nb2>50){BANDF=GB;rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" GROOVES "+GB.info+" n"+nb2);
+          /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
+          const MG=1.0,mg=new Map();for(const q of GB.mids){const k=((Math.floor(q[0]/MG)+4096)*8192+(Math.floor(q[1]/MG)+4096))*8192+(Math.floor(q[2]/MG)+4096);let a=mg.get(k);if(!a){a=[];mg.set(k,a);}a.push(q);}
+          const nearB=(x,y,z,R)=>{const cx=Math.floor(x/MG),cy=Math.floor(y/MG),cz=Math.floor(z/MG),r=Math.ceil(R/MG);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=mg.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const q of a)if((q[0]-x)**2+(q[1]-y)**2+(q[2]-z)**2<=R*R)return true;}return false;};
+          for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])&&nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.5)){S.label[o+t]=B;S.keep[o+t]=0;}}
+          if(S.strokes&&S.strokes[pi]){const sk=S.strokes[pi];const nl=[];for(const st2 of sk.list){let cur=[];for(const q of st2.X){if(nearB(q[0],q[1],q[2],2.5)){if(cur.length>2)nl.push({...st2,X:cur});cur=[];}else cur.push(q);}if(cur.length>2)nl.push({...st2,X:cur});}
+            sk.list=nl;for(let t=0;t<n;t++)if(sk.own[t]&&nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.0))sk.own[t]=0;if(!nl.length)delete S.strokes[pi];}
+          const okA=new Uint8Array(n);for(let t=0;t<n;t++)okA[t]=BANDF[t]||(S.label[o+t]===P&&!nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.5)&&DL(t)<=W/2+0.1)?1:0;BANDF=okA;}}}
+    if(!BANDF&&RID&&onCord){BANDF=ridgeBand(g,RID,[X],t=>!!hid[o+t],nb,0.75,-0.02);let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])BANDF[t]=0;if(BANDF[t])nb2++;}
+      if(nb2>50){for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])){S.label[o+t]=B;S.keep[o+t]=0;}}
+        if(S.strokes)delete S.strokes[pi];}else BANDF=null;}
+    (S.lineF=S.lineF||{})[pi]={P,B,ok:BANDF||(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(DL(t)<=W/2+0.1)a[t]=1;return a;})(),bl:bl2};
     rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" pth"+path.length+(onCord?" CORD":"")+" ext"+ext+" cut"+(cut?cut.filter(x=>x).length:0)+" L"+L.toFixed(1)+" W"+W.toFixed(2)+" "+cl+"->"+pa);}
   (window._spcDbg=window._spcDbg||{}).redraw=rep;}
 /* blotches: on an arm or a leg, a small patch (under 2% of the piece) that lies wholly inside one other paint
