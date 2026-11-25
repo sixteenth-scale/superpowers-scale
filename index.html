@@ -10109,7 +10109,18 @@ async function run(){
   if(!window._spcNoStrays){dropStrays(active,hid,photo);sumAreas();}
   /* last of all: on a piped limb the stripe paint is the traced stripe and the glove or boot, nothing else */
   if(S.lineF){const rm=S._remap||null;let nz=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P,B=rm?rm[F.B]:F.B;if(P==null||P<0||B==null||B<0)continue;
-    for(let t=0;t<n;t++){if(S.label[o+t]!==P||F.ok[t]||(F.bl&&F.bl[t]))continue;S.label[o+t]=B;nz++;}}(window._spcDbg=window._spcDbg||{}).lastStripe=nz+' '+Object.keys(S.lineF).map(pi=>{const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P;let r=0,ok=0,bl=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;r++;if(F.ok[t])ok++;else if(F.bl&&F.bl[t])bl++;}return S.parts[pi].name.slice(-12)+':P'+P+'r'+r+'ok'+ok+'bl'+bl;}).join(' ');sumAreas();}
+    for(let t=0;t<n;t++){if(S.label[o+t]!==P||F.ok[t]||(F.bl&&F.bl[t]))continue;S.label[o+t]=B;nz++;}
+    /* and islands: stripe paint not joined to the glove or boot and much smaller than the stripe itself is a stray patch */
+    {const nb=S.nb[pi],comp=new Int32Array(n).fill(-1),ca=[],cb=[];let nc=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P||comp[t]>=0)continue;let ar=0,hasB=false;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];if(F.bl&&F.bl[u])hasB=true;for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&comp[w]<0&&S.label[o+w]===P){comp[w]=nc;st.push(w);}}}ca.push(ar);cb.push(hasB);nc++;}
+     let mx=0;for(let c=0;c<nc;c++)if(!cb[c])mx=Math.max(mx,ca[c]);for(let t=0;t<n;t++){const c=comp[t];if(c>=0&&!cb[c]&&ca[c]<0.3*mx){S.label[o+t]=B;nz++;}}}
+    /* patches hung on the stripe by a thin neck: shrink the stripe paint three faces in from its edge, keep what is still big or joined to
+       the glove or boot, and grow it back the same three faces inside its old outline. A patch on a thin neck is cut off and does not come back */
+    {const nb=S.nb[pi],isP=t=>S.label[o+t]===P;let core=new Uint8Array(n);for(let t=0;t<n;t++)core[t]=isP(t)?1:0;
+     for(let r=0;r<3;r++){const nx=core.slice();for(let t=0;t<n;t++){if(!core[t]||(F.bl&&F.bl[t]))continue;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w<0||!core[w]){nx[t]=0;break;}}}core=nx;}
+     const comp=new Int32Array(n).fill(-1),ca=[],cb=[];let nc=0;for(let t=0;t<n;t++){if(!core[t]||comp[t]>=0)continue;let ar=0,hasB=false;const st=[t];comp[t]=nc;while(st.length){const u=st.pop();ar+=S.area[o+u];if(F.bl&&F.bl[u])hasB=true;for(let e=0;e<3;e++){const w=nb[u*3+e];if(w>=0&&core[w]&&comp[w]<0){comp[w]=nc;st.push(w);}}}ca.push(ar);cb.push(hasB);nc++;}
+     let mx=0;for(let c=0;c<nc;c++)if(!cb[c])mx=Math.max(mx,ca[c]);const keep=new Uint8Array(n);let fr=[];for(let t=0;t<n;t++){const c=comp[t];if(c>=0&&(cb[c]||ca[c]>=0.3*mx)){keep[t]=1;fr.push(t);}}
+     for(let r=0;r<4&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!keep[w]&&isP(w)){keep[w]=1;nf.push(w);}}fr=nf;}
+     if(mx>0)for(let t=0;t<n;t++)if(isP(t)&&!keep[t]&&!(F.bl&&F.bl[t])){S.label[o+t]=B;nz++;}}}(window._spcDbg=window._spcDbg||{}).lastStripe=nz+' '+Object.keys(S.lineF).map(pi=>{const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P;let r=0,ok=0,bl=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;r++;if(F.ok[t])ok++;else if(F.bl&&F.bl[t])bl++;}return S.parts[pi].name.slice(-12)+':P'+P+'r'+r+'ok'+ok+'bl'+bl;}).join(' ');sumAreas();}
   /* the sculpted areas, ready for clicking */
   for(const pi of active){log(`Finding the sculpted areas on ${S.parts[pi].name}…`);await tick();try{sculptAreaAt(S.offs[pi]);}catch(e){console.warn(e);}}
   matchFilaments(slots);
@@ -10382,6 +10393,12 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood){const n=g.n;if(guide.lengt
     let added=0;while(hq.length){hq.sort((x,y)=>y[0]-x[0]);const [dc,t]=hq.pop();if(dc>(dist.get(t)??Infinity))continue;
       around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;if(hCore>0.05&&hgt(u)<0.35*hCore)return;if(offCor(C3(u))>hwE+0.5)return; /* (on the cord's own course, not off into the hollow beside it) */if(offCor(C3(u))>hwE+0.5)return; /* (on the cord's own course, not off into the hollow beside it) */ /* (only the cord's raised top: not the hollow its curl encloses) */dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
       if(added>3000)break;}}
+  /* a clean edge: two passes of a majority vote over each edge face's 0.3 mm neighbourhood, so the band's border runs smooth along the groove
+     instead of in a sawtooth of single triangles (never adding a face in the groove's hollow) */
+  for(let pass=0;pass<2;pass++){const edge=[];for(let t=0;t<n;t++){if(hidF(t))continue;let nB=0,nAll=0,touch=false;const was=band[t];
+      around(C3(t),0.3,u=>{nAll++;if(band[u]){nB++;if(!was)touch=true;}else if(was)touch=true;});if(!touch)continue;const f=nB/Math.max(1,nAll);
+      if(was&&f<0.4)edge.push([t,0]);else if(!was&&f>0.6&&ras(t)>=-0.004&&!(stopF&&stopF(t)))edge.push([t,1]);}
+    for(const [t,v] of edge)band[t]=v;}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
