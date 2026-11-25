@@ -10107,6 +10107,9 @@ async function run(){
     S.regions.forEach((r,i)=>{if(acc[i][3])r.rgb=[acc[i][0]/acc[i][3],acc[i][1]/acc[i][3],acc[i][2]/acc[i][3]];});}
   /* leftovers go after the paint colors are measured, so the flesh tone is read from the face, not the shadowed neck */
   if(!window._spcNoStrays){dropStrays(active,hid,photo);sumAreas();}
+  /* last of all: on a piped limb the stripe paint is the traced stripe and the glove or boot, nothing else */
+  if(S.lineF){const rm=S._remap||null;let nz=0;for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P,B=rm?rm[F.B]:F.B;if(P==null||P<0||B==null||B<0)continue;
+    for(let t=0;t<n;t++){if(S.label[o+t]!==P||F.ok[t]||(F.bl&&F.bl[t]))continue;S.label[o+t]=B;nz++;}}(window._spcDbg=window._spcDbg||{}).lastStripe=nz+' '+Object.keys(S.lineF).map(pi=>{const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P;let r=0,ok=0,bl=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;r++;if(F.ok[t])ok++;else if(F.bl&&F.bl[t])bl++;}return S.parts[pi].name.slice(-12)+':P'+P+'r'+r+'ok'+ok+'bl'+bl;}).join(' ');sumAreas();}
   /* the sculpted areas, ready for clicking */
   for(const pi of active){log(`Finding the sculpted areas on ${S.parts[pi].name}…`);await tick();try{sculptAreaAt(S.offs[pi]);}catch(e){console.warn(e);}}
   matchFilaments(slots);
@@ -10325,7 +10328,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)retu
   /* sections carried on past the painted stripe's ends, straight on along the limb over the surface, up to 25 mm
      or the glove or boot (the grooves may run on where the paint gave out) */
   for(const end of [1,-1]){const L0=cen.length;const a=end>0?cen[L0-1]:cen[0],b=end>0?cen[Math.max(0,L0-11)]:cen[Math.min(L0-1,10)];let td=nrm(sub(a,b)),p=a.slice();const add2=[];
-    for(let k=0;k<85;k++){const q0=add(p,td,0.3);let q=null,bd=Infinity,stp=false;around(q0,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);stp=!!(stopF&&stopF(u));}});if(!q||stp)break;add2.push(q);td=nrm(add(td,nrm(sub(q,p)),0.3));p=q;}
+    for(let k=0;k<85;k++){const q0=add(p,td,0.3);let q=null,bd=Infinity,stp=false;around(q0,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);stp=!!(stopF&&stopF(u));}});if(!q||stp)break;add2.push(q);td=nrm(add(td,nrm(sub(q,p)),0.3));if(Math.abs(dot(td,ax))<0.8)break;p=q;}
     if(end>0)cen.push(...add2);else cen.unshift(...add2.reverse());}
   const tan=i=>nrm(sub(cen[Math.min(i+2,cen.length-1)],cen[Math.max(i-2,0)]));
   const SEC=cen.map((c0,i)=>section(c0,tan(i)));
@@ -10336,7 +10339,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)retu
   for(const dir of [1,-1]){let last=path[st],miss=0,i=st+dir;for(;i>=0&&i<cen.length;i+=dir){const x=SEC[i]?match(SEC[i].cs,last,miss):null;if(x){path[i]=x;last=x;miss=0;}else miss++;}
     /* and on past the stripe's end while the grooves go on */
     let lm=(last[1].map((v,c)=>(v+last[2][c])/2));let prevMid=null;{const k=path.map((p,j)=>p?j:-1).filter(j=>j>=0);const j0=dir>0?k[k.length-1]:k[0],j1=dir>0?k[Math.max(0,k.length-6)]:k[Math.min(k.length-1,5)];const p0=path[j0],p1=path[j1];prevMid=[(p1[1][0]+p1[2][0])/2,(p1[1][1]+p1[2][1])/2,(p1[1][2]+p1[2][2])/2];lm=[(p0[1][0]+p0[2][0])/2,(p0[1][1]+p0[2][1])/2,(p0[1][2]+p0[2][2])/2];last=p0;}
-    let td=nrm(sub(lm,prevMid));miss=0;for(let s2=0;s2<160&&miss<14;s2++){const c1=add(lm,td,0.3);let q=c1,bd=Infinity;around(c1,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);}});if(bd===Infinity){lm=c1;miss++;continue;}const S2=section(q,td);if(!S2||S2.stop)break;const x=match(S2.cs,last,miss);if(x){const nm=[(x[1][0]+x[2][0])/2,(x[1][1]+x[2][1])/2,(x[1][2]+x[2][2])/2];td=nrm(add(td,nrm(sub(nm,lm)),0.5));lm=nm;last=x;miss=0;(dir>0?ext.b:ext.a).push(x);}else{lm=q;miss++;}}}
+    let td=nrm(sub(lm,prevMid));miss=0;for(let s2=0;s2<160&&miss<14;s2++){const c1=add(lm,td,0.3);let q=c1,bd=Infinity;around(c1,1.5,(u,d2)=>{if(d2<bd){bd=d2;q=C3(u);}});if(bd===Infinity){lm=c1;miss++;continue;}const S2=section(q,td);if(!S2||S2.stop)break;const x=match(S2.cs,last,miss);if(x){const nm=[(x[1][0]+x[2][0])/2,(x[1][1]+x[2][1])/2,(x[1][2]+x[2][2])/2];td=nrm(add(td,nrm(sub(nm,lm)),0.5));if(Math.abs(dot(td,ax))<0.8)break; /* (it runs along the limb: grooves turning across it are something else) */lm=nm;last=x;miss=0;(dir>0?ext.b:ext.a).push(x);}else{lm=q;miss++;}}}
   /* stretches the tracking lost (a knee seam breaks the grooves): tracked again from their own clearest section */
   for(let pass=0;pass<4;pass++){let bi=-1,bv=-1;for(let i=0;i<cen.length;i++){if(path[i]||!SEC[i]||!SEC[i].cs.length)continue;let near2=false;for(let j=Math.max(0,i-4);j<=Math.min(cen.length-1,i+4);j++)if(path[j])near2=true;if(near2)continue;if(SEC[i].cs[0][0]>bv){bv=SEC[i].cs[0][0];bi=i;}}
     if(bi<0)break;path[bi]=SEC[bi].cs[0];for(const dir of [1,-1]){let last=path[bi],miss=0;for(let i=bi+dir;i>=0&&i<cen.length&&!path[i];i+=dir){const x=SEC[i]?match(SEC[i].cs,last,miss):null;if(x){path[i]=x;last=x;miss=0;}else miss++;}}}
@@ -10352,6 +10355,21 @@ function grooveBand2(g,o,hidF,guide,A,stopF){const n=g.n;if(guide.length<20)retu
   const band=new Uint8Array(n);const seen=new Uint8Array(n);
   for(let i=0;i<mids.length;i++)around(mids[i],1.6,u=>{if(seen[u])return;seen[u]=1;let bi=-1,bd=Infinity;for(let j=Math.max(0,i-12);j<Math.min(mids.length,i+13);j++){const d=(mids[j][0]-g.c[u*3])**2+(mids[j][1]-g.c[u*3+1])**2+(mids[j][2]-g.c[u*3+2])**2;if(d<bd){bd=d;bi=j;}}
     const L=Ls[bi],R=Rs[bi],v=sub(R,L),l2=dot(v,v)||1e-9,uu=dot(sub(C3(u),L),v)/l2;if(uu<0||uu>1)return;const f=add(L,v,uu);if(Math.hypot(...sub(C3(u),f))<0.6)band[u]=1;});
+  /* then out to the grooves: grown a little at a time over the band's own surface, stopping at the hollow of a groove,
+     so a band traced a little narrow still fills its cord edge to edge */
+  {const mids2=mids;let front=[];for(let t=0;t<n;t++)if(band[t])front.push(t);for(let step=0;step<5&&front.length;step++){const nf=[];for(const t of front)around(C3(t),0.16,u=>{if(band[u]||hidF(u))return;if(stopF&&stopF(u))return;if(ras(u)<-0.004)return;band[u]=2;nf.push(u);});front=nf;}
+   for(let t=0;t<n;t++)if(band[t])band[t]=1;}
+  /* to the very end of the cord, round its curves: from each end of the traced band the cord's inside is flooded,
+     never crossing a groove and never more than the band's half width (plus a little) from the nearest groove face,
+     for up to 15 mm. Off the cord the nearest groove is soon farther than that, so the flood stays on the cord. */
+  for(const end of [0,1]){const M=mids,k=end?M.length-1:0;const e=M[k];const hwE=Math.hypot(...sub(Ls[k],Rs[k]))/2;
+    const gro=[];around(e,16,u=>{if(ras(u)<-0.004)gro.push(u);});if(gro.length<20)continue;
+    const GG=0.5,gg=new Map();for(const u of gro){const kk=((Math.floor(g.c[u*3]/GG)+8192)*16384+(Math.floor(g.c[u*3+1]/GG)+8192))*16384+(Math.floor(g.c[u*3+2]/GG)+8192);let L=gg.get(kk);if(!L){L=[];gg.set(kk,L);}L.push(u);}
+    const dG=q=>{const cx=Math.floor(q[0]/GG),cy=Math.floor(q[1]/GG),cz=Math.floor(q[2]/GG);let bd=Infinity;for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++)for(let kk=-3;kk<=3;kk++){const L=gg.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+kk+8192));if(!L)continue;for(const u of L){const d=(g.c[u*3]-q[0])**2+(g.c[u*3+1]-q[1])**2+(g.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}return Math.sqrt(bd);};
+    const dist=new Map(),hq=[];for(let t=0;t<n;t++)if(band[t]&&Math.hypot(...sub(C3(t),e))<1.2){dist.set(t,0);hq.push([0,t]);}
+    let added=0;while(hq.length){hq.sort((x,y)=>y[0]-x[0]);const [dc,t]=hq.pop();if(dc>(dist.get(t)??Infinity))continue;
+      around(C3(t),0.2,(u,d2)=>{if(hidF(u)||(stopF&&stopF(u)))return;const nd=dc+Math.sqrt(d2);if(nd>15||nd>=(dist.get(u)??Infinity))return;if(ras(u)<-0.004)return;if(dG(C3(u))>hwE+0.2)return;dist.set(u,nd);if(!band[u]){band[u]=1;added++;}hq.push([nd,u]);});
+      if(added>3000)break;}}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info="w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
@@ -10709,10 +10727,10 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
           /* near the traced band the band rules; away from it (where the grooves gave out) the drawn line stays */
           const MG=1.0,mg=new Map();for(const q of GB.mids){const k=((Math.floor(q[0]/MG)+4096)*8192+(Math.floor(q[1]/MG)+4096))*8192+(Math.floor(q[2]/MG)+4096);let a=mg.get(k);if(!a){a=[];mg.set(k,a);}a.push(q);}
           const nearB=(x,y,z,R)=>{const cx=Math.floor(x/MG),cy=Math.floor(y/MG),cz=Math.floor(z/MG),r=Math.ceil(R/MG);for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)for(let k=-r;k<=r;k++){const a=mg.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!a)continue;for(const q of a)if((q[0]-x)**2+(q[1]-y)**2+(q[2]-z)**2<=R*R)return true;}return false;};
-          for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])&&nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.5)){S.label[o+t]=B;S.keep[o+t]=0;}}
+          for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])){S.label[o+t]=B;S.keep[o+t]=0;}} /* (the traced band is the whole stripe: red anywhere else on the piece is a blotch) */
           if(S.strokes&&S.strokes[pi]){const sk=S.strokes[pi];const nl=[];for(const st2 of sk.list){let cur=[];for(const q of st2.X){if(nearB(q[0],q[1],q[2],2.5)){if(cur.length>2)nl.push({...st2,X:cur});cur=[];}else cur.push(q);}if(cur.length>2)nl.push({...st2,X:cur});}
             sk.list=nl;for(let t=0;t<n;t++)if(sk.own[t]&&nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.0))sk.own[t]=0;if(!nl.length)delete S.strokes[pi];}
-          const okA=new Uint8Array(n);for(let t=0;t<n;t++)okA[t]=BANDF[t]||(S.label[o+t]===P&&!nearB(g.c[t*3],g.c[t*3+1],g.c[t*3+2],2.5)&&DL(t)<=W/2+0.1)?1:0;BANDF=okA;}}}
+          if(S.strokes)delete S.strokes[pi];}}}
     if(!BANDF&&RID&&onCord){BANDF=ridgeBand(g,RID,[X],t=>!!hid[o+t],nb,0.75,-0.02);let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])BANDF[t]=0;if(BANDF[t])nb2++;}
       if(nb2>50){for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])){S.label[o+t]=B;S.keep[o+t]=0;}}
         if(S.strokes)delete S.strokes[pi];}else BANDF=null;}
