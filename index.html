@@ -9591,7 +9591,7 @@ async function save3MF(S,fils,faceState){
         const W=(()=>{const pa=(pr.ps&&pr.ps.printable_area)||[];let mx=0;for(const q of pa){const v=String(q).split("x").map(Number);mx=Math.max(mx,v[0]||0);}return mx||256;})(),GAP=W*0.2;
         const origin=(i,n)=>{const cols=Math.ceil(Math.sqrt(n)),c=(i-1)%cols,r=Math.floor((i-1)/cols);return [c*(W+GAP),-r*(W+GAP)];};
         /* colour set per painted part (slots covering at least 2% of its area) */
-        const info=[];S.parts.forEach((p,pi)=>{const tid=top.get(p.src.path+":"+p.src.id);if(!tid||!faceState[pi])return;const st=faceState[pi],A=areas(p.m0||p.m);let tot=0;const by=new Map();for(let t=0;t<st.length;t++){const a=A[t]||0;tot+=a;by.set(st[t],(by.get(st[t])||0)+a);}
+        const info=[];S.parts.forEach((p,pi)=>{const tid=(p.objectid!=null?String(p.objectid):null)||top.get(p.src.path+":"+p.src.id);if(!tid||!faceState[pi])return;const st=faceState[pi],A=areas(p.m0||p.m);let tot=0;const by=new Map();for(let t=0;t<st.length;t++){const a=A[t]||0;tot+=a;by.set(st[t],(by.get(st[t])||0)+a);}
           const cols=[...by].filter(([k,a])=>a>=0.02*tot).map(([k])=>k).sort((x,y)=>x-y);const pl=plates.find(q=>q.objs.includes(tid));if(!pl)return;info.push({pi,p,tid,cols,key:cols.join(","),plate:pl.id,area:tot});});
         if(info.length>=2){
           /* groups */const groups=[];const sub=(a,b)=>a.every(x=>b.includes(x));
@@ -10518,15 +10518,18 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
     /* from each end the line is carried on along the top of the cord: each step moves 0.3 mm ahead and settles on the highest face
        within 0.45 mm of that point (the cord top stands above everything beside it), until it meets the glove or boot, runs into a
        hidden face (the cap), or the ridge has gone for 2 mm */
-    const follow=(e,d0)=>{const out=[];let p=e,d=d0,miss=0;for(let k=0;k<200;k++){const q=add(p,d,0.3);
-        /* the normal at q, from the nearest face */let nq=null,bq=Infinity;around(q,0.4,(u,d2)=>{if(d2<bq){bq=d2;nq=[g.fn[u*3],g.fn[u*3+1],g.fn[u*3+2]];}});if(!nq)break;
-        const latv=nrm(cross(nq,d));let hitStop=false;around(q,0.6,u=>{if(stopF&&stopF(u))hitStop=true;});if(hitStop){out.push(q);break;}
-        /* the nearest groove face on each side of q, across the cord: the new centre is halfway between them */
+    const follow=(e,d0)=>{const out=[];let p=e,d=d0,miss=0,run=0;for(let k=0;k<120;k++){const q=add(p,d,0.3);run+=0.3;if(run>36)break;
+        /* the surface at q: the nearest face's normal; off the mesh, or onto a hidden face (a socket, the cap's end), the walk is over */
+        let nq=null,bq=Infinity,hid2=false;around(q,0.5,(u,d2)=>{if(d2<bq){bq=d2;nq=[g.fn[u*3],g.fn[u*3+1],g.fn[u*3+2]];hid2=hidF(u);}});if(!nq||hid2)break;
+        let hitStop=false;around(q,0.6,u=>{if(stopF&&stopF(u))hitStop=true;});if(hitStop){out.push(q);miss=0;break;}
+        const latv=nrm(cross(nq,d));
+        /* the nearest groove face on each side of q across the cord: the new centre is their midpoint; with one groove only, that
+           groove's offset; with neither (a knee crease, a muscle crossing the cord) the walk keeps straight on for up to 7 mm */
         let gl=null,gr=null,dl=Infinity,dr=Infinity;around(q,1.7,u=>{if(hidF(u)||(stopF&&stopF(u))||ras(u)>=-0.004)return;let off=sub(C3(u),q);off=add(off,nq,-dot(off,nq));const L=Math.hypot(...off);if(L<0.35||L>1.6)return;const side=dot(off,latv)/L;if(Math.abs(side)<0.7)return;if(side>0){if(L<dl){dl=L;gl=C3(u);}}else{if(L<dr){dr=L;gr=C3(u);}}});
-        let np_=null;if(gl&&gr&&dl+dr<2.6){np_=add(gl,sub(gr,gl),0.5);}else if(gl&&dl<1.4){np_=add(gl,latv,-hwM);}else if(gr&&dr<1.4){np_=add(gr,latv,hwM);}
-        if(!np_){let bu=-1,bh=-Infinity;around(q,0.45,u=>{if(hidF(u))return;const h=hgt(u);if(h>bh){bh=h;bu=u;}});if(bu<0)break;np_=C3(bu);miss++;if(miss>6)break;}else miss=0;
-        d=nrm(add(d,nrm(sub(np_,p)),0.6));p=np_;out.push(p);}
-      return miss>6?out.slice(0,Math.max(0,out.length-miss)):out;};
+        let np_=null;if(gl&&gr&&dl+dr<2.6)np_=add(gl,sub(gr,gl),0.5);else if(gl&&dl<1.4)np_=add(gl,latv,-hwM);else if(gr&&dr<1.4)np_=add(gr,latv,hwM);
+        if(np_){miss=0;d=nrm(add(d,nrm(sub(np_,p)),0.6));}else{miss++;if(miss>24)break;np_=q;}
+        p=np_;out.push(p);}
+      return miss>0?out.slice(0,Math.max(0,out.length-miss)):out;};
     {const k0=Math.min(4,sm.length-1),k1=Math.max(0,sm.length-5);
      /* an end already at the glove or boot needs no carrying on; the other end is carried on past it until it meets the boot itself */
      const atStop=e=>{let h=false;around(e,0.8,u=>{if(stopF&&stopF(u))h=true;});return h;};

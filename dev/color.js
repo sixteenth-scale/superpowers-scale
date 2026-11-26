@@ -997,7 +997,7 @@ async function save3MF(S,fils,faceState){
         const W=(()=>{const pa=(pr.ps&&pr.ps.printable_area)||[];let mx=0;for(const q of pa){const v=String(q).split("x").map(Number);mx=Math.max(mx,v[0]||0);}return mx||256;})(),GAP=W*0.2;
         const origin=(i,n)=>{const cols=Math.ceil(Math.sqrt(n)),c=(i-1)%cols,r=Math.floor((i-1)/cols);return [c*(W+GAP),-r*(W+GAP)];};
         /* colour set per painted part (slots covering at least 2% of its area) */
-        const info=[];S.parts.forEach((p,pi)=>{const tid=top.get(p.src.path+":"+p.src.id);if(!tid||!faceState[pi])return;const st=faceState[pi],A=areas(p.m0||p.m);let tot=0;const by=new Map();for(let t=0;t<st.length;t++){const a=A[t]||0;tot+=a;by.set(st[t],(by.get(st[t])||0)+a);}
+        const info=[];S.parts.forEach((p,pi)=>{const tid=(p.objectid!=null?String(p.objectid):null)||top.get(p.src.path+":"+p.src.id);if(!tid||!faceState[pi])return;const st=faceState[pi],A=areas(p.m0||p.m);let tot=0;const by=new Map();for(let t=0;t<st.length;t++){const a=A[t]||0;tot+=a;by.set(st[t],(by.get(st[t])||0)+a);}
           const cols=[...by].filter(([k,a])=>a>=0.02*tot).map(([k])=>k).sort((x,y)=>x-y);const pl=plates.find(q=>q.objs.includes(tid));if(!pl)return;info.push({pi,p,tid,cols,key:cols.join(","),plate:pl.id,area:tot});});
         if(info.length>=2){
           /* groups */const groups=[];const sub=(a,b)=>a.every(x=>b.includes(x));
