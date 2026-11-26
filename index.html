@@ -10545,6 +10545,8 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
     const nb2=new Uint8Array(n);for(let t=0;t<n;t++){if(hidF(t)||(stopF&&stopF(t)))continue;const q=C3(t);if(off(q)<=hwM)nb2[t]=1;}
     /* a clean edge at the glove or boot: a band face with glove paint within 0.3 mm belongs to the cuff line and is left to the glove's own edge */
     if(stopF)for(let t=0;t<n;t++){if(!nb2[t])continue;let cuff=false;around(C3(t),0.3,u=>{if(stopF(u))cuff=true;});if(cuff)nb2[t]=0;}
+    /* and at a socket rim: in the piece's last 4 mm along its axis, a band face within 0.8 mm of a hidden face is off the cord (the walk overshot onto the rim) */
+    {let lo=Infinity,hi=-Infinity;for(let t=0;t<n;t++){const x=dot(C3(t),ax);if(x<lo)lo=x;if(x>hi)hi=x;}for(let t=0;t<n;t++){if(!nb2[t])continue;const x=dot(C3(t),ax);if(x-lo>4&&hi-x>4)continue;let h=false;around(C3(t),0.8,u=>{if(hidF(u))h=true;});if(h)nb2[t]=0;}}
     let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+(band.ext||"")+" rc"+(band.recentred||0)+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
@@ -10769,6 +10771,16 @@ function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
     for(let t=0;t<gB.n;t++){if(fB.ok[t]||hid[oB+t]||(fB.bl&&fB.bl[t]))continue;const [u,d]=nearA(mapAB(t));if(u>=0&&d<=0.4&&fA.ok[u]){fB.ok[t]=1;if(S.label[oB+t]!==fB.P){S.label[oB+t]=fB.P;S.keep[oB+t]=1;addB++;}}}
     for(let t=0;t<gA.n;t++){if(fA.ok[t]||hid[oA+t]||(fA.bl&&fA.bl[t]))continue;const [u,d]=nearB(mapBA(t));if(u>=0&&d<=0.4&&fB.ok[u]){fA.ok[t]=1;if(S.label[oA+t]!==fA.P){S.label[oA+t]=fA.P;S.keep[oA+t]=1;addA++;}}}
     rep.push("union addA"+addA+" addB"+addB);}
+  /* a rigid leg and the jointed thigh and calf it replaces sit in the same place: the rigid leg's stripe is the union of its own and
+     theirs, face for face at the same spot (the jointed pieces trace the lower leg where the rigid one's tracing stops at the knee crease) */
+  for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
+    const gR=pieceGeo(r,null),oR=S.offs[r],fR=S.lineF[r];let added=0;
+    for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,null),fJ=S.lineF[j];
+      const G2=0.5,grJ=new Map();for(let t=0;t<gJ.n;t++){if(!fJ.ok[t])continue;const k=((Math.floor(gJ.c[t*3]/G2)+8192)*16384+(Math.floor(gJ.c[t*3+1]/G2)+8192))*16384+(Math.floor(gJ.c[t*3+2]/G2)+8192);let L=grJ.get(k);if(!L){L=[];grJ.set(k,L);}L.push(t);}
+      for(let t=0;t<gR.n;t++){if(fR.ok[t]||hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const q=[gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]];const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let bd=Infinity;
+        for(let i=-1;i<=1;i++)for(let jj=-1;jj<=1;jj++)for(let k=-1;k<=1;k++){const L=grJ.get(((cx+i+8192)*16384+(cy+jj+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gJ.c[u*3]-q[0])**2+(gJ.c[u*3+1]-q[1])**2+(gJ.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}
+        if(bd<=0.3*0.3){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;S.keep[oR+t]=1;added++;}}}}
+    rep.push(nr.slice(-14)+" fromJointed"+added);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
   const done=new Set();
