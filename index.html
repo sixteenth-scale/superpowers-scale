@@ -10097,11 +10097,12 @@ async function run(){
   if(window._spcOldLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   /* and a fine pass that also evens out the edges of the piping (eyes and brows stay as drawn) */
   if(window._spcOldLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
-  /* a redrawn stripe is the last word on its limb: the even band from the centre line, and no stripe paint beside it
-     (whatever a later pass put there), the glove or boot left as it is */
-  if(S.lineF){let fx=0;for(const pi in S.lineF){const F=S.lineF[pi];if(!F.drawn||!F.ok)continue;const o=S.offs[pi],n=F.ok.length;
-    for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;if(F.ok[t]){if(S.label[o+t]!==F.P){S.label[o+t]=F.P;fx++;}}else if(S.label[o+t]===F.P){S.label[o+t]=F.B;fx++;}}}
-    (window._spcDbg=window._spcDbg||{}).lineLast=fx;}
+  /* EVEN STRIPES, the last word on every limb stripe. The traced band (and whatever a copy or a join added) is reduced to its
+     centre line: band faces are ordered by geodesic distance from the glove/boot end, one centre point per 0.5 mm of stripe, the
+     line smoothed by a running median over 5 mm; the stripe's width is the band's median width; then the stripe is redrawn as that
+     one even band about the line, and nothing of the old band outside it stays. No teeth, no spurs, no blobs. */
+  if(S.lineF){const rep=[];for(const pi in S.lineF){const F=S.lineF[pi];if(!F.ok||!active.includes(+pi))continue;try{rep.push(evenStripe(+pi,F,hid));}catch(e){console.warn(e);rep.push("err "+e.message);}}
+    (window._spcDbg=window._spcDbg||{}).even=rep;}
   _tr('blotch');
   /* last sweep: lone faces of another paint (a speck the size of a triangle or two) take the paint round them */
   {let sw=0;for(let pass=0;pass<3;pass++)for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
@@ -10757,11 +10758,9 @@ function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
       const tips=starFit.tips.slice().sort((a,b)=>b[2]-a[2]).slice(0,2);const SB=new Uint8Array(n);let any=false;
       for(const tp of tips){const sd=Math.sign(tp[0]-tcx2);const guide=[];for(let t=0;t<n;t++){if(hid[o+t]||g.fn[t*3+2]<0.3)continue;const dx=(g.c[t*3]-tp[0])*sd;if(dx<2.5||dx>14)continue;if(Math.hypot(g.c[t*3+1]-tp[1],(g.c[t*3+2]-tp[2])*0.3)<4.0&&g.c[t*3+2]>tp[2]-1.0)guide.push(t);}
         const GB=grooveBand2(g,o,t=>!!hid[o+t],guide,A,null);rep.push("shoulderGB "+(GB?GB.info:"none")+" g"+guide.length+" tip"+tp.map(v=>v.toFixed(1)).join("/")+" c"+tcx2.toFixed(1)+" hw"+hw2.toFixed(1));if(GB&&GB.mids&&GB.mids.length){for(let t=0;t<n;t++)if(GB[t]&&(g.c[t*3]-tp[0])*sd>0.3)SB[t]=1;any=true;
-          /* and the short ridge joining it to the star tip */
-          let im=GB.mids[0],bd=Infinity;for(const q of GB.mids){const d=Math.hypot(q[0]-tp[0],q[1]-tp[1],q[2]-tp[2]);if(d<bd){bd=d;im=q;}}
-          /* (the sculpt between them is broken by the head cut: the join is a straight strip of the band's width) */
-          {const hwB=Math.hypot(GB.Ls[0][0]-GB.Rs[0][0],GB.Ls[0][1]-GB.Rs[0][1],GB.Ls[0][2]-GB.Rs[0][2])/2;const v=[im[0]-tp[0],im[1]-tp[1],im[2]-tp[2]],l2=v[0]**2+v[1]**2+v[2]**2||1e-9;let k3=0;
-           for(let t=0;t<n;t++){if(hid[o+t])continue;const u=((g.c[t*3]-tp[0])*v[0]+(g.c[t*3+1]-tp[1])*v[1]+(g.c[t*3+2]-tp[2])*v[2])/l2;if(u<0||u>1)continue;const f=[tp[0]+v[0]*u,tp[1]+v[1]*u,tp[2]+v[2]*u];if(Math.hypot(g.c[t*3]-f[0],g.c[t*3+1]-f[1],g.c[t*3+2]-f[2])<Math.min(hwB,0.8)){SB[t]=1;k3++;}}rep.push("join d"+bd.toFixed(1)+" f"+k3);}}}
+          /* NO drawn join from the star tip up to the shoulder ridge: the sculpt has no ridge there (the lines up from the tips are the head
+             cut), and a straight strip painted across it is wrong. Only the traced shoulder ridge itself is red. */
+          }}
       if(any)BS=SB; /* the shoulder ridges and their joins to the star tips: red, as in the photos (the stripe runs star tip, over the shoulder, down the arm) */}
     if(S.strokes)delete S.strokes[tor];rep.push("bands "+(BO?BO.reduce((a,b)=>a+b,0):0)+"/"+(BS?BS.reduce((a,b)=>a+b,0):0));}
   if(paths.length&&BASE>=0)S.shoulderF={tor,RED,BASE,EMB,starFit,gReg:g,BO,BS,yMid:(()=>{let a=0;for(let t=0;t<n;t++)a+=g.c[t*3+1];return a/n;})(),ring:(()=>{const a=new Uint8Array(n);if(!starFit)return a;const pin=(V,x,z)=>{let c=false;for(let i=0,j=V.length-1;i<V.length;j=i++){const p=V[i],q=V[j];if(((p[1]>z)!==(q[1]>z))&&(x<(q[0]-p[0])*(z-p[1])/(q[1]-p[1])+p[0]))c=!c;}return c;};const VO=starFit.VO2||starFit.VO;for(let t=0;t<n;t++){if(g.fn[t*3+1]>-0.05)continue;if(pin(VO,g.c[t*3],g.c[t*3+2])&&!pin(starFit.V,g.c[t*3],g.c[t*3+2]))a[t]=1;}return a;})(),W:W_,ok:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++){for(const f2 of paths)if(f2(t)<=W_/2){a[t]=1;break;}}return a;})(),outl:(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]<=3.0)a[t]=1;return a;})(),rim:(()=>{/* the outline's own ring: everything within 0.9 mm of the emblem (that isn't the emblem) is outline paint, so no black gets in between */const a=new Uint8Array(n);for(let t=0;t<n;t++)if(dE[t]>0&&dE[t]<=0.9&&!hid[o+t])a[t]=1;return a;})(),isEmb};
@@ -11083,6 +11082,33 @@ function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q
     for(let t=0;t<n;t++)if(ridge[t]){S.label[o+t]=P;if(S.keep)S.keep[o+t]=1;if(S.keepHard)S.keepHard[o+t]=1;}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" "+kept+"f "+ar.toFixed(0)+"mm2 plates"+plates);}
   (window._spcDbg=window._spcDbg||{}).piping=rep;}
+
+function geoDist(g,nb,n,seed,maxd){const dist=new Float32Array(n).fill(Infinity);const hd=new Float32Array(n*4),hi=new Int32Array(n*4);let hl=0;
+  const push=(t,d)=>{if(hl>=hi.length)return;let i=hl++;hd[i]=d;hi[i]=t;while(i>0){const p=(i-1)>>1;if(hd[p]<=hd[i])break;const td=hd[p],ti=hi[p];hd[p]=hd[i];hi[p]=hi[i];hd[i]=td;hi[i]=ti;i=p;}};
+  const pop=()=>{const rd=hd[0],ri=hi[0];hl--;if(hl){hd[0]=hd[hl];hi[0]=hi[hl];let i=0;for(;;){const a=2*i+1,b=a+1;let m=i;if(a<hl&&hd[a]<hd[m])m=a;if(b<hl&&hd[b]<hd[m])m=b;if(m===i)break;const td=hd[m],ti=hi[m];hd[m]=hd[i];hi[m]=hi[i];hd[i]=td;hi[i]=ti;i=m;}}return [rd,ri];};
+  for(let t=0;t<n;t++)if(seed[t]){dist[t]=0;push(t,0);}
+  while(hl){const [d,t]=pop();if(d>dist[t])continue;if(d>maxd)break;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const w=Math.hypot(g.c[u*3]-g.c[t*3],g.c[u*3+1]-g.c[t*3+1],g.c[u*3+2]-g.c[t*3+2]);if(d+w<dist[u]){dist[u]=d+w;push(u,d+w);}}}
+  return dist;}
+/* evenStripe: the band's edges smoothed at brush scale. A geodesic close (fill notches and gaps narrower than
+   2·rc) then open (remove teeth, spurs and threads narrower than 2·ro). Hidden faces are neither inside nor
+   outside, so the band is not eaten back from a joint. Islands under 2 mm² go unless they are the band. */
+function evenStripe(pi,F,hid){const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area,P=F.P,B=F.B;const nm=S.parts[pi].name.replace(/^.*?_\d+_/,"");
+  const vis=new Uint8Array(n),band=new Uint8Array(n);let cnt=0;for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;vis[t]=1;if(F.ok[t]){band[t]=1;cnt++;}}
+  if(!cnt)return nm+" no band";
+  const rc=0.5,ro=0.4;
+  const out=new Uint8Array(n);
+  /* close */
+  let d=geoDist(g,nb,n,band,rc);const dil=new Uint8Array(n);for(let t=0;t<n;t++)if(vis[t]&&d[t]<=rc)dil[t]=1;
+  for(let t=0;t<n;t++)out[t]=vis[t]&&!dil[t]?1:0;d=geoDist(g,nb,n,out,rc);const closed=new Uint8Array(n);for(let t=0;t<n;t++)if(dil[t]&&!(d[t]<=rc))closed[t]=1;
+  /* open */
+  for(let t=0;t<n;t++)out[t]=vis[t]&&!closed[t]?1:0;d=geoDist(g,nb,n,out,ro);const er=new Uint8Array(n);for(let t=0;t<n;t++)if(closed[t]&&!(d[t]<=ro))er[t]=1;
+  d=geoDist(g,nb,n,er,ro);const nx=new Uint8Array(n);for(let t=0;t<n;t++)if(vis[t]&&d[t]<=ro)nx[t]=1;
+  /* islands */
+  const comp=new Int32Array(n).fill(-1);const areas=[];for(let s0=0;s0<n;s0++){if(comp[s0]>=0||!nx[s0])continue;const id=areas.length;const c=[s0];comp[s0]=id;let ar=0;for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&comp[u]<0&&nx[u]){comp[u]=id;c.push(u);}}}areas.push(ar);}
+  let big=0;for(let i=1;i<areas.length;i++)if(areas[i]>areas[big])big=i;let isl=0;for(let t=0;t<n;t++)if(nx[t]&&comp[t]!==big&&areas[comp[t]]<2){nx[t]=0;isl++;}
+  let put=0,clr=0;for(let t=0;t<n;t++){if(nx[t]){if(S.label[o+t]!==P){S.label[o+t]=P;put++;}S.keep[o+t]=1;}else if(F.ok[t]&&S.label[o+t]===P&&!(F.bl&&F.bl[t])){S.label[o+t]=B;S.keep[o+t]=0;clr++;}}
+  F.ok=nx;
+  return nm+" band"+cnt+" comps"+areas.length+" isl"+isl+" +"+put+" -"+clr;}
 function limbBlotches(active,hid){const rep=[];
   for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg|boot|glove|hand)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
     const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;let tot=0;for(let t=0;t<n;t++)tot+=A[o+t];
