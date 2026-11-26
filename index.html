@@ -9956,7 +9956,7 @@ async function run(){
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
     if(!active.includes(pi)){raws.push(null);continue;}
     let Mx=null;
-    if(parted){Mx=regM[pi];lastErr=errs[pi];(window._spcReg=window._spcReg||{})[p.name]={M:Mx,err:lastErr};if(lastErr>0.6)flags.push(`${p.name} (${lastErr.toFixed(2)} mm)`);}
+    if(parted){Mx=regM[pi];lastErr=errs[pi];(S.fitErr=S.fitErr||{})[pi]=lastErr;(window._spcReg=window._spcReg||{})[p.name]={M:Mx,err:lastErr};if(lastErr>0.6)flags.push(`${p.name} (${lastErr.toFixed(2)} mm)`);}
     log(`Coloring ${p.name}…`);await tick();
     let tr;if(photoOnly){/* how far each face sits from the figure's surface: far means hidden (joints, sockets) */
       const g=pieceGeo(pi,parted?regM:null),dist=new Float32Array(g.n);
@@ -10814,7 +10814,7 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
      face for face at the same spot (nearest jointed face within 0.7 mm, facing the same way), settled by a one-ring majority. Its own
      tracing stands only where no jointed face lies (the jointed pieces trace the lower leg where the rigid one's tracing stops at the knee crease) */
   for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
-    const gR=pieceGeo(r,regM),oR=S.offs[r],fR=S.lineF[r],nbR=S.nb[r];const got=new Int8Array(gR.n).fill(-1);let hit=0;
+    const gR=pieceGeo(r,regM),oR=S.offs[r],fR=S.lineF[r],nbR=S.nb[r];const got=new Int8Array(gR.n).fill(-1),far=new Uint8Array(gR.n);let hit=0;
     /* the last 5 mm above the boot cuff: the jointed calf hangs on its knee pin, so its pose sits up to 1.3 mm off there */
     const nearCuff=new Uint8Array(gR.n);if(fR.bl){const pts=[];for(let t=0;t<gR.n;t++)if(fR.bl[t])pts.push(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]);if(pts.length){const GC=C.grid(new Float32Array(pts),1.0);for(let t=0;t<gR.n;t++){const [j,d]=GC.near(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2],5);if(j>=0&&d<=5)nearCuff[t]=1;}}}
     for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,regM),fJ=S.lineF[j],oJ=S.offs[j];
@@ -10822,8 +10822,8 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
       for(let t=0;t<gR.n;t++){if(hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const [u,d]=GJ.near(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2],3);if(u<0||d>1.3)continue;
         if(gR.fn[t*3]*gJ.fn[u*3]+gR.fn[t*3+1]*gJ.fn[u*3+1]+gR.fn[t*3+2]*gJ.fn[u*3+2]<0.5)continue;
         /* stripe is taken from up to 1.3 mm away (the jointed calf's pose sits off near its cuff); suit paint clears the rigid leg's own stripe only from a close match */
-        const isP=fJ.ok[u]||S.label[oJ+u]===fJ.P;if(isP){got[t]=1;hit++;}else if(d<=0.7){if(got[t]<0)got[t]=0;hit++;}}}
-    for(let it=0;it<3;it++){const nx=got.slice();for(let t=0;t<gR.n;t++){if(got[t]<0)continue;let p1=0,p0=0;for(let e=0;e<3;e++){const u=nbR[t*3+e];if(u<0||got[u]<0)continue;if(got[u])p1++;else p0++;}if(p1+p0>=2){if(p1>p0)nx[t]=1;else if(p0>p1)nx[t]=0;}}got.set(nx);}
+        const isP=fJ.ok[u]||S.label[oJ+u]===fJ.P;if(isP){got[t]=1;if(d>0.7)far[t]=1;hit++;}else if(d<=0.7){if(got[t]<0)got[t]=0;hit++;}}}
+    for(let it=0;it<3;it++){const nx=got.slice();for(let t=0;t<gR.n;t++){if(got[t]<0||far[t])continue;let p1=0,p0=0;for(let e=0;e<3;e++){const u=nbR[t*3+e];if(u<0||got[u]<0)continue;if(got[u])p1++;else p0++;}if(p1+p0>=2){if(p1>p0)nx[t]=1;else if(p0>p1)nx[t]=0;}}got.set(nx);}
     let put=0,clr=0;for(let t=0;t<gR.n;t++){if(got[t]===1){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;put++;}S.keep[oR+t]=1;}else if(got[t]===0&&!(nearCuff[t]&&fR.ok[t])){fR.ok[t]=0;if(S.label[oR+t]===fR.P){S.label[oR+t]=fR.B;S.keep[oR+t]=0;clr++;}}}
     fR.drawn=1;rep.push(nr.slice(-14)+" fromJointed hit"+hit+" +"+put+" -"+clr);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
@@ -11034,6 +11034,7 @@ function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q
     grow();grow();shrink();
     /* edges settled by a one-ring majority, twice: no ragged teeth along the line */
     for(let it=0;it<2;it++){const nx=ridge.slice();for(let t=0;t<n;t++){if(hid[o+t])continue;let p1=0,p0=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;if(ridge[u])p1++;else p0++;}if(p1>=2&&!ridge[t])nx[t]=1;else if(p0>=2&&ridge[t]&&p1<=1)nx[t]=0;}ridge.set(nx);}
+    let HG=null;{const hp=[];for(let t=0;t<n;t++)if(hid[o+t])hp.push(g.c[t*3],g.c[t*3+1],g.c[t*3+2]);if(hp.length)HG=C.grid(new Float32Array(hp),2.0);}
     const seen=new Uint8Array(n);let kept=0,ar=0;for(let s0=0;s0<n;s0++){if(seen[s0]||!ridge[s0])continue;const c=[s0];seen[s0]=1;let a=0;
       for(let h=0;h<c.length;h++){const t=c[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u]&&!seen[u]){seen[u]=1;c.push(u);}}}
       if(a<2){for(const t of c)ridge[t]=0;continue;}
@@ -11042,6 +11043,8 @@ function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q
        const es=[hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]].sort((x,y)=>y-x),ext=es[0];/* a ring is about as wide as it is long; a short run of line is not */if(ext<9&&es[1]>0.5*es[0]){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
         const tr=cv[0]+cv[3]+cv[5];let e=[0.1,0.2,1];for(let it=0;it<60;it++){const w=[(tr-cv[0])*e[0]-cv[1]*e[1]-cv[2]*e[2],-cv[1]*e[0]+(tr-cv[3])*e[1]-cv[4]*e[2],-cv[2]*e[0]-cv[4]*e[1]+(tr-cv[5])*e[2]],mm=Math.hypot(...w)||1;e=w.map(x=>x/mm);}
         let ss=0;for(const t of c){const d=(g.c[t*3]-m[0])*e[0]+(g.c[t*3+1]-m[1])*e[1]+(g.c[t*3+2]-m[2])*e[2];ss+=d*d;}if(Math.sqrt(ss/c.length)<0.25){for(const t of c)ridge[t]=0;continue;}}
+       /* a connector: a short patch that stands entirely within 6 mm of a hidden (mating) face, under 9 mm across (peg tips, chamfers) */
+       if(ext<9&&HG){let allNear=true;for(const t of c){const [j,d]=HG.near(g.c[t*3],g.c[t*3+1],g.c[t*3+2],3);if(j<0||d>6){allNear=false;break;}}if(allNear){for(const t of c)ridge[t]=0;continue;}}
        /* the ribs of a peg: a stack of rings, every face about one radius from one axis (the long axis of the patch), under 5 mm */
        if(c.length>=30){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
         let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]];const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
@@ -12258,6 +12261,9 @@ function markContacts(active,regM,hid,fz0,fz1){
     /* touching, or covered: looking straight out from the face, another piece is right there facing back */
     const reach=3;
     for(const B of geo){const self=B===A;if(dup.has(A.pi+"|"+B.pi))continue;
+      /* a piece that did not fit the figure (over 1 mm off) is not trusted to cover another: a misplaced wing root laid over a shoulder
+         would hide half the shoulder's paint */
+      if(!self&&S.fitErr&&S.fitErr[B.pi]>1.0)continue;
       if(!self&&[0,1,2].some(k=>A.b.lo[k]>B.b.hi[k]+reach||A.b.hi[k]<B.b.lo[k]-reach))continue;
       if(!B.G)B.G=C.grid(B.c,0.6);
       for(let t=0;t<A.n;t++){if(hid[o+t])continue;const x=A.c[t*3],y=A.c[t*3+1],z=A.c[t*3+2],nx=A.fn[t*3],ny=A.fn[t*3+1],nz=A.fn[t*3+2];
