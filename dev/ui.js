@@ -876,12 +876,24 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
         if(!np_){let bu=-1,bh=-Infinity;around(q,0.45,u=>{if(hidF(u))return;const h=hgt(u);if(h>bh){bh=h;bu=u;}});if(bu<0)break;np_=C3(bu);miss++;if(miss>6)break;}else miss=0;
         d=nrm(add(d,nrm(sub(np_,p)),0.6));p=np_;out.push(p);}
       return miss>6?out.slice(0,Math.max(0,out.length-miss)):out;};
-    {const k0=Math.min(4,sm.length-1),k1=Math.max(0,sm.length-5);const extA=follow(sm[0],nrm(sub(sm[0],sm[k0]))),extB=follow(sm[sm.length-1],nrm(sub(sm[sm.length-1],sm[k1])));sm=extA.reverse().concat(sm,extB);band.ext="+"+extA.length+"/"+extB.length;}
+    {const k0=Math.min(4,sm.length-1),k1=Math.max(0,sm.length-5);
+     /* an end already at the glove or boot needs no carrying on; the other end is carried on past it until it meets the boot itself */
+     const atStop=e=>{let h=false;around(e,0.8,u=>{if(stopF&&stopF(u))h=true;});return h;};
+     const extA=atStop(sm[0])?[]:follow(sm[0],nrm(sub(sm[0],sm[k0]))),extB=atStop(sm[sm.length-1])?[]:follow(sm[sm.length-1],nrm(sub(sm[sm.length-1],sm[k1])));sm=extA.reverse().concat(sm,extB);band.ext="+"+extA.length+"/"+extB.length;}
+    /* every station re-centred on the cord's two grooves: the nearest groove face on each side across the surface, the station moved
+       to their midpoint. A line smoothed from the paint sits a half-width off the crest on a curved limb; this puts it back on */
+    {let moved=0;for(let i=0;i<sm.length;i++){const q=sm[i];let nq=null,bq=Infinity;around(q,0.4,(u,d2)=>{if(d2<bq){bq=d2;nq=[g.fn[u*3],g.fn[u*3+1],g.fn[u*3+2]];}});if(!nq)continue;
+        const dv=nrm(sub(sm[Math.min(i+2,sm.length-1)],sm[Math.max(i-2,0)]));const latv=nrm(cross(nq,dv));let gl=null,gr=null,dl=Infinity,dr=Infinity;
+        around(q,1.7,u=>{if(hidF(u)||(stopF&&stopF(u))||ras(u)>=-0.004)return;let o2=sub(C3(u),q);o2=add(o2,nq,-dot(o2,nq));const L=Math.hypot(...o2);if(L<0.3||L>1.6)return;const side=dot(o2,latv)/L;if(Math.abs(side)<0.7)return;if(side>0){if(L<dl){dl=L;gl=C3(u);}}else{if(L<dr){dr=L;gr=C3(u);}}});
+        if(gl&&gr&&dl+dr<2.6){sm[i]=add(gl,sub(gr,gl),0.5);moved++;}}
+      band.recentred=moved;}
     const off=q=>{let bd=Infinity;for(let i=0;i+1<sm.length;i++){const a=sm[i],ab=sub(sm[i+1],a),L2=dot(ab,ab)||1e-9;let tt=Math.max(0,Math.min(1,dot(sub(q,a),ab)/L2));bd=Math.min(bd,Math.hypot(...sub(q,add(a,ab,tt))));}return bd;};
     /* the line itself is projected onto the surface each time: the band is the faces near it, measured across the surface's front */
     const nb2=new Uint8Array(n);for(let t=0;t<n;t++){if(hidF(t)||(stopF&&stopF(t)))continue;const q=C3(t);if(off(q)<=hwM)nb2[t]=1;}
+    /* a clean edge at the glove or boot: a band face with glove paint within 0.3 mm belongs to the cuff line and is left to the glove's own edge */
+    if(stopF)for(let t=0;t<n;t++){if(!nb2[t])continue;let cuff=false;around(C3(t),0.3,u=>{if(stopF(u))cuff=true;});if(cuff)nb2[t]=0;}
     let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;}
-  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+(band.ext||"")+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
+  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+(band.ext||"")+" rc"+(band.recentred||0)+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
@@ -1083,7 +1095,7 @@ function mirrorLegs(active,hid){const rep=[];if(!S.lineF)return;
    is redrawn to match it exactly */
 function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
   const key=x=>x.toLowerCase().replace(/\.stl$/,'').replace(/_\d+_/,'_');
-  for(const a0 of active){const na=S.parts[a0].name;if(!/left/i.test(na)||!/(^|[^a-z])arm/i.test(na))continue;const want=key(na).replace('left','right');const b0=active.find(x=>key(S.parts[x].name)===want);
+  for(const a0 of active){const na=S.parts[a0].name;if(!/left/i.test(na)||!/((^|[^a-z])arm|leg|thigh|calf)/i.test(na))continue;const want=key(na).replace('left','right');const b0=active.find(x=>key(S.parts[x].name)===want);
     if(b0==null||!S.lineF[a0]||!S.lineF[b0])continue;
     const okArea=pi=>{const F=S.lineF[pi],o=S.offs[pi];let s=0;for(let t=0;t<F.ok.length;t++)if(F.ok[t])s+=S.area[o+t];return s;};
     const [a,b]=okArea(a0)<=okArea(b0)?[a0,b0]:[b0,a0];
