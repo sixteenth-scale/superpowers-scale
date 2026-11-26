@@ -968,7 +968,48 @@ async function save3MF(S,fils,faceState){
       for(const {p,pi} of list){const sp=spans.get(p.src.id);
         xml=xml.slice(0,sp.from)+meshXML(p.m0||p.m,paintStrings(p,faceState[pi],p.M),!p.subdivided||!!p.m0,xml,sp)+xml.slice(sp.to);}
       files.set(path,xml);}
-    const msb=pr.files.get("Metadata/model_settings.config");
+    /* PLATES BY COLOUR. Every colour on a layer beyond the first costs a filament change, and a plate pays it on every layer the
+       colour appears, for every part on the plate. So: a part in one colour gets a plate with only parts of that colour (the
+       wings print in gold alone); multi-colour parts group by their colour set, and a part whose colours all belong to another
+       group's set rides with it for free; a part with a colour the others lack (a head: skin, hair, eyes) gets its own plate.
+       Parts keep their place relative to their old plate, so nothing overlaps. Plate i (1-based) sits in Bambu's grid of
+       ceil(sqrt(n)) columns, one plate width plus a fifth of a width apart. */
+    let plateNote="";
+    try{const msb0=pr.files.get("Metadata/model_settings.config");const mdl=pr.texts.get("3D/3dmodel.model")||new TextDecoder().decode(pr.files.get("3D/3dmodel.model"));
+      if(msb0&&mdl){let ms=new TextDecoder().decode(msb0);
+        /* top-level object id for each part: 3dmodel.model <object id=TOP><components><component p:path="/3D/Objects/object_k.model" objectid=INNER */
+        const top=new Map();for(const m of mdl.matchAll(/<object id="(\d+)"[^>]*>\s*<components>\s*<component p:path="\/([^"]+)" objectid="(\d+)"/g))top.set(m[2]+":"+m[3],m[1]);
+        const items=new Map();for(const m of mdl.matchAll(/<item objectid="(\d+)"[^>]*transform="([^"]+)"/g))items.set(m[1],m[2].trim().split(/\s+/).map(Number));
+        const plates=[];for(const m of ms.matchAll(/<plate>([\s\S]*?)<\/plate>/g)){const b=m[1];plates.push({id:+(/plater_id" value="(\d+)"/.exec(b)||[0,0])[1],objs:[...b.matchAll(/<metadata key="object_id" value="(\d+)"\/>/g)].map(x=>x[1]),block:m[0]});}
+        const W=(()=>{const pa=(pr.ps&&pr.ps.printable_area)||[];let mx=0;for(const q of pa){const v=String(q).split("x").map(Number);mx=Math.max(mx,v[0]||0);}return mx||256;})(),GAP=W*0.2;
+        const origin=(i,n)=>{const cols=Math.ceil(Math.sqrt(n)),c=(i-1)%cols,r=Math.floor((i-1)/cols);return [c*(W+GAP),-r*(W+GAP)];};
+        /* colour set per painted part (slots covering at least 2% of its area) */
+        const info=[];S.parts.forEach((p,pi)=>{const tid=top.get(p.src.path+":"+p.src.id);if(!tid||!faceState[pi])return;const st=faceState[pi],A=areas(p.m0||p.m);let tot=0;const by=new Map();for(let t=0;t<st.length;t++){const a=A[t]||0;tot+=a;by.set(st[t],(by.get(st[t])||0)+a);}
+          const cols=[...by].filter(([k,a])=>a>=0.02*tot).map(([k])=>k).sort((x,y)=>x-y);const pl=plates.find(q=>q.objs.includes(tid));if(!pl)return;info.push({pi,p,tid,cols,key:cols.join(","),plate:pl.id,area:tot});});
+        if(info.length>=2){
+          /* groups */const groups=[];const sub=(a,b)=>a.every(x=>b.includes(x));
+          for(const it of info.sort((a,b)=>b.cols.length-a.cols.length||b.area-a.area)){let g=null;
+            if(it.cols.length===1)g=groups.find(q=>q.cols.length===1&&q.cols[0]===it.cols[0]);
+            else g=groups.find(q=>q.cols.length>1&&sub(it.cols,q.cols));
+            if(!g){g={cols:it.cols.slice(),parts:[]};groups.push(g);}g.parts.push(it);}
+          /* which group keeps each old plate: the one with most area there; the rest move to new plates */
+          const nOld=Math.max(...plates.map(q=>q.id)),moves=[];let next=nOld;
+          const byPlate=new Map();for(const g of groups)for(const it of g.parts){if(!byPlate.has(it.plate))byPlate.set(it.plate,new Map());const m=byPlate.get(it.plate);m.set(g,(m.get(g)||0)+it.area);}
+          const newPlates=[];
+          for(const g of groups){/* a group spread over old plates: it keeps the plate it has most of; others of it move to that plate? no: moving between old plates risks overlap, so each (old plate, group) that is not the keeper of its old plate gets a fresh plate */}
+          for(const [pid,m] of byPlate){let keep=null,ka=-1;for(const [g,a] of m)if(a>ka){ka=a;keep=g;}for(const [g] of m){if(g===keep)continue;next++;const np={id:next,name:g.cols.map(k=>(fils[k-1]&&(fils[k-1].color||fils[k-1].hex))||("F"+k)).join("+"),objs:[]};newPlates.push(np);for(const it of g.parts)if(it.plate===pid){moves.push({it,from:pid,to:next});np.objs.push(it.tid);}}}
+          if(moves.length){const nAll=next;
+            for(const mv of moves){const tr=items.get(mv.it.tid);if(!tr)continue;const o0=origin(mv.from,nAll),o1=origin(mv.to,nAll);const t2=tr.slice();t2[9]+=o1[0]-o0[0];t2[10]+=o1[1]-o0[1];
+              const old=mdl.match(new RegExp('<item objectid="'+mv.it.tid+'"[^>]*transform="[^"]+"'))[0];const nw=old.replace(/transform="[^"]+"/,'transform="'+t2.join(" ")+'"');files.set("3D/3dmodel.model",(new TextDecoder().decode(files.get("3D/3dmodel.model")||pr.files.get("3D/3dmodel.model"))).replace(old,nw));
+              const inst=new RegExp('\\s*<model_instance>\\s*<metadata key="object_id" value="'+mv.it.tid+'"\\/>[\\s\\S]*?<\\/model_instance>');const im=ms.match(inst);if(im){mv.inst=im[0];ms=ms.replace(im[0],"");}}
+            /* all old plates' positions stay (Bambu re-grids them when the count changes, moving every plate's origin: so every
+               item on every old plate shifts too) */
+            for(const pl of plates){const o0=origin(pl.id,plates.length),o1=origin(pl.id,nAll);if(Math.abs(o0[0]-o1[0])+Math.abs(o0[1]-o1[1])<1e-6)continue;let m2=new TextDecoder().decode(files.get("3D/3dmodel.model"));for(const tid of pl.objs){if(moves.some(mv=>mv.it.tid===tid))continue;const tr=items.get(tid);if(!tr)continue;const t2=tr.slice();t2[9]+=o1[0]-o0[0];t2[10]+=o1[1]-o0[1];const old=m2.match(new RegExp('<item objectid="'+tid+'"[^>]*transform="[^"]+"'));if(old)m2=m2.replace(old[0],old[0].replace(/transform="[^"]+"/,'transform="'+t2.join(" ")+'"'));}files.set("3D/3dmodel.model",m2);}
+            let add="";for(const np of newPlates){add+='  <plate>\n    <metadata key="plater_id" value="'+np.id+'"/>\n    <metadata key="plater_name" value="'+esc(np.name)+'"/>\n    <metadata key="locked" value="false"/>\n    <metadata key="filament_map_mode" value="Auto For Flush"/>\n'+moves.filter(mv=>mv.to===np.id&&mv.inst).map(mv=>mv.inst.trim()+"\n").map(x=>"    "+x).join("")+'  </plate>\n';}
+            ms=ms.replace(/<\/config>\s*$/,add+"</config>\n");files.set("Metadata/model_settings.config",new TextEncoder().encode(ms));
+            plateNote="\nPlates by colour: "+newPlates.map(np=>"plate "+np.id+" ("+np.name+"): "+moves.filter(mv=>mv.to===np.id).map(mv=>mv.it.p.name.replace(/\.stl$/i,"")).join(", ")).join("; ");}}}}catch(e){console.warn("plate planner",e);plateNote="\n(plates left as they were: "+e.message+")";}
+    globalThis._spcPlateNote=plateNote;
+    const msb=files.get("Metadata/model_settings.config")||pr.files.get("Metadata/model_settings.config");
     if(msb){let t=new TextDecoder().decode(msb);
       t=t.replace(/(key="filament_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"1");return a+s.slice(0,fils.length).join(" ")+'"';});
       t=t.replace(/(key="filament_volume_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"0");return a+s.slice(0,fils.length).join(" ")+'"';});

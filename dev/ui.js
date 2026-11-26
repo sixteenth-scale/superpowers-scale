@@ -3244,7 +3244,7 @@ q("spcSave").onclick=async()=>{
     const blob=await C.save3MF({project:S.project,parts:list},fils,states);
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);
     a.download=S.targetName.replace(/\.\w+$/,"").replace(/_color$/,"")+"_color.3mf";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-    log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.\n`+
+    log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.`+(globalThis._spcPlateNote||"")+`\n`+
       fils.map((f,i)=>`Filament ${i+1}: ${f.keep?"(already in project) "+f.hex:C.fname(f)+" "+f.hex}`).join("\n"));
     /* pieces that got no paint print whole in the filament the project gives them (often filament 1): say so */
     const bare=[...new Set(S.parts.filter((p,pi)=>pi!==S.figPart&&!list.includes(p)).map(p=>p.name.replace(/\.stl$/i,"")))];
