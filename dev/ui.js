@@ -760,7 +760,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
      opposite one another and together no farther apart than a cord is wide. Every such face is marked, the marked faces are gathered
      into connected runs, and the runs under the photo's stripe are the band. No tracking, no extrapolation: a gap where one groove is
      shallow only breaks the run, and the runs on either side are both kept. */
-  {const HW=1.3,THR=-0.005;const region=new Uint8Array(n);for(let t=0;t<n;t++)if(!hidF(t))region[t]=1; /* (the whole piece: the photo's stripe covers only patches of the cord, the cord runs end to end) */
+  if(false){const HW=1.3,THR=-0.005;const region=new Uint8Array(n);for(let t=0;t<n;t++)if(!hidF(t))region[t]=1; /* (the whole piece: the photo's stripe covers only patches of the cord, the cord runs end to end) */
    /* the hollow measure is speckled face by face; smoothed over 0.3 mm the grooves are clean lines and the cord top is whole */
    const rasS=new Float32Array(n).fill(NaN);const rs=t=>{if(!isNaN(rasS[t]))return rasS[t];let sw=0,sv=0;around(C3(t),0.3,u=>{const w=A[o+u];sw+=w;sv+=ras(u)*w;});return rasS[t]=sw?sv/sw:0;};
    const isG=new Int8Array(n);for(let t=0;t<n;t++)if(region[t])isG[t]=rs(t)<THR*0.8?1:0;
@@ -864,15 +864,18 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
   if(mids.length>4){const hws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))/2).sort((x,y)=>x-y);const hwM=hws[hws.length>>1];
     const cum=[0];for(let i=1;i<mids.length;i++)cum.push(cum[i-1]+Math.hypot(...sub(mids[i],mids[i-1])));
     let sm=mids.map((q,i)=>{let acc=[0,0,0],w=0;for(let j=0;j<mids.length;j++){if(Math.abs(cum[j]-cum[i])>1.0)continue;acc=add(acc,mids[j]);w++;}return acc.map(x=>x/w);});
-    /* which end meets the glove: carry the line on from it, along its own heading, until it reaches glove paint (at most 8 mm) */
-    if(stopF){const ends=[[sm[0],nrm(sub(sm[0],sm[Math.min(4,sm.length-1)]))],[sm[sm.length-1],nrm(sub(sm[sm.length-1],sm[Math.max(0,sm.length-5)]))]];
-      let bestE=null;for(const [e,d] of ends){let hitAt=-1;for(let k=1;k<=32;k++){const q=add(e,d,k*0.25);let hit=false;around(q,0.6,u=>{if(stopF(u))hit=true;});if(hit){hitAt=k;break;}}if(hitAt>0&&(!bestE||hitAt<bestE.k))bestE={e,d,k:hitAt,first:e===sm[0]};}
-      if(bestE){const ext=[];for(let k=1;k<=bestE.k+2;k++)ext.push(add(bestE.e,bestE.d,k*0.25));sm=bestE.first?ext.reverse().concat(sm):sm.concat(ext);}}
+    /* from each end the line is carried on along the top of the cord: each step moves 0.3 mm ahead and settles on the highest face
+       within 0.45 mm of that point (the cord top stands above everything beside it), until it meets the glove or boot, runs into a
+       hidden face (the cap), or the ridge has gone for 2 mm */
+    const follow=(e,d0)=>{const out=[];let p=e,d=d0,miss=0;for(let k=0;k<200;k++){const q=add(p,d,0.3);let bu=-1,bh=-Infinity,hitStop=false;around(q,0.45,u=>{if(hidF(u))return;if(stopF&&stopF(u)){hitStop=true;return;}const h=hgt(u);if(h>bh){bh=h;bu=u;}});
+        if(hitStop){out.push(q);break;}if(bu<0)break;if(bh<0.25*hCore){miss++;if(miss>6)break;}else miss=0;const np_=C3(bu);d=nrm(add(d,nrm(sub(np_,p)),0.6));p=np_;out.push(p);}
+      return miss>6?out.slice(0,Math.max(0,out.length-miss)):out;};
+    {const k0=Math.min(4,sm.length-1),k1=Math.max(0,sm.length-5);const extA=follow(sm[0],nrm(sub(sm[0],sm[k0]))),extB=follow(sm[sm.length-1],nrm(sub(sm[sm.length-1],sm[k1])));sm=extA.reverse().concat(sm,extB);band.ext="+"+extA.length+"/"+extB.length;}
     const off=q=>{let bd=Infinity;for(let i=0;i+1<sm.length;i++){const a=sm[i],ab=sub(sm[i+1],a),L2=dot(ab,ab)||1e-9;let tt=Math.max(0,Math.min(1,dot(sub(q,a),ab)/L2));bd=Math.min(bd,Math.hypot(...sub(q,add(a,ab,tt))));}return bd;};
     /* the line itself is projected onto the surface each time: the band is the faces near it, measured across the surface's front */
     const nb2=new Uint8Array(n);for(let t=0;t<n;t++){if(hidF(t)||(stopF&&stopF(t)))continue;const q=C3(t);if(off(q)<=hwM)nb2[t]=1;}
     let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;}
-  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
+  let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+(band.ext||"")+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
   const tor=active.find(pi=>/(torso|chest|body)/i.test(S.parts[pi].name));if(tor==null||!regM[tor])return;
