@@ -9914,7 +9914,7 @@ async function run(){
     if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){if(!p.m0){p.m0=p.m;p.lv=0;}p.m=C.subdivide(p.m);p.lv++;p.subdivided=true;p.paint=null;}}
     if(!window._spcNoSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,Math.min(1.0,2*detail),2e6); /* long sliver triangles split, so a color line can't zigzag along them */if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
-      if(!fine){fine=mkFine(fig);fine.G=C.grid(fine.p,al.diag/250);}
+      if(!fine&&window._spcFineReg){fine=mkFine(fig);fine.G=C.grid(fine.p,al.diag/250);} /* (the dense last pass is off: on the figure it was tried on it moved pieces and lost an arm's stripe; on again with window._spcFineReg) */
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80,null,fine);regM[pi]=r.M;errs[pi]=r.err;}}
   /* a piece named left or right belongs on that side of the figure: the side the other left pieces landed on.
      A mirror-image limb (a rigid leg) can fit the wrong leg almost as well, so it is placed again on its own side */
