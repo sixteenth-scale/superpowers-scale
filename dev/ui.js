@@ -25,6 +25,7 @@ function renderPal(){
     const i=+b.dataset.i; if(S.regions.some(r=>r.fil===i)){log("That filament is in use by a region. Change the region first.",true);return;}
     C.PAL.splice(i,1); S.regions.forEach(r=>{if(r.fil>i)r.fil--;}); C.savePalette(); renderPal(); renderRegions();});
   q("spcBrush").innerHTML=C.PAL.map((f,i)=>`<option value="${i}">${esc(C.fname(f))}</option>`).join("");
+  {const sel=q("spcPiping");if(sel){const cur=sel.value;sel.innerHTML=`<option value="-1">none</option>`+C.PAL.map((f,i)=>`<option value="${i}">${esc(C.fname(f))}</option>`).join("");sel.value=cur||"-1";if(sel.selectedIndex<0)sel.value="-1";}}
 }
 function addPal(f){const i=C.PAL.findIndex(p=>p.hex===f.hex&&C.fname(p)===C.fname(f));if(i>=0)return i;C.PAL.push(f);C.savePalette();renderPal();return C.PAL.length-1;}
 q("spcPal").parentElement.addEventListener("toggle",async e=>{if(!e.target.open||q("spcCatL").children.length)return;
@@ -194,16 +195,24 @@ async function run(){
      parts' size: their surface area, less the cut faces, matches the figure's */
   if(parted){const sumA=(ps)=>ps.reduce((s,p)=>s+C.areas(p.m,p.M).reduce((a,b)=>a+b,0),0);
     const ap=sumA(S.parts.filter((p,i)=>i!==S.figPart&&!/rigid|pin|peg|coupon|wing|mace|cape|weapon|shield|staff|sword|gun|base|stand/i.test(p.name)&&/head|torso|chest|body|arm|thigh|calf|leg|shin|foot|boot|hand/i.test(p.name))), /* body parts only: accessories don't count */af=sumA(fig),k=Math.sqrt(ap/af/1.06); /* all the parts in the file, ticked or not */
+    /* the one-piece figure may carry the accessories too (wings, a cape): then the parts' whole area is the one to compare. Both
+       readings are kept, and the one the torso fits is used (below) */
+    const apAll=sumA(S.parts.filter((p,i)=>i!==S.figPart&&!/rigid|pin|peg|coupon/i.test(p.name)));S._figK=[k,Math.sqrt(apAll/af/1.06)];S._fig0=fig;
     if(isFinite(k)&&(k>1.25||k<0.8)){let cx0=0,cy0=0,z00=Infinity,nn=0;fig.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
       const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1]; /* about the figure's own feet */fig=fig.map(p=>({...p,M:C.mul4(Sm,p.M)}));log(`The whole figure is ${k>1?"smaller":"larger"} than the parts: scaled ×${k.toFixed(2)} to match.`);
       (window._spcDbg=window._spcDbg||{}).figScale=+k.toFixed(3);}}
-  const figPts=(()=>{const tot=fig.reduce((s,p)=>s+p.m.f.length/3,0);const rng=C.RNG(11);const all=[];
+  const mkPts=fig=>{const tot=fig.reduce((s,p)=>s+p.m.f.length/3,0);const rng=C.RNG(11);const all=[];
     fig.forEach(p=>{const n=Math.max(500,Math.round(60000*(p.m.f.length/3)/tot));all.push(C.samplePts(p.m,p.M,n,rng).p);});
-    const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};})();
+    const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};};
+  let figPts=mkPts(fig);
   /* 1. colored source: a colored model if one was given; otherwise the reference photos are painted straight
      onto the figure (Meshy only when asked for) */
   const photoOnly=!S.colored&&S.images.length>0&&!window._spcUseMeshy;
-  if(photoOnly&&!parted&&active.length>1)throw new Error("To color from photos, add the whole figure too (box 2), or mark the one-piece figure in the list with figure.");
+  /* photos are projected onto an assembled body. Parts that sit assembled (figure coordinates) are that body themselves;
+     parts laid out flat on the plate (every piece on the bed) are not, and then the one-piece sculpt is needed */
+  if(photoOnly&&!parted&&active.length>1){let z0=Infinity;const zs=active.map(i=>{const p=S.parts[i],v=C.xf(p.M,p.m.v);let m=Infinity;for(let k=2;k<v.length;k+=3)if(v[k]<m)m=v[k];z0=Math.min(z0,m);return m;});
+    const onBed=zs.filter(z=>z<z0+1.5).length;if(onBed>active.length*0.6)throw new Error("To color from photos the pieces must sit assembled as the figure. Here they are laid out on the plate, so add the one-piece sculpt the figure was parted from (box 2), or mark it in the list with figure if it is in this file.");
+    log("No one-piece figure: the pieces sit assembled and are read as the figure.");}
   let sources,al,cloud;
   if(S.colored)sources=S.colored.sources;
   else if(photoOnly){let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity,z0=Infinity,z1=-Infinity;const P=figPts.p;
@@ -224,7 +233,14 @@ async function run(){
   cloud=C.colorCloud(sources,al.M,Math.max(0.12,detail/2));}
   /* 3. pieces */
   let G=null;
-  if(parted){G=C.grid(figPts.p,al.diag/80);}
+  if(parted){G=C.grid(figPts.p,al.diag/80);
+    /* which size of the figure is right: the one the torso (the biggest body piece) sits on with the least error */
+    const ks=[...new Set([1,...(S._figK||[])].filter(x=>isFinite(x)&&x>0.5&&x<2).map(x=>+x.toFixed(2)))].filter((x,i,a)=>a.findIndex(y=>Math.abs(y-x)<0.04)===i);
+    if(ks.length>1&&S._fig0){const body=active.filter(i=>/torso|chest|body/i.test(S.parts[i].name));const tp=body.length?body[0]:active.slice().sort((a,b)=>S.parts[b].m.f.length-S.parts[a].m.f.length)[0];
+      log("Sizing the whole figure to the pieces…");await tick();const scaled=k=>{let cx0=0,cy0=0,z00=Infinity,nn=0;S._fig0.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
+        const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1];return S._fig0.map(p=>({...p,M:C.mul4(Sm,p.M)}));};
+      let best=null;for(const k of ks){const f=scaled(k),pts=mkPts(f),g=C.grid(pts.p,al.diag/80);const r=await C.registerPart(S.parts[tp],pts,g,tick,al.diag/80);if(!best||r.err<best.err)best={k,err:r.err,f,pts,g};}
+      fig=best.f;figPts=best.pts;G=best.g;log(`The whole figure is read at ×${best.k.toFixed(2)} of the pieces' size (torso fit ${best.err.toFixed(2)} mm).`);(window._spcDbg=window._spcDbg||{}).figScale=best.k;}}
   const raws=[],tol=[],regM=[];let flags=[],lastErr=0;
   const errs=[];
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
@@ -414,6 +430,11 @@ async function run(){
   if(window._spcOldLines)try{log("Drawing the color lines clean…");smoothLines(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   /* and a fine pass that also evens out the edges of the piping (eyes and brows stay as drawn) */
   if(window._spcOldLines)try{smoothLines(active,hid,{band:0.3,it:25,soft:true});}catch(e){console.warn(e);}
+  /* a redrawn stripe is the last word on its limb: the even band from the centre line, and no stripe paint beside it
+     (whatever a later pass put there), the glove or boot left as it is */
+  if(S.lineF){let fx=0;for(const pi in S.lineF){const F=S.lineF[pi];if(!F.drawn||!F.ok)continue;const o=S.offs[pi],n=F.ok.length;
+    for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;if(F.ok[t]){if(S.label[o+t]!==F.P){S.label[o+t]=F.P;fx++;}}else if(S.label[o+t]===F.P){S.label[o+t]=F.B;fx++;}}}
+    (window._spcDbg=window._spcDbg||{}).lineLast=fx;}
   _tr('blotch');
   /* last sweep: lone faces of another paint (a speck the size of a triangle or two) take the paint round them */
   {let sw=0;for(let pass=0;pass<3;pass++)for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi];
@@ -436,6 +457,7 @@ async function run(){
        for(let h=0;h<c.length;h++){const t=c[h];ar+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0)continue;const M=S.label[o+u];if(M===L0){if(!seen[u]){seen[u]=1;c.push(u);}}else bd.set(M,(bd.get(M)||0)+1);}}
        if(ar>=1.2||!bd.size||c.some(t=>S.keepHard&&S.keepHard[o+t]))continue;let b=-1,bv=0;for(const [k,v] of bd)if(v>bv&&k>=0){bv=v;b=k;}if(b<0)continue;for(const t of c)S.label[o+t]=b;nfk+=c.length;}}
    (window._spcDbg=window._spcDbg||{}).flecks=nfk;}
+  try{pipingRidges(active,hid);}catch(e){console.warn(e);(window._spcDbg=window._spcDbg||{}).pipingErr=String(e);}
   _tr('specks');(window._spcTrace=window._spcTrace||[]).push('regs:'+JSON.stringify(S.regions.map((r,i)=>[i,C.rgb2hex(r.rgb),r.fil,!!r.hair])));
   if(S.lineF){const rr=[];for(const pi in S.lineF){const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length,pl0=C.lab(...S.regions[F.P].rgb);let bad=0;for(let t=0;t<n;t++){const l=S.label[o+t];if(l<0||F.ok[t]||(F.bl&&F.bl[t]))continue;if(C.dE(C.lab(...S.regions[l].rgb),pl0)<18)bad++;}rr.push(S.parts[pi].name.slice(-12)+":"+bad);}(window._spcDbg=window._spcDbg||{}).lineBad=rr;
     /* those go back to the paint round them */
@@ -897,7 +919,7 @@ function grooveBand2(g,o,hidF,guide,A,stopF,capFlood,stayNearGuide){const n=g.n;
     if(stopF)for(let t=0;t<n;t++){if(!nb2[t])continue;let cuff=false;around(C3(t),0.3,u=>{if(stopF(u))cuff=true;});if(cuff)nb2[t]=0;}
     /* and at a socket rim: in the piece's last 4 mm along its axis, a band face within 0.8 mm of a hidden face is off the cord (the walk overshot onto the rim) */
     {let lo=Infinity,hi=-Infinity;for(let t=0;t<n;t++){const x=dot(C3(t),ax);if(x<lo)lo=x;if(x>hi)hi=x;}for(let t=0;t<n;t++){if(!nb2[t])continue;const x=dot(C3(t),ax);if(x-lo>4&&hi-x>4)continue;let h=false;around(C3(t),0.8,u=>{if(hidF(u))h=true;});if(h)nb2[t]=0;}}
-    let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;}
+    let cnt=0;for(let t=0;t<n;t++){band[t]=nb2[t];cnt+=nb2[t];}band.even="hw"+hwM.toFixed(2)+" f"+cnt;band.sm=sm;band.hw=hwM;}
   let ws=Ls.map((l,i)=>Math.hypot(...sub(l,Rs[i]))).sort((a,b)=>a-b);band.info=(band.even?"EVEN "+band.even+(band.ext||"")+" rc"+(band.recentred||0)+" ":"")+"w"+ws[ws.length>>1].toFixed(2)+" secs"+seq.length+" ext"+ext.a.length+"/"+ext.b.length;
   band.mids=mids;band.Ls=Ls;band.Rs=Rs;return band;}
 function shoulderPiping(active,regM,hid){const rep=[];let W_=1.4;
@@ -1111,16 +1133,39 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
     let best=null;for(const M of [[-1,1,1],[1,-1,1]]){let sh=[0,0,0];for(let it=0;it<8;it++){const off=[0,0,0];let k2=0;const ds=[];for(let t=0;t<gB.n;t+=53){const q=[0,1,2].map(k=>M[k]*(gB.c[t*3+k]-cB[k])+cA[k]+sh[k]);const [u,d]=nearA(q);if(u<0)continue;ds.push(d);if(d<1.0){for(let k=0;k<3;k++)off[k]+=gA.c[u*3+k]-q[k];k2++;}}
         if(k2)for(let k=0;k<3;k++)sh[k]+=off[k]/k2;ds.sort((x,y)=>x-y);const md=ds[ds.length>>1];if(it===7&&(!best||md<best.md))best={M,sh,md};}}
     rep.push(S.parts[a].name.slice(-10)+"->"+S.parts[b].name.slice(-10)+" md"+best.md.toFixed(3));if(best.md>0.2)continue;
-    /* twins share one stripe: whatever either has on the ridge, the other gets at the mirrored spot (each tracing has its own gaps,
-       and the union closes them). Nothing is cut: strays are dealt with on each piece by itself */
-    const fA=S.lineF[a],fB=S.lineF[b];const mapAB=t=>[0,1,2].map(k=>best.M[k]*(gB.c[t*3+k]-cB[k])+cA[k]+best.sh[k]);
-    const mapBA=t=>[0,1,2].map(k=>best.M[k]*(gA.c[t*3+k]-cA[k]-best.sh[k])+cB[k]);
-    const G2=0.5,grB=new Map();for(let t=0;t<gB.n;t++){const k=((Math.floor(gB.c[t*3]/G2)+8192)*16384+(Math.floor(gB.c[t*3+1]/G2)+8192))*16384+(Math.floor(gB.c[t*3+2]/G2)+8192);let L=grB.get(k);if(!L){L=[];grB.set(k,L);}L.push(t);}
-    const nearB=q=>{const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let b1=-1,bd=Infinity;for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const L=grB.get(((cx+i+8192)*16384+(cy+j+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gB.c[u*3]-q[0])**2+(gB.c[u*3+1]-q[1])**2+(gB.c[u*3+2]-q[2])**2;if(d<bd){bd=d;b1=u;}}}return [b1,Math.sqrt(bd)];};
-    let addA=0,addB=0;
-    for(let t=0;t<gB.n;t++){if(fB.ok[t]||hid[oB+t]||(fB.bl&&fB.bl[t]))continue;const [u,d]=nearA(mapAB(t));if(u>=0&&d<=0.4&&fA.ok[u]){fB.ok[t]=1;if(S.label[oB+t]!==fB.P){S.label[oB+t]=fB.P;S.keep[oB+t]=1;addB++;}}}
-    for(let t=0;t<gA.n;t++){if(fA.ok[t]||hid[oA+t]||(fA.bl&&fA.bl[t]))continue;const [u,d]=nearB(mapBA(t));if(u>=0&&d<=0.4&&fB.ok[u]){fA.ok[t]=1;if(S.label[oA+t]!==fA.P){S.label[oA+t]=fA.P;S.keep[oA+t]=1;addA++;}}}
-    rep.push("union addA"+addA+" addB"+addB);}
+    /* twins share one centre line: A's own line, plus the stretches of B's line (mirrored onto A) that A's line does not cover.
+       Each arm's stripe is then drawn once from the merged line at one even width, across its own surface. Nothing is copied face
+       by face, so nothing blotches */
+    const fA=S.lineF[a],fB=S.lineF[b];if(!fA.sm||!fB.sm){rep.push("no lines");continue;}
+    const mapAB=q=>[0,1,2].map(k=>best.M[k]*(q[k]-cB[k])+cA[k]+best.sh[k]),mapBA=q=>[0,1,2].map(k=>best.M[k]*(q[k]-cA[k]-best.sh[k])+cB[k]);
+    const dist=(q,L)=>{let bd=Infinity;for(const p of L){const d=Math.hypot(q[0]-p[0],q[1]-p[1],q[2]-p[2]);if(d<bd)bd=d;}return bd;};
+    const merge=(own,other)=>{
+      /* the other arm's line only lengthens this one past its ends (over the cap, down to the glove); beside it, this arm's own tracing stands.
+         Order: this line's own order, the added points walked out from the end they belong to (no re-sorting that could zigzag over a cap) */
+      const d3=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2]);const e0=own[0],e1=own[own.length-1];const head=[],tail=[];
+      for(const q of other){if(dist(q,own)<=1.0)continue;const a=d3(q,e0),b=d3(q,e1);let near2=Infinity;for(const p of own)near2=Math.min(near2,d3(q,p));if(near2<Math.min(a,b)-0.01)continue;/* beside the line, not past an end */
+        if(a<b)head.push([a,q]);else tail.push([b,q]);}
+      head.sort((x,y)=>y[0]-x[0]);tail.sort((x,y)=>x[0]-y[0]);
+      const pts=[...head.map(x=>x[1]),...own,...tail.map(x=>x[1])];
+      const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+d3(pts[i],pts[i-1]));
+      return pts.map((p,i)=>{let acc=[0,0,0],w=0;for(let j=0;j<pts.length;j++){if(Math.abs(cum[j]-cum[i])>1.0)continue;acc[0]+=pts[j][0];acc[1]+=pts[j][1];acc[2]+=pts[j][2];w++;}return acc.map(x=>x/w);});};
+    /* the fuller tracing of the two is the base on both arms (a thin, broken tracing on one arm is read off the other); the other only lengthens it */
+    const useA=fA.sm.length>=fB.sm.length;const lineA=useA?merge(fA.sm,fB.sm.map(mapAB)):merge(fB.sm.map(mapAB),fA.sm),lineB=useA?merge(fA.sm.map(mapBA),fB.sm):merge(fB.sm,fA.sm.map(mapBA));
+    const draw=(pi,g,o,F,line0)=>{const n=g.n,hw=F.hw||0.9;
+      /* the line is laid onto this limb's own surface first (the other arm's line, mirrored over, can sit a little off it) */
+      const Gc=C.grid(g.c,1.0);const line=line0.map(q=>{const [j,d]=Gc.near(q[0],q[1],q[2],3);return j>=0&&d<=3?[g.c[j*3],g.c[j*3+1],g.c[j*3+2]]:q;});
+      const seg=[];for(let i=0;i+1<line.length;i++)for(let t=0;t<=1;t+=0.25)seg.push([line[i][0]+(line[i+1][0]-line[i][0])*t,line[i][1]+(line[i+1][1]-line[i][1])*t,line[i][2]+(line[i+1][2]-line[i][2])*t]);
+      const G3=1.0,gs=new Map();seg.forEach((q,i)=>{const k=((Math.floor(q[0]/G3)+4096)*8192+(Math.floor(q[1]/G3)+4096))*8192+(Math.floor(q[2]/G3)+4096);let L=gs.get(k);if(!L){L=[];gs.set(k,L);}L.push(i);});
+      const near=q=>{const cx=Math.floor(q[0]/G3),cy=Math.floor(q[1]/G3),cz=Math.floor(q[2]/G3);let bd=Infinity,bi=-1;for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)for(let k=-2;k<=2;k++){const L=gs.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!L)continue;for(const u of L){const d=(seg[u][0]-q[0])**2+(seg[u][1]-q[1])**2+(seg[u][2]-q[2])**2;if(d<bd){bd=d;bi=u;}}}return [bi,Math.sqrt(bd)];};
+      const ok=new Uint8Array(n);let cnt=0;
+      for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;const q=[g.c[t*3],g.c[t*3+1],g.c[t*3+2]];const [bi,d]=near(q);if(bi<0||d>1.8)continue;
+        /* the offset across the surface (in the face's plane), not through the body */const nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];const off=[seg[bi][0]-q[0],seg[bi][1]-q[1],seg[bi][2]-q[2]];const dn=off[0]*nt[0]+off[1]*nt[1]+off[2]*nt[2];const dt=Math.hypot(off[0]-dn*nt[0],off[1]-dn*nt[1],off[2]-dn*nt[2]);if(dt<=hw){ok[t]=1;cnt++;}}
+      /* a clean edge at the glove: a stripe face touching glove paint goes to the glove's own edge */
+      if(F.bl){const nb=S.nb[pi];for(let t=0;t<n;t++){if(!ok[t])continue;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&F.bl[w]){ok[t]=0;break;}}}}
+      let put=0,clr=0;for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;if(ok[t]){if(S.label[o+t]!==F.P){S.label[o+t]=F.P;put++;}S.keep[o+t]=1;}else if(S.label[o+t]===F.P){S.label[o+t]=F.B;S.keep[o+t]=0;clr++;}}
+      let ms=0;for(let i=1;i<line.length;i++)ms=Math.max(ms,Math.hypot(line[i][0]-line[i-1][0],line[i][1]-line[i-1][1],line[i][2]-line[i-1][2]));
+      F.ok=ok;F.sm=line;F.drawn=1;return "f"+cnt+" +"+put+" -"+clr+" hw"+hw.toFixed(2)+" maxseg"+ms.toFixed(1);};
+    rep.push("lineA "+fA.sm.length+"->"+lineA.length+" "+draw(a,gA,oA,fA,lineA)+" | lineB "+fB.sm.length+"->"+lineB.length+" "+draw(b,gB,oB,fB,lineB));}
   /* a rigid leg and the jointed thigh and calf it replaces sit in the same place: the rigid leg's stripe is the union of its own and
      theirs, face for face at the same spot (the jointed pieces trace the lower leg where the rigid one's tracing stops at the knee crease) */
   for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
@@ -1128,9 +1173,11 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
     const gR=pieceGeo(r,regM),oR=S.offs[r],fR=S.lineF[r];let added=0;
     for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,regM),fJ=S.lineF[j];
       const G2=0.5,grJ=new Map();for(let t=0;t<gJ.n;t++){if(!fJ.ok[t])continue;const k=((Math.floor(gJ.c[t*3]/G2)+8192)*16384+(Math.floor(gJ.c[t*3+1]/G2)+8192))*16384+(Math.floor(gJ.c[t*3+2]/G2)+8192);let L=grJ.get(k);if(!L){L=[];grJ.set(k,L);}L.push(t);}
-      for(let t=0;t<gR.n;t++){if(fR.ok[t]||hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const q=[gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]];const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let bd=Infinity;
-        for(let i=-1;i<=1;i++)for(let jj=-1;jj<=1;jj++)for(let k=-1;k<=1;k++){const L=grJ.get(((cx+i+8192)*16384+(cy+jj+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gJ.c[u*3]-q[0])**2+(gJ.c[u*3+1]-q[1])**2+(gJ.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}
-        if(bd<=0.5*0.5){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;S.keep[oR+t]=1;added++;}}}}
+      for(let t=0;t<gR.n;t++){if(fR.ok[t]||hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const q=[gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]];const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let bd=Infinity,bu=-1;
+        for(let i=-2;i<=2;i++)for(let jj=-2;jj<=2;jj++)for(let k=-2;k<=2;k++){const L=grJ.get(((cx+i+8192)*16384+(cy+jj+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gJ.c[u*3]-q[0])**2+(gJ.c[u*3+1]-q[1])**2+(gJ.c[u*3+2]-q[2])**2;if(d<bd){bd=d;bu=u;}}}
+        /* a jointed calf hangs on its knee pin, so its registered pose can sit a little off the rigid leg at the far end: 1.2 mm, same facing */
+        if(bd<=1.2*1.2){const u=bu;const dot=gR.fn[t*3]*gJ.fn[u*3]+gR.fn[t*3+1]*gJ.fn[u*3+1]+gR.fn[t*3+2]*gJ.fn[u*3+2];if(dot<0.7)continue;fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;S.keep[oR+t]=1;added++;}}}
+      let miss=0,far=0;for(let u=0;u<gJ.n;u++){if(!fJ.ok[u])continue;miss++;}rep.push(nj.slice(-16)+" ok"+miss);}
     rep.push(nr.slice(-14)+" fromJointed"+added);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
@@ -1299,12 +1346,46 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
     if(!BANDF&&RID&&onCord){BANDF=ridgeBand(g,RID,[X],t=>!!hid[o+t],nb,0.75,-0.02);let nb2=0;for(let t=0;t<n;t++){if(bl2&&bl2[t])BANDF[t]=0;if(BANDF[t])nb2++;}
       if(nb2>50){for(let t=0;t<n;t++){if(BANDF[t]){if(!(S.keepHard&&S.keepHard[o+t])){S.label[o+t]=P;S.keep[o+t]=1;}}else if(S.label[o+t]===P&&!(bl2&&bl2[t])){S.label[o+t]=B;S.keep[o+t]=0;}}
         if(S.strokes)delete S.strokes[pi];}else BANDF=null;}
-    (S.lineF=S.lineF||{})[pi]={P,B,ok:BANDF||(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(DL(t)<=W/2+0.1)a[t]=1;return a;})(),bl:bl2};
+    (S.lineF=S.lineF||{})[pi]={P,B,ok:BANDF||(()=>{const a=new Uint8Array(n);for(let t=0;t<n;t++)if(DL(t)<=W/2+0.1)a[t]=1;return a;})(),bl:bl2,sm:BANDF&&BANDF.sm||null,hw:BANDF&&BANDF.hw||0.9};
     rep.push(S.parts[pi].name.replace(/^.*?_\d+_/,"")+" pth"+path.length+(onCord?" CORD":"")+" ext"+ext+" cut"+(cut?cut.filter(x=>x).length:0)+" L"+L.toFixed(1)+" W"+W.toFixed(2)+" "+cl+"->"+pa);}
   (window._spcDbg=window._spcDbg||{}).redraw=rep;}
 /* blotches: on an arm or a leg, a small patch (under 2% of the piece) that lies wholly inside one other paint
    is a smear off the photo (skin on a boot, a dark spot on a glove): it takes the paint round it. Eyes and
    piping placed on purpose stay. */
+
+/* PIPING ON RAISED EDGES. A figure whose trim runs along the sculpt's own raised edge lines (the piping on an armoured
+   figure) is painted from the sculpt, not the photos: every face that stands proud of its surroundings (within R) by
+   more than thr takes the piping filament. Set with window._spcPiping={fil, thr, R, skip} before a run. */
+function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q("spcPiping");if(sel&&+sel.value>=0)opt={fil:+sel.value};}if(!opt||opt.fil==null||opt.fil<0)return;const thr=opt.thr||0.05,R=opt.R||0.8,rep=[];
+  /* under the piping the suit is one coat: minor paints the photos left (a smear of the piping's own dull red, a highlight) go to the main paint; skin and hair stay */
+  {sumAreas();let tot=0,D=-1,dv=0;S.regions.forEach((r,i)=>{tot+=r.area;if(r.area>dv){dv=r.area;D=i;}});let mg=0;
+   if(D>=0)for(let i=0;i<S.nFaces;i++){const L=S.label[i];if(L<0||L===D)continue;const r=S.regions[L];if(r.hair||r.eye||L===S.skinReg||r.area>=0.08*tot)continue;S.label[i]=D;mg++;}
+   (window._spcDbg=window._spcDbg||{}).pipingBase=mg;}
+  let P=S.regions.findIndex(r=>r.fil===opt.fil&&r.piping);if(P<0){P=S.regions.length;S.regions.push({id:P,rgb:C.hex2rgb(C.PAL[opt.fil].hex),fil:opt.fil,area:0,dE:0,patch:true,piping:true});}
+  for(const pi of active){const nm=S.parts[pi].name;if(/pin|peg|coupon/i.test(nm)||(opt.skip&&opt.skip.test(nm)))continue;
+    const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
+    const cell=R,grid=new Map(),K=(x,y,z)=>((x+512)*1024+(y+512))*1024+(z+512);
+    for(let t=0;t<n;t++){const k=K(Math.floor(g.c[t*3]/cell),Math.floor(g.c[t*3+1]/cell),Math.floor(g.c[t*3+2]/cell));let b=grid.get(k);if(!b){b=[];grid.set(k,b);}b.push(t);}
+    const ridge=new Uint8Array(n),R2=R*R;
+    for(let t=0;t<n;t++){if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let sw=0,mx=0,my=0,mz=0;
+      for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const b=grid.get(K(cx+i,cy+j,cz+k));if(!b)continue;
+        for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>R2)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0)continue;
+          const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
+      if(sw>0&&(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2]>thr)ridge[t]=1;}
+    /* tidy: hairs off, pinholes in, then any patch under 2 mm square dropped */
+    for(let it=0;it<2;it++){const nx=ridge.slice();for(let t=0;t<n;t++){let c=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u])c++;}if(ridge[t]&&c<=1)nx[t]=0;else if(!ridge[t]&&c>=2&&!hid[o+t])nx[t]=1;}ridge.set(nx);}
+    const seen=new Uint8Array(n);let kept=0,ar=0;for(let s0=0;s0<n;s0++){if(seen[s0]||!ridge[s0])continue;const c=[s0];seen[s0]=1;let a=0;
+      for(let h=0;h<c.length;h++){const t=c[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u]&&!seen[u]){seen[u]=1;c.push(u);}}}
+      if(a<2){for(const t of c)ridge[t]=0;continue;}
+      /* a small flat ring is a connector's chamfer or a bore mouth (a peg, a socket, a knee-pin eye), not piping */
+      {let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],m=[0,0,0];for(const t of c)for(let k=0;k<3;k++){const v=g.c[t*3+k];if(v<lo[k])lo[k]=v;if(v>hi[k])hi[k]=v;m[k]+=v/c.length;}
+       const ext=Math.max(hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]);if(ext<9){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
+        const tr=cv[0]+cv[3]+cv[5];let e=[0.1,0.2,1];for(let it=0;it<60;it++){const w=[(tr-cv[0])*e[0]-cv[1]*e[1]-cv[2]*e[2],-cv[1]*e[0]+(tr-cv[3])*e[1]-cv[4]*e[2],-cv[2]*e[0]-cv[4]*e[1]+(tr-cv[5])*e[2]],mm=Math.hypot(...w)||1;e=w.map(x=>x/mm);}
+        let ss=0;for(const t of c){const d=(g.c[t*3]-m[0])*e[0]+(g.c[t*3+1]-m[1])*e[1]+(g.c[t*3+2]-m[2])*e[2];ss+=d*d;}if(Math.sqrt(ss/c.length)<0.25){for(const t of c)ridge[t]=0;continue;}}}
+      kept+=c.length;ar+=a;}
+    for(let t=0;t<n;t++)if(ridge[t]){S.label[o+t]=P;if(S.keep)S.keep[o+t]=1;if(S.keepHard)S.keepHard[o+t]=1;}
+    rep.push(nm.replace(/^.*?_\d+_/,"")+" "+kept+"f "+ar.toFixed(0)+"mm2");}
+  (window._spcDbg=window._spcDbg||{}).piping=rep;}
 function limbBlotches(active,hid){const rep=[];
   for(const pi of active){const nm=S.parts[pi].name;if(!/(^|[^a-z])(arm|thigh|calf|shin|leg|boot|glove|hand)([^a-z]|$)/i.test(nm)||/pin|peg/i.test(nm))continue;
     const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],A=S.area;let tot=0;for(let t=0;t<n;t++)tot+=A[o+t];
@@ -1645,7 +1726,7 @@ function headFix(active,regM,hid,L){const rep=[];
     const band=eyes.filter(e=>e.z>z0+0.3*H_&&e.z<z0+0.8*H_).sort((a,b)=>b.ar-a.ar);let pair=[];
     for(let i=0;i<band.length&&!pair.length;i++)for(let j=i+1;j<band.length;j++){const a=band[i],b=band[j],sep=Math.hypot(a.x-b.x,a.y-b.y);if(Math.abs(a.z-b.z)<0.08*H_&&sep>0.1*H_&&sep<0.45*H_){pair=[a,b];break;}}
     if(pair.length){let W=S.regions.findIndex(r=>{const l=C.lab(...r.rgb);return l[0]>85&&Math.hypot(l[1],l[2])<10&&!r.hair;});
-      if(W<0){W=S.regions.length;S.regions.push({id:W,rgb:[0.96,0.96,0.96],fil:-1,area:0,dE:0,patch:false});}
+      if(W<0){W=S.regions.length;S.regions.push({id:W,rgb:[0.96,0.96,0.96],fil:-1,area:0,dE:0,patch:false,eye:true});}
       /* the sculpt's own detail round the eyes, at 0.5 mm: the eyeball bulges, the lid crease round it sinks, the
          brow ridge stands up. Each eye white is the eyeball out to its crease; each brow is the ridge above it */
       const sepE=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y),b05=new Float32Array(n).fill(NaN),near05=[];
