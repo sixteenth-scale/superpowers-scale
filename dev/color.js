@@ -36,7 +36,8 @@ const OWNED=[
 ["11801","PLA Matte","Dark Brown","#7D6556","GFA01"],["11300","PLA Matte","Mandarin Orange","#F99963","GFA01"],
 ["11502","PLA Matte","Apple Green","#C2E189","GFA01"],["11203","PLA Matte","Terracotta","#B15533","GFA01"],
 ["13301","PLA Translucent","Orange","#F74E02","GFA17"],["13210","PLA Translucent","Red","#B50011","GFA17"],
-["53101","TPU for AMS","Black","#000000","GFU02"]
+["53101","TPU for AMS","Black","#000000","GFU02"],
+["13102","PLA Metal","Iron Gray Metallic","#43403D","GFA02"]
 ].map(([code,type,color,hex,fid])=>({code,type,color,hex,fid,vendor:"Bambu Lab",owned:true}));
 /* Rob's other brands. skin:true is the face filament: faces take it whenever it is in the palette. */
 {const dc=OWNED.find(f=>f.color==="Dark Chocolate");if(dc)dc.hairFil=true;} /* the hair filament */
@@ -454,7 +455,7 @@ async function alignSource(srcV,tgt,tick){ /* Meshy may rescale and re-axis. ret
   const r=icp(P,G,tgt.p,best.M,30,true);
   return {M:r.err<best.err?r.M:best.M,err:Math.min(r.err,best.err),diag};
 }
-async function registerPart(part,fig,G,tick0,cell,accept){ /* find where a cut piece sits on the figure */
+async function registerPart(part,fig,G,tick0,cell,accept,fine){ /* find where a cut piece sits on the figure; fine: a denser cloud {p,G} for the last pass */
   let last=Date.now(); const tick=async()=>{if(Date.now()-last>40){await tick0();last=Date.now();}};
   const rng=RNG(7), smp=samplePts(part.m,part.M,400,rng), P=[];
   for(let i=0;i<400;i++)P.push([smp.p[i*3],smp.p[i*3+1],smp.p[i*3+2]]);
@@ -472,7 +473,11 @@ async function registerPart(part,fig,G,tick0,cell,accept){ /* find where a cut p
   for(const c of cand.slice(0,24)){const r=icp(P.filter((_,i)=>i%2===0),G,fig.p,c.M,25,false,3,cap*2);if(r.err<best.err&&(!accept||accept(r.M)))best=r;await tick();}
   if(!isFinite(best.err))return {M:I4(),err:Infinity};
   const r=icp(P,G,fig.p,best.M,30,false,4);
-  return r.err<=best.err&&(!accept||accept(r.M))?r:best;
+  const out=r.err<=best.err&&(!accept||accept(r.M))?r:best;
+  /* the last word: 2000 points of the piece settled on a cloud ten times denser, so the fit is not limited by the coarse cloud's spacing */
+  if(fine&&isFinite(out.err)){const s2=samplePts(part.m,part.M,2000,RNG(11)),P2=[];for(let i=0;i<2000;i++)P2.push([s2.p[i*3],s2.p[i*3+1],s2.p[i*3+2]]);
+    const r2=icp(P2,fine.G,fine.p,out.M,40,false,3);if(isFinite(r2.err)&&(!accept||accept(r2.M)))return r2;}
+  return out;
 }
 
 function faceNormals(m,M){const v=M?xf(M,m.v):m.v,f=m.f,n=f.length/3,o=new Float32Array(n*3);

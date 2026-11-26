@@ -205,6 +205,10 @@ async function run(){
     fig.forEach(p=>{const n=Math.max(500,Math.round(60000*(p.m.f.length/3)/tot));all.push(C.samplePts(p.m,p.M,n,rng).p);});
     const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};};
   let figPts=mkPts(fig);
+  const mkFine=fig=>{const tot=fig.reduce((s,p)=>s+p.m.f.length/3,0);const rng=C.RNG(13);const all=[];
+    fig.forEach(p=>{const n=Math.max(2000,Math.round(600000*(p.m.f.length/3)/tot));all.push(C.samplePts(p.m,p.M,n,rng).p);});
+    const P=new Float32Array(all.reduce((s,a)=>s+a.length,0));let o=0;all.forEach(a=>{P.set(a,o);o+=a.length;});return {p:P};};
+  let fine=null;
   /* 1. colored source: a colored model if one was given; otherwise the reference photos are painted straight
      onto the figure (Meshy only when asked for) */
   const photoOnly=!S.colored&&S.images.length>0&&!window._spcUseMeshy;
@@ -240,7 +244,7 @@ async function run(){
       log("Sizing the whole figure to the pieces…");await tick();const scaled=k=>{let cx0=0,cy0=0,z00=Infinity,nn=0;S._fig0.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
         const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1];return S._fig0.map(p=>({...p,M:C.mul4(Sm,p.M)}));};
       let best=null;for(const k of ks){const f=scaled(k),pts=mkPts(f),g=C.grid(pts.p,al.diag/80);const r=await C.registerPart(S.parts[tp],pts,g,tick,al.diag/80);if(!best||r.err<best.err)best={k,err:r.err,f,pts,g};}
-      fig=best.f;figPts=best.pts;G=best.g;log(`The whole figure is read at ×${best.k.toFixed(2)} of the pieces' size (torso fit ${best.err.toFixed(2)} mm).`);(window._spcDbg=window._spcDbg||{}).figScale=best.k;}}
+      fig=best.f;figPts=best.pts;G=best.g;fine=null;log(`The whole figure is read at ×${best.k.toFixed(2)} of the pieces' size (torso fit ${best.err.toFixed(2)} mm).`);(window._spcDbg=window._spcDbg||{}).figScale=best.k;}}
   const raws=[],tol=[],regM=[];let flags=[],lastErr=0;
   const errs=[];
   for(let pi=0;pi<S.parts.length;pi++){const p=S.parts[pi];
@@ -248,7 +252,8 @@ async function run(){
     if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){if(!p.m0){p.m0=p.m;p.lv=0;}p.m=C.subdivide(p.m);p.lv++;p.subdivided=true;p.paint=null;}}
     if(!window._spcNoSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,Math.min(1.0,2*detail),2e6); /* long sliver triangles split, so a color line can't zigzag along them */if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
     if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
-      const r=await C.registerPart(p,figPts,G,tick,al.diag/80);regM[pi]=r.M;errs[pi]=r.err;}}
+      if(!fine){fine=mkFine(fig);fine.G=C.grid(fine.p,al.diag/250);}
+      const r=await C.registerPart(p,figPts,G,tick,al.diag/80,null,fine);regM[pi]=r.M;errs[pi]=r.err;}}
   /* a piece named left or right belongs on that side of the figure: the side the other left pieces landed on.
      A mirror-image limb (a rigid leg) can fit the wrong leg almost as well, so it is placed again on its own side */
   let soleOk=()=>true;
@@ -260,7 +265,7 @@ async function run(){
     for(const pi of active){const sd=side(pi);if(!sd||!regM[pi])continue;const want=sd*leftSign;
       if(Math.sign(cx(pi,regM[pi]))===want)continue;
       log(`Placing ${S.parts[pi].name} on its own side…`);await tick();
-      const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,M=>Math.sign(cx(pi,M))===want);
+      const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,M=>Math.sign(cx(pi,M))===want,fine);
       if(isFinite(r.err)&&Math.sign(cx(pi,r.M))===want){regM[pi]=r.M;errs[pi]=r.err;}}
     /* a piece sits where its name says on the figure: the head at the top, calves low. One that landed out of
        its band of height is placed again inside it */
@@ -276,7 +281,7 @@ async function run(){
      for(const pi of active){const nm=S.parts[pi].name.toLowerCase();if(/pin|peg/.test(nm)||!regM[pi])continue;const bd=band(nm);if(!bd)continue;const h=czz(pi,regM[pi]);if(h>=bd[0]&&h<=bd[1]&&soleOk(pi,regM[pi]))continue;
        const sd=side(pi),want=sd*leftSign;log(`Placing ${S.parts[pi].name} at its height on the figure…`);await tick();
        const ok=M=>{const h2=czz(pi,M);return h2>=bd[0]&&h2<=bd[1]&&(!sd||Math.sign(cx(pi,M))===want)&&soleOk(pi,M);};
-       const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,ok);if(isFinite(r.err)&&ok(r.M)){regM[pi]=r.M;errs[pi]=r.err;((window._spcDbg=window._spcDbg||{}).reband=window._spcDbg.reband||[]).push(S.parts[pi].name);}}}
+       const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,ok,fine);if(isFinite(r.err)&&ok(r.M)){regM[pi]=r.M;errs[pi]=r.err;((window._spcDbg=window._spcDbg||{}).reband=window._spcDbg.reband||[]).push(S.parts[pi].name);}}}
     /* left and right twins sit at the same height: one that landed higher or lower than its twin is placed again,
        held to its twin's height (and its own side) */
     const cz=(pi,M)=>{const v=C.xf(C.mul4(M,S.parts[pi].M),S.parts[pi].m.v);let z=0;for(let i=2;i<v.length;i+=3)z+=v[i];return z/(v.length/3);};
@@ -286,7 +291,7 @@ async function run(){
       const [bad,good]=errs[a]>errs[b]?[a,b]:[b,a],zg=cz(good,regM[good]),xg=cx(good,regM[good]),want=side(bad)*leftSign;
       log(`Placing ${S.parts[bad].name} level with its twin…`);await tick();
       const okM=M=>Math.abs(cz(bad,M)-zg)<2.5&&Math.abs(cx(bad,M)+xg)<3&&Math.sign(cx(bad,M))===want&&soleOk(bad,M); /* level with its twin, and mirrored across the figure */
-      const r=await C.registerPart(S.parts[bad],figPts,G,tick,al.diag/80,okM);
+      const r=await C.registerPart(S.parts[bad],figPts,G,tick,al.diag/80,okM,fine);
       if(isFinite(r.err)&&okM(r.M)){regM[bad]=r.M;errs[bad]=r.err;((window._spcDbg=window._spcDbg||{}).relevel=window._spcDbg.relevel||[]).push(S.parts[bad].name);continue;}
       /* not found that way: a mirrored part is its twin's pose mirrored across the figure, then fitted */
       {const pc=pi=>{const v=C.xf(S.parts[pi].M,S.parts[pi].m.v);let c=[0,0,0];for(let i=0;i<v.length;i+=3){c[0]+=v[i];c[1]+=v[i+1];c[2]+=v[i+2];}return c.map(x=>x/(v.length/3));};
@@ -1159,13 +1164,20 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
   for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
     const gR=pieceGeo(r,regM),oR=S.offs[r],fR=S.lineF[r],nbR=S.nb[r];const got=new Int8Array(gR.n).fill(-1),far=new Uint8Array(gR.n);let hit=0;
     /* the last 5 mm above the boot cuff: the jointed calf hangs on its knee pin, so its pose sits up to 1.3 mm off there */
-    const nearCuff=new Uint8Array(gR.n);if(fR.bl){const pts=[];for(let t=0;t<gR.n;t++)if(fR.bl[t])pts.push(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]);if(pts.length){const GC=C.grid(new Float32Array(pts),1.0);for(let t=0;t<gR.n;t++){const [j,d]=GC.near(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2],5);if(j>=0&&d<=5)nearCuff[t]=1;}}}
+    /* the leg's long axis (its longest extent) */
+    const ax=(()=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(let t=0;t<gR.n;t++)for(let k=0;k<3;k++){const v=gR.c[t*3+k];if(v<lo[k])lo[k]=v;if(v>hi[k])hi[k]=v;}const e=[hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]];const k=e.indexOf(Math.max(...e));const a=[0,0,0];a[k]=1;return a;})();
+    const nearCuff=new Uint8Array(gR.n);{const pts=[];for(let t=0;t<gR.n;t++)if((fR.bl&&fR.bl[t])||(S.label[oR+t]===fR.P&&!fR.ok[t]&&!hid[oR+t]))pts.push(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]);/* the boot: stripe paint outside the traced stripe */
+      if(pts.length){const GC=C.grid(new Float32Array(pts),1.0);for(let t=0;t<gR.n;t++){const [j,d]=GC.near(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2],6);if(j>=0&&d<=6)nearCuff[t]=1;}}}
     for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,regM),fJ=S.lineF[j],oJ=S.offs[j];
-      const GJ=C.grid(gJ.c,0.5);
-      for(let t=0;t<gR.n;t++){if(hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const [u,d]=GJ.near(gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2],3);if(u<0||d>1.3)continue;
-        if(gR.fn[t*3]*gJ.fn[u*3]+gR.fn[t*3+1]*gJ.fn[u*3+1]+gR.fn[t*3+2]*gJ.fn[u*3+2]<0.5)continue;
-        /* stripe is taken from up to 1.3 mm away (the jointed calf's pose sits off near its cuff); suit paint clears the rigid leg's own stripe only from a close match */
-        const isP=fJ.ok[u]||S.label[oJ+u]===fJ.P;if(isP){got[t]=1;if(d>0.7)far[t]=1;hit++;}else if(d<=0.7){if(got[t]<0)got[t]=0;hit++;}}}
+      const GJ=C.grid(gJ.c,0.5);const sp=[],si=[];for(let u=0;u<gJ.n;u++)if(fJ.ok[u]||S.label[oJ+u]===fJ.P){sp.push(gJ.c[u*3],gJ.c[u*3+1],gJ.c[u*3+2]);si.push(u);}const GJP=sp.length?C.grid(new Float32Array(sp),0.5):null;
+      for(let t=0;t<gR.n;t++){if(hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const x=gR.c[t*3],y=gR.c[t*3+1],z=gR.c[t*3+2];
+        /* stripe is taken from the nearest jointed STRIPE face up to 1.3 mm away (the jointed calf's pose sits off near its cuff); suit paint clears the rigid leg's own stripe only from a close match */
+        let done=false;if(GJP){const [k,d]=GJP.near(x,y,z,3);if(k>=0&&d<=(nearCuff[t]?1.3:0.7)){const u=si[k];if(gR.fn[t*3]*gJ.fn[u*3]+gR.fn[t*3+1]*gJ.fn[u*3+1]+gR.fn[t*3+2]*gJ.fn[u*3+2]>=0.5){
+            /* a far match may sit off along the leg or out from the surface (the calf's pose), never ACROSS the stripe: that would widen it */
+            let okFar=true;if(d>0.7){const dv=[gJ.c[u*3]-x,gJ.c[u*3+1]-y,gJ.c[u*3+2]-z],nn=[gR.fn[t*3],gR.fn[t*3+1],gR.fn[t*3+2]];const a=dv[0]*nn[0]+dv[1]*nn[1]+dv[2]*nn[2],b=dv[0]*ax[0]+dv[1]*ax[1]+dv[2]*ax[2];
+              const rx=dv[0]-a*nn[0]-b*ax[0],ry=dv[1]-a*nn[1]-b*ax[1],rz=dv[2]-a*nn[2]-b*ax[2];if(Math.hypot(rx,ry,rz)>0.45)okFar=false;}
+            if(okFar){got[t]=1;if(d>0.7)far[t]=1;hit++;done=true;}}}}
+        if(done)continue;const [u,d]=GJ.near(x,y,z,2);if(u<0||d>0.7)continue;if(gR.fn[t*3]*gJ.fn[u*3]+gR.fn[t*3+1]*gJ.fn[u*3+1]+gR.fn[t*3+2]*gJ.fn[u*3+2]<0.5)continue;if(got[t]<0)got[t]=0;hit++;}}
     for(let it=0;it<3;it++){const nx=got.slice();for(let t=0;t<gR.n;t++){if(got[t]<0||far[t])continue;let p1=0,p0=0;for(let e=0;e<3;e++){const u=nbR[t*3+e];if(u<0||got[u]<0)continue;if(got[u])p1++;else p0++;}if(p1+p0>=2){if(p1>p0)nx[t]=1;else if(p0>p1)nx[t]=0;}}got.set(nx);}
     let put=0,clr=0;for(let t=0;t<gR.n;t++){if(got[t]===1){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;put++;}S.keep[oR+t]=1;}else if(got[t]===0&&!(nearCuff[t]&&fR.ok[t])){fR.ok[t]=0;if(S.label[oR+t]===fR.P){S.label[oR+t]=fR.B;S.keep[oR+t]=0;clr++;}}}
     fR.drawn=1;rep.push(nr.slice(-14)+" fromJointed hit"+hit+" +"+put+" -"+clr);}
@@ -1354,12 +1366,19 @@ function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q
       the rest of the minor paints (smears, highlights) go to the main paint */
    const pl=C.lab(...S.regions[P].rgb);const hueOf=r=>{const l=C.lab(...r.rgb);const a1=Math.atan2(l[2],l[1]),a2=Math.atan2(pl[2],pl[1]);let d=Math.abs(a1-a2);if(d>Math.PI)d=2*Math.PI-d;return {d,ch:Math.hypot(l[1],l[2])};};
    const TL=new Uint8Array(S.nFaces);S._pipingTL=TL;
-   if(D>=0){const trimLike=S.regions.map((r,i)=>{if(i===P||i===D||r.hair||r.eye||i===S.skinReg||r.area>=0.08*tot)return false;const h=hueOf(r);return h.ch>8&&h.d<0.6;});
+   /* armour plates a shade lighter than the suit (a sizeable grey paint beside the black) are kept, and take the shelf's metallic grey when it has one */
+   const dl=C.lab(...S.regions[D].rgb);const metal=C.PAL.findIndex(f=>/metal/i.test(f.type)&&/gray|grey/i.test(f.color)&&f.owned!==false);
+   S.regions.forEach((r,i)=>{if(i===P||i===D||r.hair||r.eye||i===S.skinReg||r.area<0.03*tot)return;const l=C.lab(...r.rgb);if(l[0]-dl[0]>8&&Math.hypot(l[1],l[2])<10){r.plate=true;if(metal>=0)r.fil=metal;}});
+   if(D>=0){const trimLike=S.regions.map((r,i)=>{if(i===P||i===D||r.hair||r.eye||r.plate||i===S.skinReg||r.area>=0.08*tot)return false;const h=hueOf(r);return h.ch>8&&h.d<0.6;});
+    /* a strong, saturated patch of the trim's own colour (a filled emblem, a visor, in a sharp photo) is filled outright; a dull one is only a hint */
+    /* (outright fill from the photos is off: it only works when every piece sits on the one-piece body within ~0.5 mm, and a figure whose
+       body is another version of the sculpt lands the patch on the wrong plate; the fills are two Pick Region clicks instead) */
+    const trimSure=S.regions.map((r,i)=>false&&trimLike[i]&&hueOf(r).ch>18&&hueOf(r).d<0.45);
     for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3,nb=S.nb[pi],seen=new Uint8Array(n);const minA=/head|helmet|mask/i.test(S.parts[pi].name)?2.5:12;
-      for(let s0=0;s0<n;s0++){const L=S.label[o+s0];if(seen[s0]||L<0||L===D||L===P)continue;const r=S.regions[L];if(r.hair||r.eye||L===S.skinReg||r.area>=0.08*tot)continue;
+      for(let s0=0;s0<n;s0++){const L=S.label[o+s0];if(seen[s0]||L<0||L===D||L===P)continue;const r=S.regions[L];if(r.hair||r.eye||r.plate||L===S.skinReg||r.area>=0.08*tot)continue;
         const c=[s0];seen[s0]=1;let ar=0;for(let h=0;h<c.length;h++){const t=c[h];ar+=S.area[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&!seen[u]&&S.label[o+u]===L){seen[u]=1;c.push(u);}}}
         /* the photos' patch of the trim's hue is only a hint of WHERE the trim is filled; the sculpt's plate edges say what gets filled (below) */
-        for(const t of c){if(trimLike[L]&&ar>=minA){TL[o+t]=1;fl++;}S.label[o+t]=D;mg++;}}}}
+        const sure=trimSure[L]&&ar>=minA;for(const t of c){if(trimLike[L]&&ar>=minA){TL[o+t]=1;fl++;}if(sure){S.label[o+t]=P;if(S.keep)S.keep[o+t]=1;}else{S.label[o+t]=D;mg++;}}}}}
    (window._spcDbg=window._spcDbg||{}).pipingBase=mg+" hinted"+fl;}
   for(const pi of active){const nm=S.parts[pi].name;if(/pin|peg|coupon/i.test(nm)||(opt.skip&&opt.skip.test(nm)))continue;
     const g=pieceGeo(pi,null),o=S.offs[pi],n=g.n,nb=S.nb[pi],A=S.area;
@@ -3203,7 +3222,7 @@ function matchFilaments(slots){
   const pen=i=>/^PLA Basic$/i.test(C.PAL[i].type||"")?0:2;
   /* the face and the hair take Rob's chosen filaments when they are on the shelf */
   const pick=fl=>C.PAL.findIndex(f=>f[fl]&&f.owned!==false);
-  const assign=()=>S.regions.forEach(r=>{if(r.skin&&pick('skin')>=0){r.fil=pick('skin');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}if(r.hair&&pick('hairFil')>=0){r.fil=pick('hairFil');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}const l=C.lab(...r.rgb);let b=-1,bd=Infinity,bs=Infinity;for(const i of allowed){if(r.hair&&Math.hypot(PL[i][1],PL[i][2])<6)continue;const d=C.dE(l,PL[i]),sc=d+pen(i);if(sc<bs){bs=sc;bd=d;b=i;}}
+  const assign=()=>S.regions.forEach(r=>{if((r.piping||r.plate)&&r.fil>=0){r.dE=0;return;}/* the trim and the metallic plates keep the filament they were given */if(r.skin&&pick('skin')>=0){r.fil=pick('skin');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}if(r.hair&&pick('hairFil')>=0){r.fil=pick('hairFil');r.dE=C.dE(C.lab(...r.rgb),PL[r.fil]);return;}const l=C.lab(...r.rgb);let b=-1,bd=Infinity,bs=Infinity;for(const i of allowed){if(r.hair&&Math.hypot(PL[i][1],PL[i][2])<6)continue;const d=C.dE(l,PL[i]),sc=d+pen(i);if(sc<bs){bs=sc;bd=d;b=i;}}
     if(b<0)for(const i of allowed){const d=C.dE(l,PL[i]);if(d<bd){bd=d;b=i;}}r.fil=b;r.dE=bd;});
   assign();
   for(;;){const used=new Map();S.regions.forEach(r=>used.set(r.fil,(used.get(r.fil)||0)+r.area));
