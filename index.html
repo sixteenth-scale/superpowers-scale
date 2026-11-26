@@ -9549,6 +9549,19 @@ function meshXML(m,codes,keepVerts,oldXml,sp){
   out.push(chunk.join(""),"    </triangles>\n   ");
   return out.join("");
 }
+/* THE FIGURE PRINT PROFILE: a 0.2 mm nozzle on a Bambu P1S, 0.08 mm layers, for the fewest visible layer lines at the fastest pace
+   that still holds the finish, with supports that come off by hand (organic trees, 0.16 mm top gap, a 3-layer raft). Written into
+   every 3MF saved here, as the process "Figure 0.2 nozzle HQ", so a figure opens in Bambu Studio ready to slice. */
+const FIGURE_PROFILE={process:{"print_settings_id": "Figure 0.2 nozzle HQ", "layer_height": "0.08", "initial_layer_print_height": "0.12", "line_width": "0.22", "outer_wall_line_width": "0.22", "inner_wall_line_width": "0.24", "top_surface_line_width": "0.22", "sparse_infill_line_width": "0.24", "internal_solid_infill_line_width": "0.24", "support_line_width": "0.22", "initial_layer_line_width": "0.24", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5", "top_shell_thickness": "0.6", "bottom_shell_thickness": "0.4", "sparse_infill_density": "15%", "sparse_infill_pattern": "gyroid", "infill_wall_overlap": "15%", "wall_generator": "arachne", "precise_outer_wall": "1", "precise_z_height": "1", "wall_sequence": "inner-outer-inner wall", "detect_thin_wall": "1", "detect_overhang_wall": "1", "reduce_crossing_wall": "1", "resolution": "0.01", "elefant_foot_compensation": "0.1", "xy_contour_compensation": "0", "xy_hole_compensation": "0", "seam_position": "back", "seam_slope_type": "external", "seam_slope_conditional": "1", "scarf_angle_threshold": "155", "seam_slope_steps": "10", "seam_slope_start_height": "0", "seam_slope_entire_loop": "0", "seam_slope_inner_walls": "0", "ironing_type": "no ironing", "outer_wall_speed": ["40", "40"], "inner_wall_speed": ["80", "80"], "small_perimeter_speed": ["50%", "50%"], "small_perimeter_threshold": ["0", "0"], "sparse_infill_speed": ["120", "120"], "internal_solid_infill_speed": ["100", "100"], "top_surface_speed": ["40", "40"], "gap_infill_speed": ["60", "60"], "support_speed": ["90", "90"], "support_interface_speed": ["50", "50"], "bridge_speed": ["25", "25"], "initial_layer_speed": ["25", "25"], "initial_layer_infill_speed": ["40", "40"], "travel_speed": ["400", "400"], "overhang_1_4_speed": ["40", "40"], "overhang_2_4_speed": ["25", "25"], "overhang_3_4_speed": ["12", "12"], "overhang_4_4_speed": ["8", "8"], "default_acceleration": ["5000", "5000"], "outer_wall_acceleration": ["2500", "2500"], "inner_wall_acceleration": ["4000", "4000"], "top_surface_acceleration": ["2000", "2000"], "initial_layer_acceleration": ["500", "500"], "travel_acceleration": ["8000", "8000"], "sparse_infill_acceleration": ["100%", "100%"], "default_jerk": "9", "outer_wall_jerk": "8", "inner_wall_jerk": "9", "infill_jerk": "9", "top_surface_jerk": "9", "initial_layer_jerk": "9", "travel_jerk": "12", "enable_support": "1", "support_type": "tree(auto)", "support_style": "organic", "support_threshold_angle": "40", "support_on_build_plate_only": "0", "support_top_z_distance": "0.16", "support_bottom_z_distance": "0.16", "support_interface_top_layers": "3", "support_interface_bottom_layers": "2", "support_interface_pattern": "rectilinear_interlaced", "support_interface_spacing": "0.4", "support_object_xy_distance": "0.35", "support_expansion": "0", "bridge_no_support": "1", "max_bridge_length": "8", "support_remove_small_overhang": "1", "support_critical_regions_only": "0", "tree_support_branch_angle": "45", "tree_support_branch_diameter": "3", "tree_support_wall_count": "1", "tree_support_branch_distance": "5", "raft_layers": "3", "raft_contact_distance": "0.12", "raft_first_layer_density": "90%", "raft_first_layer_expansion": "2", "raft_expansion": "1.5", "brim_type": "no_brim", "enable_prime_tower": "1", "prime_tower_width": "20", "prime_tower_brim_width": "3", "flush_into_infill": "1", "flush_into_support": "1", "flush_into_objects": "0", "print_sequence": "by layer", "timelapse_type": "0", "spiral_mode": "0"},printer:{"printer_settings_id": "Bambu Lab P1S 0.2 nozzle", "printer_variant": "0.2", "nozzle_diameter": ["0.2"], "max_layer_height": ["0.14"], "min_layer_height": ["0.04"], "retraction_length": ["0.8", "0.8"], "z_hop": ["0.4", "0.4"], "z_hop_types": ["Auto Lift", "Auto Lift"], "wipe": ["1", "1"], "retract_when_changing_layer": ["1", "1"]},filament:{"filament_max_volumetric_speed": "3", "slow_down_layer_time": "8", "slow_down_min_speed": "10", "fan_max_speed": "100", "fan_min_speed": "100", "overhang_fan_speed": "100", "overhang_fan_threshold": "25%", "additional_cooling_fan_speed": "70", "close_fan_the_first_x_layers": "1", "slow_down_for_layer_cooling": "1", "nozzle_temperature": "220", "nozzle_temperature_initial_layer": "220", "reduce_fan_stop_start_freq": "1"},matteHotter:5};
+function applyFigureProfile(ps){if(!ps||globalThis._spcNoProfile)return ps;
+  for(const k in FIGURE_PROFILE.process)if(k in ps)ps[k]=FIGURE_PROFILE.process[k];
+  for(const k in FIGURE_PROFILE.printer)if(k in ps)ps[k]=FIGURE_PROFILE.printer[k];
+  const nf=(ps.filament_colour||[]).length;
+  for(const k in FIGURE_PROFILE.filament)if(k in ps&&Array.isArray(ps[k]))ps[k]=ps[k].map(()=>FIGURE_PROFILE.filament[k]);
+  /* matte filaments run a little hotter (their matting agent is the one thing here that clogs a 0.2 nozzle) */
+  const ids=ps.filament_settings_id||[];for(let i=0;i<ids.length;i++){if(/matte/i.test(ids[i])){for(const k of ["nozzle_temperature","nozzle_temperature_initial_layer"])if(Array.isArray(ps[k])&&ps[k][i]!=null)ps[k][i]=String(+ps[k][i]+FIGURE_PROFILE.matteHotter);}}
+  ps.filament_settings_id=ids.map(s=>s.replace(/0\.4 nozzle/g,"0.2 nozzle"));
+  return ps;}
 async function save3MF(S,fils,faceState){
   /* faceState[pi]: Uint8Array filament number (1-based) per face of part pi */
   if(S.project){
@@ -9608,7 +9621,7 @@ async function save3MF(S,fils,faceState){
       t=t.replace(/(key="filament_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"1");return a+s.slice(0,fils.length).join(" ")+'"';});
       t=t.replace(/(key="filament_volume_maps" value=")([^"]*)"/g,(m,a,v)=>{const s=v.trim().split(/\s+/);while(s.length<fils.length)s.push(s[s.length-1]||"0");return a+s.slice(0,fils.length).join(" ")+'"';});
       files.set("Metadata/model_settings.config",t);}
-    const ps=setFilaments(JSON.parse(JSON.stringify(pr.ps||minimalSettings([{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}]))),fils);
+    const ps=applyFigureProfile(setFilaments(JSON.parse(JSON.stringify(pr.ps||minimalSettings([{hex:"#FFFFFF",vendor:"Bambu Lab",fid:"GFA00",type:"PLA Basic"}]))),fils));
     files.set("Metadata/project_settings.config",JSON.stringify(ps,null,4));
     return zip(files);
   }
@@ -9624,7 +9637,7 @@ async function save3MF(S,fils,faceState){
   files.set("_rels/.rels",`<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`);
   files.set("3D/3dmodel.model",`<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021">\n <metadata name="Application">BambuStudio-02.08.02.60</metadata>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <resources>\n${objs.join("")} </resources>\n <build>\n${items.join("")} </build>\n</model>\n`);
   files.set("Metadata/model_settings.config",`<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${cfg.join("")}</config>\n`);
-  files.set("Metadata/project_settings.config",JSON.stringify(minimalSettings(fils),null,4));
+  files.set("Metadata/project_settings.config",JSON.stringify(applyFigureProfile(minimalSettings(fils)),null,4));
   return zip(files);
 }
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
@@ -12882,7 +12895,7 @@ q("spcSave").onclick=async()=>{
     const blob=await C.save3MF({project:S.project,parts:list},fils,states);
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);
     a.download=S.targetName.replace(/\.\w+$/,"").replace(/_color$/,"")+"_color.3mf";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-    log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.`+(globalThis._spcPlateNote||"")+`\n`+
+    log(`Saved ${a.download} — ${list.length} piece${list.length>1?"s":""} painted, everything else untouched.`+(globalThis._spcPlateNote||"")+`\nPrint profile "Figure 0.2 nozzle HQ" written in (0.2 nozzle, 0.08 mm layers, organic supports, 3-layer raft): open the file and accept the project settings.\n`+
       fils.map((f,i)=>`Filament ${i+1}: ${f.keep?"(already in project) "+f.hex:C.fname(f)+" "+f.hex}`).join("\n"));
     /* pieces that got no paint print whole in the filament the project gives them (often filament 1): say so */
     const bare=[...new Set(S.parts.filter((p,pi)=>pi!==S.figPart&&!list.includes(p)).map(p=>p.name.replace(/\.stl$/i,"")))];
