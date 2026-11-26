@@ -1136,36 +1136,23 @@ function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
     /* twins share one centre line: A's own line, plus the stretches of B's line (mirrored onto A) that A's line does not cover.
        Each arm's stripe is then drawn once from the merged line at one even width, across its own surface. Nothing is copied face
        by face, so nothing blotches */
-    const fA=S.lineF[a],fB=S.lineF[b];if(!fA.sm||!fB.sm){rep.push("no lines");continue;}
-    const mapAB=q=>[0,1,2].map(k=>best.M[k]*(q[k]-cB[k])+cA[k]+best.sh[k]),mapBA=q=>[0,1,2].map(k=>best.M[k]*(q[k]-cA[k]-best.sh[k])+cB[k]);
-    const dist=(q,L)=>{let bd=Infinity;for(const p of L){const d=Math.hypot(q[0]-p[0],q[1]-p[1],q[2]-p[2]);if(d<bd)bd=d;}return bd;};
-    const merge=(own,other)=>{
-      /* the other arm's line only lengthens this one past its ends (over the cap, down to the glove); beside it, this arm's own tracing stands.
-         Order: this line's own order, the added points walked out from the end they belong to (no re-sorting that could zigzag over a cap) */
-      const d3=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2]);const e0=own[0],e1=own[own.length-1];const head=[],tail=[];
-      for(const q of other){if(dist(q,own)<=1.0)continue;const a=d3(q,e0),b=d3(q,e1);let near2=Infinity;for(const p of own)near2=Math.min(near2,d3(q,p));if(near2<Math.min(a,b)-0.01)continue;/* beside the line, not past an end */
-        if(a<b)head.push([a,q]);else tail.push([b,q]);}
-      head.sort((x,y)=>y[0]-x[0]);tail.sort((x,y)=>x[0]-y[0]);
-      const pts=[...head.map(x=>x[1]),...own,...tail.map(x=>x[1])];
-      const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+d3(pts[i],pts[i-1]));
-      return pts.map((p,i)=>{let acc=[0,0,0],w=0;for(let j=0;j<pts.length;j++){if(Math.abs(cum[j]-cum[i])>1.0)continue;acc[0]+=pts[j][0];acc[1]+=pts[j][1];acc[2]+=pts[j][2];w++;}return acc.map(x=>x/w);});};
-    /* the fuller tracing of the two is the base on both arms (a thin, broken tracing on one arm is read off the other); the other only lengthens it */
-    const useA=fA.sm.length>=fB.sm.length;const lineA=useA?merge(fA.sm,fB.sm.map(mapAB)):merge(fB.sm.map(mapAB),fA.sm),lineB=useA?merge(fA.sm.map(mapBA),fB.sm):merge(fB.sm,fA.sm.map(mapBA));
-    const draw=(pi,g,o,F,line0)=>{const n=g.n,hw=F.hw||0.9;
-      /* the line is laid onto this limb's own surface first (the other arm's line, mirrored over, can sit a little off it) */
-      const Gc=C.grid(g.c,1.0);const line=line0.map(q=>{const [j,d]=Gc.near(q[0],q[1],q[2],3);return j>=0&&d<=3?[g.c[j*3],g.c[j*3+1],g.c[j*3+2]]:q;});
-      const seg=[];for(let i=0;i+1<line.length;i++)for(let t=0;t<=1;t+=0.25)seg.push([line[i][0]+(line[i+1][0]-line[i][0])*t,line[i][1]+(line[i+1][1]-line[i][1])*t,line[i][2]+(line[i+1][2]-line[i][2])*t]);
-      const G3=1.0,gs=new Map();seg.forEach((q,i)=>{const k=((Math.floor(q[0]/G3)+4096)*8192+(Math.floor(q[1]/G3)+4096))*8192+(Math.floor(q[2]/G3)+4096);let L=gs.get(k);if(!L){L=[];gs.set(k,L);}L.push(i);});
-      const near=q=>{const cx=Math.floor(q[0]/G3),cy=Math.floor(q[1]/G3),cz=Math.floor(q[2]/G3);let bd=Infinity,bi=-1;for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)for(let k=-2;k<=2;k++){const L=gs.get(((cx+i+4096)*8192+(cy+j+4096))*8192+(cz+k+4096));if(!L)continue;for(const u of L){const d=(seg[u][0]-q[0])**2+(seg[u][1]-q[1])**2+(seg[u][2]-q[2])**2;if(d<bd){bd=d;bi=u;}}}return [bi,Math.sqrt(bd)];};
-      const ok=new Uint8Array(n);let cnt=0;
-      for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;const q=[g.c[t*3],g.c[t*3+1],g.c[t*3+2]];const [bi,d]=near(q);if(bi<0||d>1.8)continue;
-        /* the offset across the surface (in the face's plane), not through the body */const nt=[g.fn[t*3],g.fn[t*3+1],g.fn[t*3+2]];const off=[seg[bi][0]-q[0],seg[bi][1]-q[1],seg[bi][2]-q[2]];const dn=off[0]*nt[0]+off[1]*nt[1]+off[2]*nt[2];const dt=Math.hypot(off[0]-dn*nt[0],off[1]-dn*nt[1],off[2]-dn*nt[2]);if(dt<=hw){ok[t]=1;cnt++;}}
-      /* a clean edge at the glove: a stripe face touching glove paint goes to the glove's own edge */
-      if(F.bl){const nb=S.nb[pi];for(let t=0;t<n;t++){if(!ok[t])continue;for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&F.bl[w]){ok[t]=0;break;}}}}
-      let put=0,clr=0;for(let t=0;t<n;t++){if(hid[o+t]||(F.bl&&F.bl[t]))continue;if(ok[t]){if(S.label[o+t]!==F.P){S.label[o+t]=F.P;put++;}S.keep[o+t]=1;}else if(S.label[o+t]===F.P){S.label[o+t]=F.B;S.keep[o+t]=0;clr++;}}
-      let ms=0;for(let i=1;i<line.length;i++)ms=Math.max(ms,Math.hypot(line[i][0]-line[i-1][0],line[i][1]-line[i-1][1],line[i][2]-line[i-1][2]));
-      F.ok=ok;F.sm=line;F.drawn=1;return "f"+cnt+" +"+put+" -"+clr+" hw"+hw.toFixed(2)+" maxseg"+ms.toFixed(1);};
-    rep.push("lineA "+fA.sm.length+"->"+lineA.length+" "+draw(a,gA,oA,fA,lineA)+" | lineB "+fB.sm.length+"->"+lineB.length+" "+draw(b,gB,oB,fB,lineB));}
+    const fA=S.lineF[a],fB=S.lineF[b];if(!/(^|[^a-z])arm/i.test(S.parts[a].name)){rep.push("legs keep their own");continue;}
+    /* the fuller stripe (B) is the one stripe both twins wear: A's own tracing goes, and A takes B's stripe face for face through the
+       mirror (nearest mirrored face within 0.7 mm, facing the same way), settled on A's own mesh by a one-ring majority. No line is fitted */
+    const mapBA=q=>[0,1,2].map(k=>best.M[k]*(q[k]-cA[k]-best.sh[k])+cB[k]);
+    const GB=C.grid(gB.c,0.5);const nbA=S.nb[a];const got=new Int8Array(gA.n).fill(-1);let hitN=0;
+    for(let t=0;t<gA.n;t++){if(hid[oA+t]||(fA.bl&&fA.bl[t]))continue;const q=mapBA([gA.c[t*3],gA.c[t*3+1],gA.c[t*3+2]]);const [j,d]=GB.near(q[0],q[1],q[2],2);if(j<0||d>0.7)continue;
+      const nA=[best.M[0]*gA.fn[t*3],best.M[1]*gA.fn[t*3+1],best.M[2]*gA.fn[t*3+2]];if(nA[0]*gB.fn[j*3]+nA[1]*gB.fn[j*3+1]+nA[2]*gB.fn[j*3+2]<0.5)continue;
+      got[t]=(fB.ok[j]||S.label[oB+j]===fB.P)?1:0;hitN++;}
+    for(let it=0;it<3;it++){const nx=got.slice();for(let t=0;t<gA.n;t++){if(got[t]<0)continue;let p1=0,p0=0;for(let e=0;e<3;e++){const u=nbA[t*3+e];if(u<0||got[u]<0)continue;if(got[u])p1++;else p0++;}if(p1+p0>=2){if(p1>p0)nx[t]=1;else if(p0>p1)nx[t]=0;}}got.set(nx);}
+    const okA=new Uint8Array(gA.n);let put=0,clr=0;for(let t=0;t<gA.n;t++){if(hid[oA+t]||(fA.bl&&fA.bl[t]))continue;if(got[t]===1){okA[t]=1;if(S.label[oA+t]!==fA.P){S.label[oA+t]=fA.P;put++;}S.keep[oA+t]=1;}else if(got[t]===0&&S.label[oA+t]===fA.P){S.label[oA+t]=fA.B;S.keep[oA+t]=0;clr++;}}
+    fA.ok=okA;fA.drawn=1;
+    /* and on both: a hole in the stripe (a patch of suit paint shut inside it, under 3 mm square) is stripe */
+    const fill=(pi,g,o,F)=>{const n=g.n,nb=S.nb[pi],seen=new Uint8Array(n);let f=0;for(let s0=0;s0<n;s0++){if(seen[s0]||S.label[o+s0]!==F.B||(F.bl&&F.bl[s0]))continue;const c=[s0];seen[s0]=1;let ar=0,open=false;
+        for(let h=0;h<c.length&&!open;h++){const t=c[h];ar+=S.area[o+t];if(ar>3){open=true;break;}for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0){open=true;break;}const L=S.label[o+u];if(L===F.B){if(!seen[u]){seen[u]=1;c.push(u);}}else if(L!==F.P){open=true;break;}}}
+        if(!open&&ar<=3){for(const t of c){S.label[o+t]=F.P;S.keep[o+t]=1;if(F.ok)F.ok[t]=1;}f+=c.length;}}return f;};
+    const fB2=fill(b,gB,oB,fB),fA2=fill(a,gA,oA,fA);
+    rep.push("copy "+S.parts[b].name.slice(-10)+"->"+S.parts[a].name.slice(-10)+" hit"+hitN+" +"+put+" -"+clr+" fill"+fA2+"/"+fB2);}
   /* a rigid leg and the jointed thigh and calf it replaces sit in the same place: the rigid leg's stripe is the union of its own and
      theirs, face for face at the same spot (the jointed pieces trace the lower leg where the rigid one's tracing stops at the knee crease) */
   for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
@@ -1356,7 +1343,7 @@ function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=w
 /* PIPING ON RAISED EDGES. A figure whose trim runs along the sculpt's own raised edge lines (the piping on an armoured
    figure) is painted from the sculpt, not the photos: every face that stands proud of its surroundings (within R) by
    more than thr takes the piping filament. Set with window._spcPiping={fil, thr, R, skip} before a run. */
-function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q("spcPiping");if(sel&&+sel.value>=0)opt={fil:+sel.value};}if(!opt||opt.fil==null||opt.fil<0)return;const thr=opt.thr||0.05,R=opt.R||0.8,rep=[];
+function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q("spcPiping");if(sel&&+sel.value>=0)opt={fil:+sel.value};}if(!opt||opt.fil==null||opt.fil<0)return;const thr=opt.thr||0.05,R=opt.R||0.6,rep=[];
   /* under the piping the suit is one coat: minor paints the photos left (a smear of the piping's own dull red, a highlight) go to the main paint; skin and hair stay */
   {sumAreas();let tot=0,D=-1,dv=0;S.regions.forEach((r,i)=>{tot+=r.area;if(r.area>dv){dv=r.area;D=i;}});let mg=0;
    if(D>=0)for(let i=0;i<S.nFaces;i++){const L=S.label[i];if(L<0||L===D)continue;const r=S.regions[L];if(r.hair||r.eye||L===S.skinReg||r.area>=0.08*tot)continue;S.label[i]=D;mg++;}
@@ -1372,16 +1359,23 @@ function pipingRidges(active,hid){let opt=window._spcPiping;if(!opt){const sel=q
         for(const u of b){const dx=g.c[u*3]-x,dy=g.c[u*3+1]-y,dz=g.c[u*3+2]-z;if(dx*dx+dy*dy+dz*dz>R2)continue;if(g.fn[u*3]*g.fn[t*3]+g.fn[u*3+1]*g.fn[t*3+1]+g.fn[u*3+2]*g.fn[t*3+2]<0)continue;
           const w=A[o+u];sw+=w;mx+=g.c[u*3]*w;my+=g.c[u*3+1]*w;mz+=g.c[u*3+2]*w;}}
       if(sw>0&&(x-mx/sw)*g.fn[t*3]+(y-my/sw)*g.fn[t*3+1]+(z-mz/sw)*g.fn[t*3+2]>thr)ridge[t]=1;}
-    /* tidy: hairs off, pinholes in, then any patch under 2 mm square dropped */
-    for(let it=0;it<2;it++){const nx=ridge.slice();for(let t=0;t<n;t++){let c=0;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u])c++;}if(ridge[t]&&c<=1)nx[t]=0;else if(!ridge[t]&&c>=2&&!hid[o+t])nx[t]=1;}ridge.set(nx);}
+    /* tidy: the crest faces are joined into one continuous line (grown twice, shrunk once), hairs off, then any patch under 2 mm square dropped */
+    const grow=()=>{const nx=ridge.slice();for(let t=0;t<n;t++){if(ridge[t]||hid[o+t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u]){nx[t]=1;break;}}}ridge.set(nx);};
+    const shrink=()=>{const nx=ridge.slice();for(let t=0;t<n;t++){if(!ridge[t])continue;for(let e=0;e<3;e++){const u=nb[t*3+e];if(u<0||!ridge[u]){nx[t]=0;break;}}}ridge.set(nx);};
+    grow();grow();shrink();
     const seen=new Uint8Array(n);let kept=0,ar=0;for(let s0=0;s0<n;s0++){if(seen[s0]||!ridge[s0])continue;const c=[s0];seen[s0]=1;let a=0;
       for(let h=0;h<c.length;h++){const t=c[h];a+=A[o+t];for(let e=0;e<3;e++){const u=nb[t*3+e];if(u>=0&&ridge[u]&&!seen[u]){seen[u]=1;c.push(u);}}}
       if(a<2){for(const t of c)ridge[t]=0;continue;}
       /* a small flat ring is a connector's chamfer or a bore mouth (a peg, a socket, a knee-pin eye), not piping */
       {let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],m=[0,0,0];for(const t of c)for(let k=0;k<3;k++){const v=g.c[t*3+k];if(v<lo[k])lo[k]=v;if(v>hi[k])hi[k]=v;m[k]+=v/c.length;}
-       const ext=Math.max(hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]);if(ext<9){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
+       const es=[hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]].sort((x,y)=>y-x),ext=es[0];/* a ring is about as wide as it is long; a short run of line is not */if(ext<9&&es[1]>0.5*es[0]){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
         const tr=cv[0]+cv[3]+cv[5];let e=[0.1,0.2,1];for(let it=0;it<60;it++){const w=[(tr-cv[0])*e[0]-cv[1]*e[1]-cv[2]*e[2],-cv[1]*e[0]+(tr-cv[3])*e[1]-cv[4]*e[2],-cv[2]*e[0]-cv[4]*e[1]+(tr-cv[5])*e[2]],mm=Math.hypot(...w)||1;e=w.map(x=>x/mm);}
-        let ss=0;for(const t of c){const d=(g.c[t*3]-m[0])*e[0]+(g.c[t*3+1]-m[1])*e[1]+(g.c[t*3+2]-m[2])*e[2];ss+=d*d;}if(Math.sqrt(ss/c.length)<0.25){for(const t of c)ridge[t]=0;continue;}}}
+        let ss=0;for(const t of c){const d=(g.c[t*3]-m[0])*e[0]+(g.c[t*3+1]-m[1])*e[1]+(g.c[t*3+2]-m[2])*e[2];ss+=d*d;}if(Math.sqrt(ss/c.length)<0.25){for(const t of c)ridge[t]=0;continue;}}
+       /* the ribs of a peg: a stack of rings, every face about one radius from one axis (the long axis of the patch), under 5 mm */
+       if(c.length>=30){const cv=[0,0,0,0,0,0];for(const t of c){const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];cv[0]+=d[0]*d[0];cv[1]+=d[0]*d[1];cv[2]+=d[0]*d[2];cv[3]+=d[1]*d[1];cv[4]+=d[1]*d[2];cv[5]+=d[2]*d[2];}
+        let ax=[0.3,0.4,0.85];for(let it=0;it<50;it++){const w=[cv[0]*ax[0]+cv[1]*ax[1]+cv[2]*ax[2],cv[1]*ax[0]+cv[3]*ax[1]+cv[4]*ax[2],cv[2]*ax[0]+cv[4]*ax[1]+cv[5]*ax[2]];const l=Math.hypot(...w)||1;ax=w.map(x=>x/l);}
+        const rs=c.map(t=>{const d=[g.c[t*3]-m[0],g.c[t*3+1]-m[1],g.c[t*3+2]-m[2]];const a=d[0]*ax[0]+d[1]*ax[1]+d[2]*ax[2];return Math.hypot(d[0]-a*ax[0],d[1]-a*ax[1],d[2]-a*ax[2]);});
+        const mr=rs.reduce((x,y)=>x+y,0)/rs.length;let v=0;for(const r of rs)v+=(r-mr)**2;if(mr<5&&Math.sqrt(v/rs.length)<0.3){for(const t of c)ridge[t]=0;continue;}}}
       kept+=c.length;ar+=a;}
     for(let t=0;t<n;t++)if(ridge[t]){S.label[o+t]=P;if(S.keep)S.keep[o+t]=1;if(S.keepHard)S.keepHard[o+t]=1;}
     rep.push(nm.replace(/^.*?_\d+_/,"")+" "+kept+"f "+ar.toFixed(0)+"mm2");}
