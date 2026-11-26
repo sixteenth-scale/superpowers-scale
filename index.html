@@ -10057,7 +10057,7 @@ async function run(){
   if(!window._spcNoBridge)try{bridgeStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('bridge');
   if(!window._spcNoRedraw)try{redrawStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
-  try{mirrorArms(active,hid);}catch(e){(window._spcDbg=window._spcDbg||{}).mirrorArmsErr=String(e);}try{mirrorLegs(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  try{mirrorArms(active,hid,regM);}catch(e){(window._spcDbg=window._spcDbg||{}).mirrorArmsErr=String(e);}try{mirrorLegs(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoShoulder)try{shoulderPiping(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('shoulder');
   if(!window._spcNoBlotch)try{limbBlotches(active,hid);}catch(e){console.warn(e);}
@@ -10748,7 +10748,7 @@ function mirrorLegs(active,hid){const rep=[];if(!S.lineF)return;
   (window._spcDbg=window._spcDbg||{}).mirror=rep;}
 /* the two arms of a figure are mirror twins: the cleaner traced stripe (the thinner one, with no patches) is copied onto the other, which
    is redrawn to match it exactly */
-function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
+function mirrorArms(active,hid,regM){const rep=[];if(!S.lineF)return;
   const key=x=>x.toLowerCase().replace(/\.stl$/,'').replace(/_\d+_/,'_');
   for(const a0 of active){const na=S.parts[a0].name;if(!/left/i.test(na)||!/((^|[^a-z])arm|leg|thigh|calf)/i.test(na))continue;const want=key(na).replace('left','right');const b0=active.find(x=>key(S.parts[x].name)===want);
     if(b0==null||!S.lineF[a0]||!S.lineF[b0])continue;
@@ -10774,12 +10774,13 @@ function mirrorArms(active,hid){const rep=[];if(!S.lineF)return;
   /* a rigid leg and the jointed thigh and calf it replaces sit in the same place: the rigid leg's stripe is the union of its own and
      theirs, face for face at the same spot (the jointed pieces trace the lower leg where the rigid one's tracing stops at the knee crease) */
   for(const r of active){const nr=S.parts[r].name;if(!/rigid/i.test(nr)||!S.lineF[r])continue;const side=/left/i.test(nr)?/left/i:/right/i;
-    const gR=pieceGeo(r,null),oR=S.offs[r],fR=S.lineF[r];let added=0;
-    for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,null),fJ=S.lineF[j];
+    /* in the figure's frame (registered), where the jointed pieces lie on the rigid one */
+    const gR=pieceGeo(r,regM),oR=S.offs[r],fR=S.lineF[r];let added=0;
+    for(const j of active){const nj=S.parts[j].name;if(j===r||!/(thigh|calf)/i.test(nj)||!side.test(nj)||!S.lineF[j])continue;const gJ=pieceGeo(j,regM),fJ=S.lineF[j];
       const G2=0.5,grJ=new Map();for(let t=0;t<gJ.n;t++){if(!fJ.ok[t])continue;const k=((Math.floor(gJ.c[t*3]/G2)+8192)*16384+(Math.floor(gJ.c[t*3+1]/G2)+8192))*16384+(Math.floor(gJ.c[t*3+2]/G2)+8192);let L=grJ.get(k);if(!L){L=[];grJ.set(k,L);}L.push(t);}
       for(let t=0;t<gR.n;t++){if(fR.ok[t]||hid[oR+t]||(fR.bl&&fR.bl[t]))continue;const q=[gR.c[t*3],gR.c[t*3+1],gR.c[t*3+2]];const cx=Math.floor(q[0]/G2),cy=Math.floor(q[1]/G2),cz=Math.floor(q[2]/G2);let bd=Infinity;
         for(let i=-1;i<=1;i++)for(let jj=-1;jj<=1;jj++)for(let k=-1;k<=1;k++){const L=grJ.get(((cx+i+8192)*16384+(cy+jj+8192))*16384+(cz+k+8192));if(!L)continue;for(const u of L){const d=(gJ.c[u*3]-q[0])**2+(gJ.c[u*3+1]-q[1])**2+(gJ.c[u*3+2]-q[2])**2;if(d<bd)bd=d;}}
-        if(bd<=0.3*0.3){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;S.keep[oR+t]=1;added++;}}}}
+        if(bd<=0.5*0.5){fR.ok[t]=1;if(S.label[oR+t]!==fR.P){S.label[oR+t]=fR.P;S.keep[oR+t]=1;added++;}}}}
     rep.push(nr.slice(-14)+" fromJointed"+added);}
   (window._spcDbg=window._spcDbg||{}).mirrorArms=rep;}
 function redrawStripes(active,hid){const rep=[];if(!S.stripes){(window._spcDbg=window._spcDbg||{}).redraw=['none'];return;}
