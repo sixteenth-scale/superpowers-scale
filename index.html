@@ -10030,7 +10030,7 @@ async function run(){
   /* where two pieces touch, nobody sees it; soles stand on the ground: both count as hidden */
   let fz0=Infinity,fz1=-Infinity;for(let i=2;i<figPts.p.length;i+=3){fz0=Math.min(fz0,figPts.p[i]);fz1=Math.max(fz1,figPts.p[i]);}
   const gnd=markContacts(active,regM,hid,fz0,fz1);
-  if(!window._spcNoTuck){log("Finding spots no one will see…");await tick();try{tuckedAreas(active,regM,hid);}catch(e){console.warn(e);}}
+  if(!window._spcNoTuck){log("Finding spots no one will see…");await tick();try{await tuckedAreas(active,regM,hid);}catch(e){console.warn(e);}}
   /* the photos say what each visible face really looks like */
   let photo=null;
   if(S.images.length&&!window._spcNoGuide){log("Reading your photos…");await tick();
@@ -12721,12 +12721,12 @@ function smoothEdges(active,hid){const R=S.regions.length,it=window._spcSmoothIt
 /* tucked-away areas: from a few spots in each sculpted area, look out in several directions; if nearly every
    look hits a piece within a short distance (a neck post inside the head, the inside of a wing slot), no one
    will see that area, so it is hidden and takes the color around it */
-function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)),dup=samePlace(geo),gcache=new Map();
+async function tuckedAreas(active,regM,hid){const t0=performance.now();let done=0,total=0;for(const pi of active)total+=S.parts[pi]?S.nb[pi].length/3:0;const geo=active.map(pi=>pieceGeo(pi,regM)),dup=samePlace(geo),gcache=new Map();
   const gridFor=g=>{const key=geo.filter(h=>!dup.has(g.pi+"|"+h.pi)).map(h=>h.pi).join(',');if(gcache.has(key))return gcache.get(key);const P=[];geo.forEach(h=>{if(dup.has(g.pi+"|"+h.pi))return;for(let t=0;t<h.n;t++)P.push(h.c[t*3],h.c[t*3+1],h.c[t*3+2]);});const G=C.grid(Float32Array.from(P),0.7);gcache.set(key,G);return G;};
   let tucked=0,inside=0;
   const hit=(Gr,x,y,z,dx,dy,dz,max,step)=>{const l=Math.hypot(dx,dy,dz);for(let d=1.2;d<=max;d+=step){const [j,dd]=Gr.near(x+dx/l*d,y+dy/l*d,z+dz/l*d,1);if(j>=0&&dd<0.7)return true;}return false;};
   for(const g of geo){const o=S.offs[g.pi],Gs=C.grid(g.c,0.8),G=gridFor(g);
-    for(let t=0;t<g.n;t++){if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
+    for(let t=0;t<g.n;t++){if((++done&16383)===0){log("Finding spots no one will see… "+Math.round(100*done/Math.max(1,total))+"%");await tick();}if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
       let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
       const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
       const tilt=a2=>{const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);return [nx*0.6+(ux*c+vx*s2)*0.8,ny*0.6+(uy*c+vy*s2)*0.8,nz*0.6+(uz*c+vz*s2)*0.8];};
@@ -12735,8 +12735,9 @@ function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)
       /* the wall of a narrow slot or channel: straight out, the opposite wall faces back within a few mm */
       {const l=1;let wall=false;for(let d=1.2;d<=6&&!wall;d+=0.6){const [j,dd]=Gs.near(x+nx*d,y+ny*d,z+nz*d,1);if(j>=0&&dd<0.7&&nx*g.fn[j*3]+ny*g.fn[j*3+1]+nz*g.fn[j*3+2]<-0.5)wall=true;}
         if(wall){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,10,0.6))b++;}if(b>=3){hid[o+t]=1;inside++;continue;}}}
-      /* inside the piece: a socket or hollow that only opens through a slot (where the wings plug in) */
-      if(hit(Gs,x,y,z,nx,ny,nz,25,0.8)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,25,0.8))b++;}if(b>=6){hid[o+t]=1;inside++;}}}}
+      /* inside the piece: a socket or hollow that only opens through a slot (where the wings plug in). Only looked for
+         where the straight look hits the piece at all (open surface, the common case, is skipped: one cheap ray first) */
+      if(hit(Gs,x,y,z,nx,ny,nz,25,2.0)&&hit(Gs,x,y,z,nx,ny,nz,25,0.8)){let b=0;for(let a2=0;a2<6;a2++){const [dx,dy,dz]=tilt(a2);if(hit(Gs,x,y,z,dx,dy,dz,25,0.8))b++;}if(b>=6){hid[o+t]=1;inside++;}}}}
   /* the floor of a slot: a small patch of visible surface whose whole border is hidden walls */
   let floors=0;for(const g of geo){const o=S.offs[g.pi],nb=S.nb[g.pi],seen=new Uint8Array(g.n);
     for(let s0=0;s0<g.n;s0++){if(seen[s0]||hid[o+s0])continue;const comp=[s0];seen[s0]=1;let a=0,open=false;
@@ -12748,7 +12749,7 @@ function tuckedAreas(active,regM,hid){const geo=active.map(pi=>pieceGeo(pi,regM)
         let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
         for(let a2=0;a2<6;a2++){const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);looks++;if(hit(Gs,x,y,z,nx*0.5+(ux*c+vx*s2)*0.87,ny*0.5+(uy*c+vy*s2)*0.87,nz*0.5+(uz*c+vz*s2)*0.87,5,0.6))blk++;}}
       if(looks&&blk>=0.8*looks){for(const t of comp)hid[o+t]=1;floors+=comp.length;}}}
-  (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside,floors];
+  (window._spcDbg=window._spcDbg||{}).tucked=[tucked,inside,floors,Math.round(performance.now()-t0)];
 }
 /* bleed across a sculpted line: inside a sculpted area, a small patch of the paint that fills the area next
    door, touching the line between them, crossed over (red teeth on a gold cuff). It goes back to this area's
