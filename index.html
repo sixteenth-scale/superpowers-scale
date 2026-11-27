@@ -9666,7 +9666,12 @@ if(!q("spc"))return;
 const S=window._spcS={on:new Set(),figPart:-1,target:null,figure:null,images:[],colored:null, parts:[],project:null, offs:[],nFaces:0,
   raw:null,label:null,regions:[],area:null,nb:[],selected:-1,undo:[],showRaw:false,mode:"sel",viewer:null,targetName:""};
 const tick=()=>new Promise(r=>setTimeout(r,0));
-const log=(m,err)=>{const el=q("spcLog");el.innerHTML=err?`<span class="err">${esc(m)}</span>`:esc(m);};
+const log=(m,err)=>{const el=q("spcLog");const pre=(!err&&window._spcProg!=null&&m)?(Math.round(window._spcProg)+"% · "):"";el.innerHTML=err?`<span class="err">${esc(m)}</span>`:esc(pre+m);};
+/* overall progress: each stage's share of a typical run; a stage can report its own fraction done */
+const STAGES=[["Lining the colors up",8],["Sizing the whole figure",4],["Finding piece",22],["Placing",4],["Sampling colors",3],["Painting your photos",8],["Finding color regions",3],["Finding spots no one will see",14],["Reading your photos",4],["Putting color edges",8],["Cleaning up the edges",3],["Setting edges onto the sculpt",3],["Fitting paint to raised strips",8],["Setting color edges",4],["Writing the 3MF",4]];
+const stageStart=new Map();{let acc=0;for(const [k,w] of STAGES){stageStart.set(k,acc);acc+=w;}stageStart.set("__total",acc);}
+const prog=(stageKey,frac)=>{const st=stageStart.get(stageKey);if(st==null)return;const w=STAGES.find(x=>x[0]===stageKey)[1];window._spcProg=100*(st+w*Math.max(0,Math.min(1,frac||0)))/stageStart.get("__total");};
+const logS=(m,frac)=>{for(const [k] of STAGES)if(m.startsWith(k)){prog(k,frac);break;}log(m);};
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
 C.loadPalette();
 
@@ -9891,11 +9896,11 @@ async function run(){
     try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([glb],{type:"model/gltf-binary"}));
       a.download=(S.figure||S.target).name.replace(/\.\w+$/,"")+"_meshy.glb";a.click();}catch(e){}}
   /* 2. lay it over the figure */
-  if(!photoOnly){log("Lining the colors up with your figure…");await tick();
+  if(!photoOnly){window._spcProg=0;logS("Lining the colors up with your figure…");await tick();
   const allV=new Float32Array(sources.reduce((s,x)=>s+x.m.v.length,0));{let o=0;sources.forEach(x=>{allV.set(x.m.v,o);o+=x.m.v.length;});}
   al=await C.alignSource(allV,figPts,tick);
   if(al.err>0.03*al.diag)log(`Lined up, but the fit is loose (${al.err.toFixed(2)} mm average). Check the result.`);
-  log("Sampling colors…");await tick();
+  logS("Sampling colors…");await tick();
   cloud=C.colorCloud(sources,al.M,Math.max(0.12,detail/2));}
   /* 3. pieces */
   let G=null;
@@ -9903,7 +9908,7 @@ async function run(){
     /* which size of the figure is right: the one the torso (the biggest body piece) sits on with the least error */
     const ks=[...new Set([1,...(S._figK||[])].filter(x=>isFinite(x)&&x>0.5&&x<2).map(x=>+x.toFixed(2)))].filter((x,i,a)=>a.findIndex(y=>Math.abs(y-x)<0.04)===i);
     if(ks.length>1&&S._fig0){const body=active.filter(i=>/torso|chest|body/i.test(S.parts[i].name));const tp=body.length?body[0]:active.slice().sort((a,b)=>S.parts[b].m.f.length-S.parts[a].m.f.length)[0];
-      log("Sizing the whole figure to the pieces…");await tick();const scaled=k=>{let cx0=0,cy0=0,z00=Infinity,nn=0;S._fig0.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
+      logS("Sizing the whole figure to the pieces…");await tick();const scaled=k=>{let cx0=0,cy0=0,z00=Infinity,nn=0;S._fig0.forEach(p=>{const v=C.xf(p.M,p.m.v);for(let i=0;i<v.length;i+=3){cx0+=v[i];cy0+=v[i+1];z00=Math.min(z00,v[i+2]);nn++;}});cx0/=nn;cy0/=nn;
         const Sm=[k,0,0,0,0,k,0,0,0,0,k,0,cx0*(1-k),cy0*(1-k),z00*(1-k),1];return S._fig0.map(p=>({...p,M:C.mul4(Sm,p.M)}));};
       let best=null;for(const k of ks){const f=scaled(k),pts=mkPts(f),g=C.grid(pts.p,al.diag/80);const r=await C.registerPart(S.parts[tp],pts,g,tick,al.diag/80);if(!best||r.err<best.err)best={k,err:r.err,f,pts,g};}
       fig=best.f;figPts=best.pts;G=best.g;fine=null;log(`The whole figure is read at ×${best.k.toFixed(2)} of the pieces' size (torso fit ${best.err.toFixed(2)} mm).`);(window._spcDbg=window._spcDbg||{}).figScale=best.k;}}
@@ -9913,7 +9918,7 @@ async function run(){
     if(!active.includes(pi))continue;
     if(C.meanEdge(p.m,p.M)>detail){let guard=0;while(C.meanEdge(p.m,p.M)>detail&&p.m.f.length/3<2e6&&guard++<4){if(!p.m0){p.m0=p.m;p.lv=0;}p.m=C.subdivide(p.m);p.lv++;p.subdivided=true;p.paint=null;}}
     if(!window._spcNoSplit){const n0=p.m.f.length/3,m2=C.splitLong(p.m,p.M,Math.min(1.0,2*detail),2e6); /* long sliver triangles split, so a color line can't zigzag along them */if(m2.f.length/3>n0){p.m=m2;p.subdivided=true;p.paint=null;((window._spcDbg=window._spcDbg||{}).split=window._spcDbg.split||[]).push(p.name+':'+n0+'>'+m2.f.length/3);}}
-    if(parted){log(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`);await tick();
+    if(parted){logS(`Finding piece ${active.indexOf(pi)+1} of ${active.length} on the figure: ${p.name}…`,active.indexOf(pi)/active.length);await tick();
       if(!fine&&window._spcFineReg){fine=mkFine(fig);fine.G=C.grid(fine.p,al.diag/250);} /* (the dense last pass is off: on the figure it was tried on it moved pieces and lost an arm's stripe; on again with window._spcFineReg) */
       const r=await C.registerPart(p,figPts,G,tick,al.diag/80,null,fine);regM[pi]=r.M;errs[pi]=r.err;}}
   /* a piece named left or right belongs on that side of the figure: the side the other left pieces landed on.
@@ -9926,7 +9931,7 @@ async function run(){
     const leftSign=vote>=0?1:-1;
     for(const pi of active){const sd=side(pi);if(!sd||!regM[pi])continue;const want=sd*leftSign;
       if(Math.sign(cx(pi,regM[pi]))===want)continue;
-      log(`Placing ${S.parts[pi].name} on its own side…`);await tick();
+      logS(`Placing ${S.parts[pi].name} on its own side…`);await tick();
       const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,M=>Math.sign(cx(pi,M))===want,fine);
       if(isFinite(r.err)&&Math.sign(cx(pi,r.M))===want){regM[pi]=r.M;errs[pi]=r.err;}}
     /* a piece sits where its name says on the figure: the head at the top, calves low. One that landed out of
@@ -9941,7 +9946,7 @@ async function run(){
        for(let t=0;t<n;t++){const cz=(v[f[t*3]*3+2]+v[f[t*3+1]*3+2]+v[f[t*3+2]*3+2])/3;if(cz>z0+0.3||fn[t*3+2]>-0.9)continue;ar++;nz+=M[2]*fn[t*3]+M[6]*fn[t*3+1]+M[10]*fn[t*3+2];}
        return ar<20||nz/ar<-0.5;};
      for(const pi of active){const nm=S.parts[pi].name.toLowerCase();if(/pin|peg/.test(nm)||!regM[pi])continue;const bd=band(nm);if(!bd)continue;const h=czz(pi,regM[pi]);if(h>=bd[0]&&h<=bd[1]&&soleOk(pi,regM[pi]))continue;
-       const sd=side(pi),want=sd*leftSign;log(`Placing ${S.parts[pi].name} at its height on the figure…`);await tick();
+       const sd=side(pi),want=sd*leftSign;logS(`Placing ${S.parts[pi].name} at its height on the figure…`);await tick();
        const ok=M=>{const h2=czz(pi,M);return h2>=bd[0]&&h2<=bd[1]&&(!sd||Math.sign(cx(pi,M))===want)&&soleOk(pi,M);};
        const r=await C.registerPart(S.parts[pi],figPts,G,tick,al.diag/80,ok,fine);if(isFinite(r.err)&&ok(r.M)){regM[pi]=r.M;errs[pi]=r.err;((window._spcDbg=window._spcDbg||{}).reband=window._spcDbg.reband||[]).push(S.parts[pi].name);}}}
     /* left and right twins sit at the same height: one that landed higher or lower than its twin is placed again,
@@ -9951,7 +9956,7 @@ async function run(){
     for(const a of active){if(side(a)!==1||!regM[a])continue;const b=active.find(q=>side(q)===-1&&regM[q]&&base(q)===base(a));if(b==null)continue;
       const za=cz(a,regM[a]),zb=cz(b,regM[b]),xa=cx(a,regM[a]),xb=cx(b,regM[b]);if(Math.abs(za-zb)<=3&&Math.abs(xa+xb)<=3)continue;
       const [bad,good]=errs[a]>errs[b]?[a,b]:[b,a],zg=cz(good,regM[good]),xg=cx(good,regM[good]),want=side(bad)*leftSign;
-      log(`Placing ${S.parts[bad].name} level with its twin…`);await tick();
+      logS(`Placing ${S.parts[bad].name} level with its twin…`);await tick();
       const okM=M=>Math.abs(cz(bad,M)-zg)<2.5&&Math.abs(cx(bad,M)+xg)<3&&Math.sign(cx(bad,M))===want&&soleOk(bad,M); /* level with its twin, and mirrored across the figure */
       const r=await C.registerPart(S.parts[bad],figPts,G,tick,al.diag/80,okM,fine);
       if(isFinite(r.err)&&okM(r.M)){regM[bad]=r.M;errs[bad]=r.err;((window._spcDbg=window._spcDbg||{}).relevel=window._spcDbg.relevel||[]).push(S.parts[bad].name);continue;}
@@ -9975,7 +9980,7 @@ async function run(){
     else tr=await C.transferColors(p,cloud,Mx,tick);raws.push(tr);tol[pi]=photoOnly?Math.max(3,4*(Mx?lastErr:0)):Math.max(0.5,3*(Mx?lastErr:0)+2*al.err);} /* from photos, a part may differ from the whole figure by a few mm and still be on show; contacts are found apart */
   rebuildIndex();S.areaC={};
   S.raw=new Float32Array(S.nFaces*3).fill(0.8);raws.forEach((r,pi)=>{if(r)S.raw.set(r.rgb,S.offs[pi]*3);});
-  if(photoOnly){log("Painting your photos onto the figure…");await tick();const pr=await photoProject(S.images,fig,active,parted?regM:null);
+  if(photoOnly){logS("Painting your photos onto the figure…");await tick();const pr=await photoProject(S.images,fig,active,parted?regM:null);
     for(const pi of active){const o=S.offs[pi],n=S.parts[pi].m.f.length/3;for(let t=0;t<n;t++)if(pr[(o+t)*3]>=0)for(let k=0;k<3;k++)S.raw[(o+t)*3+k]=pr[(o+t)*3+k];}}
   const act=new Uint8Array(S.nFaces);active.forEach(pi=>act.fill(1,S.offs[pi],S.offs[pi]+S.parts[pi].m.f.length/3));
   /* faces with no matching surface on the figure (cut faces, joints, hip tops, sockets) are hidden:
@@ -9984,7 +9989,7 @@ async function run(){
   raws.forEach((r,pi)=>{if(!r)return;const o=S.offs[pi];for(let i=0;i<r.dist.length;i++)if(r.dist[i]>tol[pi])hid[o+i]=1;});
   const W=Float32Array.from(S.area,(a,i)=>a*act[i]*(hid[i]?0:1));
   /* 4. regions */
-  log("Finding color regions…");await tick();
+  logS("Finding color regions…");await tick();
   const L=new Float32Array(S.nFaces*3);for(let i=0;i<S.nFaces;i++){const l=C.lab(S.raw[i*3],S.raw[i*3+1],S.raw[i*3+2]);L[i*3]=l[0];L[i*3+1]=l[1];L[i*3+2]=l[2];}
   const cents=C.kmeans(L,W,16,C.RNG(5));
   const lab=new Int32Array(S.nFaces);
@@ -10030,17 +10035,17 @@ async function run(){
   /* where two pieces touch, nobody sees it; soles stand on the ground: both count as hidden */
   let fz0=Infinity,fz1=-Infinity;for(let i=2;i<figPts.p.length;i+=3){fz0=Math.min(fz0,figPts.p[i]);fz1=Math.max(fz1,figPts.p[i]);}
   const gnd=markContacts(active,regM,hid,fz0,fz1);
-  if(!window._spcNoTuck){log("Finding spots no one will see…");await tick();try{await tuckedAreas(active,regM,hid);}catch(e){console.warn(e);}}
+  if(!window._spcNoTuck){logS("Finding spots no one will see…");await tick();try{await tuckedAreas(active,regM,hid);}catch(e){console.warn(e);}}
   /* the photos say what each visible face really looks like */
   let photo=null;
-  if(S.images.length&&!window._spcNoGuide){log("Reading your photos…");await tick();
+  if(S.images.length&&!window._spcNoGuide){logS("Reading your photos…");await tick();
     try{photo=await photoGuide(S.images,fig,active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}}
   /* final colors: follow the photos (Meshy where no photo can see), with color edges on the sculpt's ridges and creases */
-  log("Putting color edges on the sculpted ridges…");await tick();
+  logS("Putting color edges on the sculpted ridges…");await tick();
   await solveLabels(active,hid,photo,L);
-  if(!window._spcNoSmooth){log("Cleaning up the edges…");await tick();smoothEdges(active,hid);}
-  if(!window._spcNoCrease){log("Setting edges onto the sculpt…");await tick();snapToCreases(active,hid,photo);}
-  if(!window._spcNoStrips){log("Fitting paint to raised strips…");await tick();fitStrips(active,hid);}
+  if(!window._spcNoSmooth){logS("Cleaning up the edges…");await tick();smoothEdges(active,hid);}
+  if(!window._spcNoCrease){logS("Setting edges onto the sculpt…");await tick();snapToCreases(active,hid,photo);}
+  if(!window._spcNoStrips){logS("Fitting paint to raised strips…");await tick();await fitStrips(active,hid);}
   if(window._spcSnap)window._spcSnap('solved',S.label,x=>S.regions[x].rgb,hid);
   S.parts.forEach((p,pi)=>{if(!active.includes(pi))return;const n=p.m.f.length/3,sub=S.label.subarray(S.offs[pi],S.offs[pi]+n);
     C.cleanIslands(S.nb[pi],S.area.subarray(S.offs[pi],S.offs[pi]+n),sub,0.3);});
@@ -10085,7 +10090,7 @@ async function run(){
   if(!window._spcNoCords)try{cordPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoPiping)try{limbPiping(active,regM,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   if(!window._spcNoCuff)try{cuffLine(active,regM,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
-  if(!window._spcNoEdgeSnap)try{log("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
+  if(!window._spcNoEdgeSnap)try{logS("Setting color edges onto the sculpt…");edgeSnap(active,hid,L);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('edge');
   if(!window._spcNoBridge)try{bridgeStripes(active,hid);}catch(e){console.warn(e);window._spcDbgErr=String(e&&e.stack||e);}
   _tr('bridge');
@@ -12726,7 +12731,7 @@ async function tuckedAreas(active,regM,hid){const t0=performance.now();let done=
   let tucked=0,inside=0;
   const hit=(Gr,x,y,z,dx,dy,dz,max,step)=>{const l=Math.hypot(dx,dy,dz);for(let d=1.2;d<=max;d+=step){const [j,dd]=Gr.near(x+dx/l*d,y+dy/l*d,z+dz/l*d,1);if(j>=0&&dd<0.7)return true;}return false;};
   for(const g of geo){const o=S.offs[g.pi],Gs=C.grid(g.c,0.8),G=gridFor(g);
-    for(let t=0;t<g.n;t++){if((++done&16383)===0){log("Finding spots no one will see… "+Math.round(100*done/Math.max(1,total))+"%");await tick();}if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
+    for(let t=0;t<g.n;t++){if((++done&16383)===0){logS("Finding spots no one will see… "+Math.round(100*done/Math.max(1,total))+"%",done/Math.max(1,total));await tick();}if(hid[o+t])continue;const x=g.c[t*3],y=g.c[t*3+1],z=g.c[t*3+2],nx=g.fn[t*3],ny=g.fn[t*3+1],nz=g.fn[t*3+2];
       let ax=Math.abs(nx)<0.9?1:0,ay=ax?0:1;let ux=-nz*ay,uy=nz*ax,uz=nx*ay-ny*ax;const ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
       const vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
       const tilt=a2=>{const c=Math.cos(a2*Math.PI/3),s2=Math.sin(a2*Math.PI/3);return [nx*0.6+(ux*c+vx*s2)*0.8,ny*0.6+(uy*c+vy*s2)*0.8,nz*0.6+(uz*c+vz*s2)*0.8];};
@@ -12830,8 +12835,8 @@ window._spcRaised=pi=>Array.from(raisedHeight(pi));
    own size, that closed shape IS the strip: the whole strip gets the paint, and any of the paint that spilled
    past the step goes back to the color next to it. If it leaks out across the piece, it isn't a sculpted
    strip and is left alone. */
-function fitStrips(active,hid){const dbg=(window._spcDbg=window._spcDbg||{});dbg.strips=[];const T=window._spcStripT||0.12;
-  for(const pi of active){const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area,fn=C.faceNormals(p.m,p.M),v=C.xf(p.M,p.m.v);
+async function fitStrips(active,hid){const dbg=(window._spcDbg=window._spcDbg||{});dbg.strips=[];const T=window._spcStripT||0.12;let k=0;
+  for(const pi of active){logS("Fitting paint to raised strips… "+S.parts[pi].name.replace(/^.*?_\d+_/,"")+" ("+(++k)+"/"+active.length+")",(k-1)/active.length);await tick();const p=S.parts[pi],o=S.offs[pi],n=p.m.f.length/3,nb=S.nb[pi],A=S.area,fn=C.faceNormals(p.m,p.M),v=C.xf(p.M,p.m.v);
     const bend=surfaceShape(p,nb,fn,v).bend,ok=t=>!hid[o+t]&&S.label[o+t]>=0;let tot=0;for(let t=0;t<n;t++)if(ok(t))tot+=A[o+t];
     const seen=new Uint8Array(n);let fixed=0,tried=0;
     for(let s0=0;s0<n;s0++){if(seen[s0]||!ok(s0))continue;const L=S.label[o+s0],comp=[s0];seen[s0]=1;let a=0;
@@ -13024,7 +13029,7 @@ q("spcModeSel").addEventListener("click",()=>{q("spcTip").textContent="Click the
 
 /* ---------- save ---------- */
 q("spcSave").onclick=async()=>{
-  try{q("spcSave").disabled=true;log("Writing the 3MF…");await tick();
+  try{q("spcSave").disabled=true;logS("Writing the 3MF…");await tick();
     /* filaments: the project's own slots stay exactly as they are (unpainted pieces print in their
        slot); colors already there are reused, new ones are added after them */
     sumAreas();const use=new Map();S.regions.forEach(r=>{if(r.area>0)use.set(r.fil,(use.get(r.fil)||0)+r.area);});
@@ -13060,7 +13065,7 @@ q("spcSave").onclick=async()=>{
   }catch(e){log(e.message,true);}finally{q("spcSave").disabled=false;}
 };
 q("spcClear").onclick=()=>{Object.assign(S,{target:null,figure:null,images:[],colored:null,parts:[],project:null,raw:null,label:null,regions:[],undo:[],selected:-1});
-  q("spcViewWrap").hidden=true;chips();renderPieces();renderRegions();log("");q("spcSave").disabled=true;q("spcState").textContent="no model";ready();};
+  window._spcProg=null;q("spcViewWrap").hidden=true;chips();renderPieces();renderRegions();log("");q("spcSave").disabled=true;q("spcState").textContent="no model";ready();};
 })();
 
 /* Filament library: Bambu Lab from BambuStudio filaments_color_codes.json; Sunlu, eSun, Polymaker from SpoolmanDB (MIT, github.com/Donkie/SpoolmanDB);
