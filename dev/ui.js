@@ -3330,6 +3330,8 @@ function minCut(N,sc,tc,eu,ev,ew){
   const side=new Uint8Array(N),seen=new Uint8Array(NN);let h=0,tl=0;qu[tl++]=S0;seen[S0]=1;
   while(h<tl){const u=qu[h++];for(let e=head[u];e>=0;e=nx[e])if(cap[e]>eps&&!seen[to[e]]){seen[to[e]]=1;qu[tl++]=to[e];}}
   for(let k=0;k<N;k++)side[k]=seen[k];
+  /* out of time: the residual graph says nothing yet, so leave every face on the side it is on (its cheaper terminal) */
+  if(timedOut)for(let k=0;k<N;k++)side[k]=sc[k]>=tc[k]?1:0;
   {const ms=Math.round(performance.now()-tStart);if(ms>1000||timedOut){const d=(window._spcDbg=window._spcDbg||{});(d.cuts=d.cuts||[]).push([N,eu.length,phases,ms,timedOut?'timeout':'']);}}
   return side;
 }
