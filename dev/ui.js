@@ -6,7 +6,7 @@ const S=window._spcS={on:new Set(),figPart:-1,target:null,figure:null,images:[],
 const tick=()=>new Promise(r=>setTimeout(r,0));
 const log=(m,err)=>{const el=q("spcLog");const pre=(!err&&window._spcProg!=null&&m)?(Math.round(window._spcProg)+"% · "):"";el.innerHTML=err?`<span class="err">${esc(m)}</span>`:esc(pre+m);};
 /* overall progress: each stage's share of a typical run; a stage can report its own fraction done */
-const STAGES=[["Lining the colors up",8],["Sizing the whole figure",4],["Finding piece",22],["Placing",4],["Sampling colors",3],["Painting your photos",8],["Finding color regions",3],["Finding spots no one will see",14],["Reading your photos",4],["Putting color edges",8],["Cleaning up the edges",3],["Setting edges onto the sculpt",3],["Fitting paint to raised strips",8],["Setting color edges",4],["Finishing the paint",10],["Writing the 3MF",4]];
+const STAGES=[["Lining the colors up",8],["Sizing the whole figure",4],["Finding piece",22],["Placing",4],["Sampling colors",3],["Painting your photos",8],["Finding color regions",3],["Finding spots no one will see",14],["Reading your photos",4],["Putting color edges",8],["Cleaning up the edges",3],["Setting edges onto the sculpt",3],["Fitting paint to raised strips",8],["Setting color edges",4],["Finishing the paint",10],["Sculpt rules",6],["Writing the 3MF",4]];
 const stageStart=new Map();{let acc=0;for(const [k,w] of STAGES){stageStart.set(k,acc);acc+=w;}stageStart.set("__total",acc);}
 const prog=(stageKey,frac)=>{const st=stageStart.get(stageKey);if(st==null)return;const w=STAGES.find(x=>x[0]===stageKey)[1];window._spcProg=100*(st+w*Math.max(0,Math.min(1,frac||0)))/stageStart.get("__total");};
 const logS=(m,frac)=>{for(const [k] of STAGES)if(m.startsWith(k)){prog(k,frac);break;}log(m);};
@@ -657,6 +657,8 @@ async function run(){
      for(let r=0;r<4&&fr.length;r++){const nf=[];for(const t of fr)for(let e=0;e<3;e++){const w=nb[t*3+e];if(w>=0&&!keep[w]&&isP(w)){keep[w]=1;nf.push(w);}}fr=nf;}
      if(mx>0)for(let t=0;t<n;t++)if(isP(t)&&!keep[t]&&!(F.bl&&F.bl[t])){S.label[o+t]=B;nz++;}}}(window._spcDbg=window._spcDbg||{}).lastStripe=nz+' '+Object.keys(S.lineF).map(pi=>{const F=S.lineF[pi],o=S.offs[pi],n=F.ok.length;const P=rm?rm[F.P]:F.P;let r=0,ok=0,bl=0;for(let t=0;t<n;t++){if(S.label[o+t]!==P)continue;r++;if(F.ok[t])ok++;else if(F.bl&&F.bl[t])bl++;}return S.parts[pi].name.slice(-12)+':P'+P+'r'+r+'ok'+ok+'bl'+bl;}).join(' ');sumAreas();}
   /* the sculpted areas, ready for clicking */
+  /* the sculpt rules own the limbs and torso: they read the sculpted bands, hems and feathers and paint them, using the photos only for which paint goes where */
+  if(window._spcUseRules){try{const rr=await sculptRules(active,regM,hid,photo);for(const r of rr)log('  '+r);}catch(e){console.warn(e);log('Sculpt rules failed: '+String(e&&e.message||e));}}
   for(const pi of active){log(`Finding the sculpted areas on ${S.parts[pi].name}…`);await tick();try{sculptAreaAt(S.offs[pi]);}catch(e){console.warn(e);}}
   matchFilaments(slots);
   S.undo=[];q("spcUndo").disabled=true;S.selected=-1;

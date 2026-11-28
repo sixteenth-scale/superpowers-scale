@@ -13,7 +13,7 @@ blocks = {
     "css": ("/*<spc-css>*/", "/*</spc-css>*/", (dev / "color.css").read_text(encoding="utf-8")),
     "html": ("<!--<spc-html>-->", "<!--</spc-html>-->", (dev / "color.html").read_text(encoding="utf-8")),
     "js": ("/*<spc-js>*/", "/*</spc-js>*/",
-           (dev / "color.js").read_text(encoding="utf-8") + "\n" + (dev / "ui.js").read_text(encoding="utf-8")
+           (dev / "color.js").read_text(encoding="utf-8") + "\n" + (dev / "ui.js").read_text(encoding="utf-8") + "\n" + (dev / "rules.js").read_text(encoding="utf-8")
            + "\n" + (dev / "filaments.js").read_text(encoding="utf-8") + "\n" + (dev / "finder.js").read_text(encoding="utf-8")),
 }
 
